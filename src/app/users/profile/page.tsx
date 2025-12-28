@@ -60,3 +60,4 @@ function ProfileField({ label, value }: { label: string, value: React.ReactNode 
     </div>
   );
 }
+"use client";
