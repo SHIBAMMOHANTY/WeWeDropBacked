@@ -1,4 +1,15 @@
+
 import React from 'react';
+type User = {
+  id?: string;
+  phone?: string;
+  username?: string;
+  email?: string;
+  role?: string;
+  membership?: string;
+  isActive?: boolean;
+  createdAt?: string;
+};
 
 async function getUserProfile() {
   const res = await fetch('/api/users/profile', {
@@ -11,8 +22,9 @@ async function getUserProfile() {
   return res.json();
 }
 
+
 export default function UserProfilePage() {
-  const [user, setUser] = React.useState(null);
+  const [user, setUser] = React.useState<User | null>(null);
   const [error, setError] = React.useState('');
   React.useEffect(() => {
     getUserProfile()
@@ -27,14 +39,14 @@ export default function UserProfilePage() {
     <div style={{ maxWidth: 420, margin: '40px auto', background: '#fff', borderRadius: 12, boxShadow: '0 2px 16px #e0e7ef', padding: 32, fontFamily: 'Inter, Arial, sans-serif' }}>
       <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>User Profile</h2>
       <div style={{ display: 'grid', rowGap: 12 }}>
-        <ProfileField label="User ID" value={user.id} />
-        <ProfileField label="Phone" value={user.phone} />
-        <ProfileField label="Username" value={user.username} />
+        <ProfileField label="User ID" value={user.id ?? <span style={{color:'#aaa'}}>N/A</span>} />
+        <ProfileField label="Phone" value={user.phone ?? <span style={{color:'#aaa'}}>N/A</span>} />
+        <ProfileField label="Username" value={user.username ?? <span style={{color:'#aaa'}}>N/A</span>} />
         <ProfileField label="Email" value={user.email || <span style={{color:'#aaa'}}>Not set</span>} />
-        <ProfileField label="Role" value={user.role} />
+        <ProfileField label="Role" value={user.role ?? <span style={{color:'#aaa'}}>N/A</span>} />
         <ProfileField label="Membership" value={user.membership || <span style={{color:'#aaa'}}>None</span>} />
-        <ProfileField label="Active" value={user.isActive ? 'Yes' : 'No'} />
-        <ProfileField label="Created At" value={new Date(user.createdAt).toLocaleString()} />
+        <ProfileField label="Active" value={user.isActive !== undefined ? (user.isActive ? 'Yes' : 'No') : <span style={{color:'#aaa'}}>N/A</span>} />
+        <ProfileField label="Created At" value={user.createdAt ? new Date(user.createdAt).toLocaleString() : <span style={{color:'#aaa'}}>N/A</span>} />
       </div>
     </div>
   );
