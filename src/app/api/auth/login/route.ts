@@ -22,6 +22,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+
+    if (!user.password || typeof user.password !== 'string') {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
