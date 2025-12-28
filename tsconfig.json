@@ -1,0 +1,53 @@
+{
+  "compilerOptions": {
+    /* ---------- Language & Runtime ---------- */
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "types": [
+      "node"
+    ],
+    /* ---------- Module System (Next.js App Router) ---------- */
+    "module": "ESNext",
+    "moduleResolution": "node",
+    /* ---------- JavaScript / TypeScript ---------- */
+    "allowJs": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "incremental": true,
+    /* IMPORTANT: must be FALSE for Prisma global + imports */
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "jsx": "preserve",
+    /* ---------- Path Aliases ---------- */
+    "baseUrl": "./",
+    "paths": {
+      "@/*": [
+        "src/*"
+      ]
+    },
+    "ignoreDeprecations": "6.0",
+    /* ---------- Next.js ---------- */
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  /* ---------- Included Files ---------- */
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  /* ---------- Excluded ---------- */
+  "exclude": [
+    "node_modules"
+  ]
+}

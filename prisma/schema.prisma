@@ -1,0 +1,158 @@
+// Prisma schema placeholder
+// Add your datasource and models here.
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+
+//////////////////////
+// ENUMS
+//////////////////////
+
+enum Role {
+  SUPER_ADMIN
+  USER
+  BUSINESS
+}
+
+enum MembershipType {
+  BASIC
+  PREMIUM
+}
+
+enum OrderStatus {
+  READY_FOR_PICKUP
+  REPAIRING
+  DELIVERED
+}
+
+//////////////////////
+// USER (Customer)
+//////////////////////
+
+model User {
+  id          String           @id @default(uuid())
+  phone       String           @unique
+  role        Role             @default(USER)
+  membership  MembershipType?
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+
+  orders      Order[]
+  payments    Payment[]
+
+  numericId   Int?             @unique
+}
+
+//////////////////////
+// BUSINESS (Dealer)
+//////////////////////
+
+model Business {
+  id              String   @id @default(uuid())
+
+  // Login
+  email           String   @unique
+  password        String
+
+  // Dealer Info
+  dealerName      String
+  contactNumber   String   @unique
+  referralCode    String?
+
+  // GST (Optional)
+  gstName         String?
+  gstNumber       String?
+  gstAddress      String?
+  gstCertificate  String?   // uploaded file URL
+
+  // Status
+  approved        Boolean  @default(false)
+  isActive        Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+
+  orders          Order[]
+}
+
+//////////////////////
+// ORDER / SERVICE
+//////////////////////
+
+model Order {
+  id              String        @id @default(uuid())
+
+  // Relations
+  userId          String
+  businessId      String?
+
+  user            User          @relation(fields: [userId], references: [id])
+  business        Business?     @relation(fields: [businessId], references: [id])
+
+  // Service Details
+  membershipType  MembershipType
+  brandName       String
+  productName     String
+  imeiNumber      String
+  billImage       String
+  serviceDate     DateTime
+
+  customerName    String
+  contactNumber   String
+
+  // Address (BASIC only, validated in API)
+  state           String?
+  pincode         String?
+  fullAddress     String?
+
+  amount          Int
+  status          OrderStatus   @default(READY_FOR_PICKUP)
+
+  payments        Payment[]
+
+  createdAt       DateTime      @default(now())
+
+  @@index([userId])
+  @@index([businessId])
+}
+
+//////////////////////
+// PAYMENT
+//////////////////////
+
+model Payment {
+  id          String   @id @default(uuid())
+
+  userId      String
+  orderId     String
+
+  user        User    @relation(fields: [userId], references: [id])
+  order       Order   @relation(fields: [orderId], references: [id])
+
+  amount      Int
+  status      String   // CREATED | PAID | FAILED
+  razorpayId  String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([orderId])
+}
+
+//////////////////////
+// SUPER ADMIN
+//////////////////////
+
+model Admin {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      Role     @default(SUPER_ADMIN)
+  createdAt DateTime @default(now())
+}
