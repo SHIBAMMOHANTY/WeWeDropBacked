@@ -11,13 +11,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Username or phone and password required" }, { status: 400 });
     }
 
+    const orConditions = [];
+    if (username) orConditions.push({ username });
+    if (phone) orConditions.push({ phone });
     const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          username ? { username } : undefined,
-          phone ? { phone } : undefined,
-        ].filter(Boolean),
-      },
+      where: orConditions.length > 0 ? { OR: orConditions } : {},
     });
 
     if (!user) {
