@@ -35,25 +35,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Save to DB (adjust model/fields as per your schema)
-    const membership = await prisma.membership.create({
+    // Save to DB using Order model (adjust as per your schema)
+    const order = await prisma.order.create({
       data: {
-        product,
+        membershipType: 'BASIC', // or 'PREMIUM', set as needed
         brandName,
+        productName: product,
         imeiNumber,
-        problemDesc,
-        billUrl,
-        date: new Date(date),
+        billImage: billUrl,
+        serviceDate: new Date(date),
         customerName,
-        mobileNumber,
+        contactNumber: mobileNumber,
         fullAddress: fullAddress || null,
         state,
         pincode,
-        referralCode: referralCode || null,
+        // You may need to set userId, businessId, amount, etc. as per your logic
       },
-    })
+    });
 
-    return NextResponse.json(membership, { status: 201 })
+    return NextResponse.json(order, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
