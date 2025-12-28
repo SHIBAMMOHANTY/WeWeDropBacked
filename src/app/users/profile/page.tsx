@@ -1,3 +1,4 @@
+"use client";
 import React from 'react';
 type User = {
   id?: string;
@@ -59,4 +60,3 @@ function ProfileField({ label, value }: { label: string, value: React.ReactNode 
     </div>
   );
 }
-"use client";
