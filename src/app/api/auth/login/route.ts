@@ -1,21 +1,38 @@
-// src/app/api/auth/login/route.ts
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { signToken } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const { email, password } = await req.json();
-  const business = await prisma.business.findUnique({ where: { email } });
+  try {
+    const { username, phone, password } = await req.json();
 
-  if (!business || !business.approved)
-    return NextResponse.json({ error: "Not approved" }, { status: 403 });
+    if ((!username && !phone) || !password) {
+      return NextResponse.json({ error: "Username or phone and password required" }, { status: 400 });
+    }
 
-  const match = await bcrypt.compare(password, business.password);
-  if (!match)
-    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          username ? { username } : undefined,
+          phone ? { phone } : undefined,
+        ].filter(Boolean),
+      },
+    });
 
-  return NextResponse.json({
-    token: signToken({ id: business.id, role: "BUSINESS" }),
-  });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    const token = signToken({ id: user.id, role: user.role });
+    const { password: _, ...userSafe } = user;
+    return NextResponse.json({ user: userSafe, token }, { status: 200 });
+  } catch (error: any) {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

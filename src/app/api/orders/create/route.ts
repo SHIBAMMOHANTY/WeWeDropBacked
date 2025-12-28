@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 
 type MembershipType = "BASIC" | "PREMIUM";
 
+
 export async function POST(req: Request) {
   try {
     const data = await req.json();
@@ -18,7 +19,8 @@ export async function POST(req: Request) {
       !data.brandName ||
       !data.productName ||
       !data.imeiNumber ||
-      !data.amount
+      !data.amount ||
+      !data.paymentId // Require paymentId
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -50,6 +52,7 @@ export async function POST(req: Request) {
         pincode: data.pincode ?? null,
         fullAddress: data.fullAddress ?? null,
         amount: data.amount,
+        paymentId: data.paymentId, // Add paymentId to order
       },
     });
 

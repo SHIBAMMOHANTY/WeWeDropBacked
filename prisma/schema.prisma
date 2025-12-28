@@ -39,6 +39,9 @@ enum OrderStatus {
 model User {
   id          String           @id @default(uuid())
   phone       String           @unique
+  username    String?          @unique
+  password    String?
+  email       String?          @unique
   role        Role             @default(USER)
   membership  MembershipType?
   isActive    Boolean          @default(true)
@@ -113,6 +116,7 @@ model Order {
 
   amount          Int
   status          OrderStatus   @default(READY_FOR_PICKUP)
+ paymentId      String?
 
   payments        Payment[]
 

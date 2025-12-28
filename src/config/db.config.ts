@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 // Replace default import with named type + default factory import
 import knexLib, { Knex } from "knex";
 import { Model } from "objection";
+import os from "os";
 
 dotenv.config();
 
@@ -57,4 +58,66 @@ export async function checkConnection(): Promise<{ connected: boolean; message: 
 
 // ensure DB is initialized on import
 initializeDatabase();
+
+// run connection check and log result (handled Promise)
 checkConnection()
+  .then((res) => {
+    if (res.connected) {
+      console.log("[db] Connected:", res.message);
+    } else {
+      console.error("[db] Connection failed:", res.message);
+    }
+  })
+  .catch((err) => {
+    console.error("[db] Connection check error:", err);
+  });
+
+// --- NEW: show environment + local/LAN access info ---
+(function showEnvAndHosts() {
+  try {
+    const port = process.env.PORT ?? "3000";
+    const hostEnv = process.env.HOST ?? "localhost";
+    const maskedDbPwd =
+      process.env.MYSQL_PASSWORD && process.env.MYSQL_PASSWORD.length > 0
+        ? "*****"
+        : "(not set)";
+
+    console.log("[env] Next.js dev info:");
+    console.log(`  - Host env: ${hostEnv}`);
+    console.log(`  - Port: ${port}`);
+    console.log(`  - MySQL host: ${process.env.MYSQL_HOST ?? "(not set)"}`);
+    console.log(`  - MySQL port: ${process.env.MYSQL_PORT ?? "(not set)"}`);
+    console.log(`  - MySQL database: ${process.env.MYSQL_DATABASE ?? "(not set)"}`);
+    console.log(`  - MySQL user: ${process.env.MYSQL_USER ?? "(not set)"}`);
+    console.log(`  - MySQL password: ${maskedDbPwd}`);
+
+    // list LAN addresses
+    const nets = os.networkInterfaces();
+    const addresses: string[] = [];
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] ?? []) {
+        // skip internal and non-ipv4
+        if (net.family === "IPv4" && !net.internal) {
+          addresses.push(net.address);
+        }
+      }
+    }
+
+    console.log("  - Accessible URLs:");
+    // hostEnv might be 0.0.0.0 => show localhost and LAN IPs
+    if (hostEnv === "0.0.0.0") {
+      console.log(`    • http://localhost:${port}`);
+      for (const ip of addresses) {
+        console.log(`    • http://${ip}:${port}`);
+      }
+    } else {
+      console.log(`    • http://${hostEnv}:${port}`);
+      for (const ip of addresses) {
+        console.log(`    • http://${ip}:${port}`);
+      }
+    }
+  } catch (err) {
+    // don't crash startup for logging failures
+    console.warn("[env] Could not enumerate network interfaces:", err);
+  }
+})();

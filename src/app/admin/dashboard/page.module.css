@@ -1,0 +1,59 @@
+.container {
+  padding: 36px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  color: #0f172a;
+  background: #f8fafc;
+  min-height: 100vh;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.title {
+  font-size: 24px;
+  font-weight: 700;
+}
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.card {
+  background: linear-gradient(180deg,#ffffff 0%, #fbfdff 100%);
+  border: 1px solid #e6e9ee;
+  padding: 12px 16px;
+  border-radius: 10px;
+  min-width: 120px;
+  box-shadow: 0 6px 18px rgba(15,23,42,0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cardLabel { font-size: 12px; color: #64748b; }
+.cardValue { font-size: 18px; font-weight: 600; }
+.section { margin-bottom: 32px; }
+.sectionTitle { font-size: 16px; margin-bottom: 12px; color: #0f172a; font-weight: 600 }
+.tableWrap { overflow-x: auto; background: #fff; border: 1px solid #eef2f7; border-radius: 10px; padding: 8px; }
+.tableWrap table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tableWrap th, .tableWrap td { text-align: left; padding: 12px 14px; border-bottom: 1px solid #f1f5f9; }
+.tableWrap th { background: #fbfdff; color: #334155; font-weight: 700; font-size: 13px; position: sticky; top: 0; z-index: 3; }
+.tableWrap tr:last-child td { border-bottom: none; }
+
+/* make table body scrollable with sticky header */
+.tableInner { max-height: 420px; overflow: auto; }
+.tableWrap table tbody tr:hover { background: #fbfdff; }
+.tableWrap table tbody tr:nth-child(even) { background: #ffffff; }
+.tableWrap table tbody tr:nth-child(odd) { background: #fcfdff; }
+.tableWrap table td { vertical-align: middle }
+.muted { color: #64748b; font-size: 13px }
+.badge { display:inline-block; padding:4px 8px; border-radius:9999px; font-size:12px; font-weight:600 }
+.badgeGreen { background:#ecfdf5; color:#065f46 }
+.badgeYellow { background:#fffbeb; color:#92400e }
+.badgeRed { background:#fff1f2; color:#9f1239 }
+.small { font-size:12px }
+
+.footerNote { margin-top: 12px; color:#94a3b8; font-size:13px }

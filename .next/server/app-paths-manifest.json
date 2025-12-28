@@ -1,4 +1,3 @@
 {
-  "/api/auth/otp/verify/route": "app/api/auth/otp/verify/route.js",
-  "/api/auth/otp/send/route": "app/api/auth/otp/send/route.js"
+  "/api/users/profile/route": "app/api/users/profile/route.js"
 }
