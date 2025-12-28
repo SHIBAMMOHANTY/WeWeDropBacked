@@ -1,4 +1,4 @@
-// File: C:\Users\shiba\Desktop\WeWeDropBacked\src\app\api\auth\otp\verify\route.ts
+// File: D:\wepickwedropbackend\WeWeDropBacked\WeWeDropBacked\src\app\api\auth\otp\verify\route.ts
 import * as entry from '../../../../../../../src/app/api/auth/otp/verify/route.js'
 import type { NextRequest } from 'next/server.js'
 

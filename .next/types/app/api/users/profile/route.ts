@@ -1,4 +1,4 @@
-// File: C:\Users\shiba\Desktop\WeWeDropBacked\src\app\api\users\profile\route.ts
+// File: D:\wepickwedropbackend\WeWeDropBacked\WeWeDropBacked\src\app\api\users\profile\route.ts
 import * as entry from '../../../../../../src/app/api/users/profile/route.js'
 import type { NextRequest } from 'next/server.js'
 

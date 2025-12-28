@@ -1,4 +1,4 @@
-// File: C:\Users\shiba\Desktop\WeWeDropBacked\src\app\api\auth\otp\send\route.ts
+// File: D:\wepickwedropbackend\WeWeDropBacked\WeWeDropBacked\src\app\api\auth\otp\send\route.ts
 import * as entry from '../../../../../../../src/app/api/auth/otp/send/route.js'
 import type { NextRequest } from 'next/server.js'
 
