@@ -1,6 +1,6 @@
 {
-  "/api/db-status": "pages/api/db-status.js",
   "/_app": "pages/_app.js",
+  "/api/db-status": "pages/api/db-status.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js"
 }
