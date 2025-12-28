@@ -36,6 +36,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Save to DB using Order model (adjust as per your schema)
+
+    // TODO: Replace with actual userId and amount logic as needed
+    const userId = body.userId || 'replace-with-actual-user-id';
+    const amount = body.amount || 0;
+
     const order = await prisma.order.create({
       data: {
         membershipType: 'BASIC', // or 'PREMIUM', set as needed
@@ -49,7 +54,9 @@ export async function POST(req: NextRequest) {
         fullAddress: fullAddress || null,
         state,
         pincode,
-        // You may need to set userId, businessId, amount, etc. as per your logic
+        userId,
+        amount,
+        // Add other required fields as needed
       },
     });
 
