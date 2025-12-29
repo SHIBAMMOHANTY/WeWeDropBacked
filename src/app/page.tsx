@@ -14,6 +14,7 @@ function getServerIp() {
 
 export default async function Home() {
   const ip = getServerIp();
+  const port = process.env.PORT || 3000;
 
   return (
     <main style={styles.page}>
@@ -35,6 +36,11 @@ export default async function Home() {
         <div style={styles.section}>
           <span style={styles.label}>Server IP Address</span>
           <div style={styles.ipBox}>{ip}</div>
+        </div>
+
+        <div style={styles.section}>
+          <span style={styles.label}>API Port</span>
+          <div style={styles.ipBox}>{port}</div>
         </div>
 
         <footer style={styles.footer}>
