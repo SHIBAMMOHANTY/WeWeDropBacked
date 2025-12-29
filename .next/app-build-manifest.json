@@ -3,31 +3,38 @@
     "/_not-found/page": [
       "static/chunks/webpack-0199caeb4961d88c.js",
       "static/chunks/fd9d1056-2821b0f0cabcd8bd.js",
-      "static/chunks/23-b75664ace61c0abb.js",
+      "static/chunks/23-4be99251fe1e1abc.js",
       "static/chunks/main-app-5a77841f7e539ea2.js",
-      "static/chunks/app/_not-found/page-05886c10710171db.js"
+      "static/chunks/app/_not-found/page-d9c907af63840d6f.js"
     ],
     "/layout": [
       "static/chunks/webpack-0199caeb4961d88c.js",
       "static/chunks/fd9d1056-2821b0f0cabcd8bd.js",
-      "static/chunks/23-b75664ace61c0abb.js",
+      "static/chunks/23-4be99251fe1e1abc.js",
       "static/chunks/main-app-5a77841f7e539ea2.js",
-      "static/chunks/app/layout-e08598673dcb8276.js"
+      "static/chunks/app/layout-6e244a27659366a7.js"
     ],
-    "/admin/dashboard/page": [
+    "/page": [
       "static/chunks/webpack-0199caeb4961d88c.js",
       "static/chunks/fd9d1056-2821b0f0cabcd8bd.js",
-      "static/chunks/23-b75664ace61c0abb.js",
+      "static/chunks/23-4be99251fe1e1abc.js",
       "static/chunks/main-app-5a77841f7e539ea2.js",
-      "static/css/fee411889324e707.css",
-      "static/chunks/app/admin/dashboard/page-d8e24e68356ae2be.js"
+      "static/chunks/app/page-df5bb186a7a8fc2e.js"
     ],
     "/users/profile/page": [
       "static/chunks/webpack-0199caeb4961d88c.js",
       "static/chunks/fd9d1056-2821b0f0cabcd8bd.js",
-      "static/chunks/23-b75664ace61c0abb.js",
+      "static/chunks/23-4be99251fe1e1abc.js",
       "static/chunks/main-app-5a77841f7e539ea2.js",
-      "static/chunks/app/users/profile/page-b28c59c5b97f89f6.js"
+      "static/chunks/app/users/profile/page-61ac0d8e4002e390.js"
+    ],
+    "/admin/dashboard/page": [
+      "static/chunks/webpack-0199caeb4961d88c.js",
+      "static/chunks/fd9d1056-2821b0f0cabcd8bd.js",
+      "static/chunks/23-4be99251fe1e1abc.js",
+      "static/chunks/main-app-5a77841f7e539ea2.js",
+      "static/css/fee411889324e707.css",
+      "static/chunks/app/admin/dashboard/page-d8e24e68356ae2be.js"
     ]
   }
 }

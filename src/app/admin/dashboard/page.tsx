@@ -1,6 +1,17 @@
+
 import React from 'react'
 import { prisma } from '@/lib/prisma'
 import styles from './page.module.css'
+
+async function getDbStatus() {
+  try {
+    const res = await fetch('http://localhost:3000/api/db-status', { cache: 'no-store' });
+    if (!res.ok) throw new Error('Failed to fetch');
+    return await res.json();
+  } catch (e) {
+    return { connected: false, message: 'Could not check DB status' };
+  }
+}
 
 function formatDate(d: Date | string | null) {
   if (!d) return '-'
@@ -26,6 +37,7 @@ function Pagination({ page, total, pageSize }: { page: number, total: number, pa
 }
 
 export default async function DashboardPage({ searchParams }: { searchParams?: { [key: string]: string | string[] } }) {
+  const dbStatus = await getDbStatus();
   // Pagination logic
   const page = searchParams?.userPage ? parseInt(searchParams.userPage as string) : 1;
   const skip = (page - 1) * PAGE_SIZE;
@@ -63,6 +75,9 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     <div className={styles.container}>
       <div className={styles.heading}>
         <div className={styles.title}>Admin Dashboard</div>
+      </div>
+      <div style={{ margin: '12px 0', padding: '8px 16px', borderRadius: 6, background: dbStatus.connected ? '#e0ffe0' : '#ffe0e0', color: dbStatus.connected ? '#155724' : '#721c24', fontWeight: 500 }}>
+        DB Status: {dbStatus.connected ? '✅ Connected' : '❌ Not Connected'} — {dbStatus.message}
       </div>
 
       <section className={styles.section}>

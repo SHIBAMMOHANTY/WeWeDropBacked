@@ -1,12 +1,11 @@
 // Prisma schema placeholder
 // Add your datasource and models here.
 generator client {
-  provider   = "prisma-client-js"
-  engineType = "binary"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -37,7 +36,7 @@ enum OrderStatus {
 //////////////////////
 
 model User {
-  id          String           @id @default(uuid())
+  id          String           @id @default(auto()) @map("_id") @db.ObjectId
   phone       String           @unique
   username    String?          @unique
   password    String?
@@ -58,7 +57,7 @@ model User {
 //////////////////////
 
 model Business {
-  id              String   @id @default(uuid())
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
 
   // Login
   email           String   @unique
@@ -89,13 +88,13 @@ model Business {
 //////////////////////
 
 model Order {
-  id              String        @id @default(uuid())
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
 
   // Relations
   userId          String
   businessId      String?
 
-  user            User          @relation(fields: [userId], references: [id])
+  user            User?         @relation(fields: [userId], references: [id])
   business        Business?     @relation(fields: [businessId], references: [id])
 
   // Service Details
@@ -116,14 +115,11 @@ model Order {
 
   amount          Int
   status          OrderStatus   @default(READY_FOR_PICKUP)
- paymentId      String?
+  paymentId       String?
 
   payments        Payment[]
 
   createdAt       DateTime      @default(now())
-
-  @@index([userId])
-  @@index([businessId])
 }
 
 //////////////////////
@@ -131,22 +127,19 @@ model Order {
 //////////////////////
 
 model Payment {
-  id          String   @id @default(uuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
 
   userId      String
   orderId     String
 
-  user        User    @relation(fields: [userId], references: [id])
-  order       Order   @relation(fields: [orderId], references: [id])
+  user        User?    @relation(fields: [userId], references: [id])
+  order       Order?   @relation(fields: [orderId], references: [id])
 
   amount      Int
   status      String   // CREATED | PAID | FAILED
   razorpayId  String?
 
   createdAt   DateTime @default(now())
-
-  @@index([userId])
-  @@index([orderId])
 }
 
 //////////////////////
@@ -154,7 +147,7 @@ model Payment {
 //////////////////////
 
 model Admin {
-  id        String   @id @default(uuid())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   email     String   @unique
   password  String
   role      Role     @default(SUPER_ADMIN)
