@@ -114,7 +114,7 @@ model Order {
   fullAddress     String?
 
   amount          Int
-  status          OrderStatus   @default(READY_FOR_PICKUP)
+  orderStatus     Int           @default(0) // -1 = REJECTED, 0 = PENDING, 1 = READY_FOR_PICKUP, 2 = REPAIRING, 3 = DELIVERED
   paymentId       String?
 
   payments        Payment[]

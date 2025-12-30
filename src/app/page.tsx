@@ -18,6 +18,9 @@ export default async function Home() {
 
   return (
     <main style={styles.page}>
+      <div style={styles.banner}>
+        <span style={styles.bannerText}>WeWeDrop Backend Dashboard</span>
+      </div>
       <div style={styles.card}>
         <h1 style={styles.title}>🚀 WeWeDrop Backend</h1>
         <p style={styles.subtitle}>
@@ -55,10 +58,31 @@ const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     background: "linear-gradient(135deg, #0f2027, #203a43, #2c5364)",
     padding: "20px",
+    position: "relative",
+  },
+  banner: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100vw",
+    height: "60px",
+    background: "#2563eb",
+    color: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 100,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+  },
+  bannerText: {
+    fontSize: "22px",
+    fontWeight: 600,
+    letterSpacing: "0.04em",
   },
   card: {
     width: "100%",
@@ -68,6 +92,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "32px",
     boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
     textAlign: "center",
+    marginTop: "80px",
   },
   title: {
     fontSize: "28px",

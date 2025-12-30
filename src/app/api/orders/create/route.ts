@@ -5,7 +5,10 @@ export const runtime = "nodejs";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
+
 type MembershipType = "BASIC" | "PREMIUM";
+// Order status: 0 = PENDING, 1 = APPROVED, 2 = REJECTED
+type OrderStatus = 0 | 1 | 2;
 
 
 export async function POST(req: Request) {
@@ -53,6 +56,7 @@ export async function POST(req: Request) {
         fullAddress: data.fullAddress ?? null,
         amount: data.amount,
         paymentId: data.paymentId, // Add paymentId to order
+        orderStatus: 0, // 0 = PENDING, 1 = READY_FOR_PICKUP, 2 = REPAIRING, 3 = DELIVERED, -1 = REJECTED
       },
     });
 
