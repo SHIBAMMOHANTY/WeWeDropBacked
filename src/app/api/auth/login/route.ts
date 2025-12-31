@@ -8,7 +8,18 @@ export async function POST(req: Request) {
     const { username, phone, password } = await req.json();
 
     if ((!username && !phone) || !password) {
-      return NextResponse.json({ error: "Username or phone and password required" }, { status: 400 });
+      return new NextResponse(
+        JSON.stringify({ error: "Username or phone and password required" }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
+          },
+        }
+      );
     }
 
     const orConditions = [];
@@ -19,22 +30,77 @@ export async function POST(req: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return new NextResponse(
+        JSON.stringify({ error: "User not found" }),
+        {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
+          },
+        }
+      );
     }
 
 
     if (!user.password || typeof user.password !== 'string') {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+      return new NextResponse(
+        JSON.stringify({ error: "Invalid credentials" }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
+          },
+        }
+      );
     }
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+      return new NextResponse(
+        JSON.stringify({ error: "Invalid credentials" }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
+          },
+        }
+      );
     }
 
     const token = signToken({ id: user.id, role: user.role });
     const { password: _, ...userSafe } = user;
-    return NextResponse.json({ user: userSafe, token }, { status: 200 });
+    return new NextResponse(
+      JSON.stringify({ user: userSafe, token }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': 'true',
+          'Referrer-Policy': 'strict-origin-when-cross-origin',
+        },
+      }
+    );
   } catch (error: any) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return new NextResponse(
+      JSON.stringify({ error: "Internal server error" }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': 'true',
+          'Referrer-Policy': 'strict-origin-when-cross-origin',
+        },
+      }
+    );
   }
 }
