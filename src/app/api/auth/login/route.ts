@@ -1,3 +1,19 @@
+// CORS headers for all responses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Credentials': 'true',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Content-Type': 'application/json',
+};
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+}
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { signToken } from "@/lib/auth";
@@ -12,12 +28,7 @@ export async function POST(req: Request) {
         JSON.stringify({ error: "Username or phone and password required" }),
         {
           status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Credentials': 'true',
-            'Referrer-Policy': 'strict-origin-when-cross-origin',
-          },
+          headers: corsHeaders,
         }
       );
     }
@@ -34,12 +45,7 @@ export async function POST(req: Request) {
         JSON.stringify({ error: "User not found" }),
         {
           status: 404,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Credentials': 'true',
-            'Referrer-Policy': 'strict-origin-when-cross-origin',
-          },
+          headers: corsHeaders,
         }
       );
     }
@@ -50,12 +56,7 @@ export async function POST(req: Request) {
         JSON.stringify({ error: "Invalid credentials" }),
         {
           status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Credentials': 'true',
-            'Referrer-Policy': 'strict-origin-when-cross-origin',
-          },
+          headers: corsHeaders,
         }
       );
     }
@@ -65,12 +66,7 @@ export async function POST(req: Request) {
         JSON.stringify({ error: "Invalid credentials" }),
         {
           status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Credentials': 'true',
-            'Referrer-Policy': 'strict-origin-when-cross-origin',
-          },
+          headers: corsHeaders,
         }
       );
     }
@@ -81,12 +77,7 @@ export async function POST(req: Request) {
       JSON.stringify({ user: userSafe, token }),
       {
         status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Credentials': 'true',
-          'Referrer-Policy': 'strict-origin-when-cross-origin',
-        },
+        headers: corsHeaders,
       }
     );
   } catch (error: any) {
@@ -94,12 +85,7 @@ export async function POST(req: Request) {
       JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Credentials': 'true',
-          'Referrer-Policy': 'strict-origin-when-cross-origin',
-        },
+        headers: corsHeaders,
       }
     );
   }
