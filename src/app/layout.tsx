@@ -10,7 +10,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <footer style={{ marginTop: 40, padding: 24, background: '#f5f5f5', textAlign: 'center', fontSize: 14 }}>
+          <a href="/policies/privacy-policy" style={{ marginRight: 16 }}>Privacy Policy</a>
+          <a href="/policies/refund-policy" style={{ marginRight: 16 }}>Refund Policy</a>
+          <a href="/policies/terms-and-conditions">Terms & Conditions</a>
+        </footer>
+      </body>
     </html>
   )
 }

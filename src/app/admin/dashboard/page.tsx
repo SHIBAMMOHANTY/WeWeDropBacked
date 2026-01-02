@@ -5,7 +5,7 @@ import styles from './page.module.css'
 
 async function getDbStatus() {
   try {
-    const res = await fetch('http://localhost:3000/api/db-status', { cache: 'no-store' });
+    const res = await fetch('https://wepick-rho.vercel.app/api/db-status', { cache: 'no-store' });
     if (!res.ok) throw new Error('Failed to fetch');
     return await res.json();
   } catch (e) {
