@@ -40,12 +40,12 @@
     ]
   },
   /* ---------- Included Files ---------- */
-  "include": [
-    "next-env.d.ts",
-    ".next/types/**/*.ts",
-    "src/**/*.ts",
-    "src/**/*.tsx"
-  ],
+"include": [
+  "next-env.d.ts",
+  ".next/types/**/*.ts",
+  "src/**/*.ts",
+  "src/**/*.tsx"
+],
   /* ---------- Excluded ---------- */
   "exclude": [
     "node_modules"
