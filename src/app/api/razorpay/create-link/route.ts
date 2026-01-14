@@ -1,40 +1,34 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { razorpay } from "@/lib/razorpay";
+import Razorpay from "razorpay";
+import { NextResponse } from "next/server";
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_secret: process.env.RAZORPAY_KEY_SECRET!,
+});
 
+export async function POST(req: Request) {
   try {
-    const { amount, customerName, contact } = req.body;
+    const body = await req.json();
+    const { amount = 199, customerName, contact } = body;
 
     const paymentLink = await razorpay.paymentLink.create({
-      amount: amount * 100, // ₹ → paise
+      amount: amount * 100,
       currency: "INR",
       description: "Order Payment",
       customer: {
         name: customerName || "Customer",
         contact: contact || "9999999999",
       },
-      notify: {
-        sms: true,
-        email: false,
-      },
-      callback_method: "get",
-      callback_url: "https://yourdomain.com/payment-success",
     });
 
-    // 🔑 THIS URL IS WHAT EXPO GO OPENS
-    return res.status(200).json({
-      url: paymentLink.short_url,
-      paymentLinkId: paymentLink.id,
+    return NextResponse.json({
+      url: paymentLink.short_url, // 🔑 REQUIRED
     });
-  } catch (error: any) {
-    console.error("Razorpay error:", error);
-    return res.status(500).json({ error: "Failed to create payment link" });
+  } catch (err) {
+    console.error("Razorpay error:", err);
+    return NextResponse.json(
+      { error: "Failed to create payment link" },
+      { status: 500 }
+    );
   }
 }
