@@ -10,47 +10,48 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method === "GET") {
-    return res.status(200).json({
-      success: true,
-      message:
-        "GET method is allowed for testing purposes. Use POST to create a payment link.",
-    });
-  }
-
+  // Allow POST only
   if (req.method !== "POST") {
-    return res
-      .status(405)
-      .json({ success: false, message: "Method not allowed" });
+    return res.status(405).json({
+      success: false,
+      message: "Method Not Allowed. Use POST.",
+    });
   }
 
   try {
     const { amount, customerName, contact, orderId } = req.body;
 
-    // Ensure amount is a valid number
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    console.log("CREATE LINK PAYLOAD:", req.body);
+
+    // ✅ Validate amount
+    if (!amount || isNaN(Number(amount))) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or missing amount. Amount must be a positive number.",
+        message: "Invalid amount",
       });
     }
 
-    // Ensure contact is a valid phone number
-    if (!contact || !/^\+?\d{10,15}$/.test(contact)) {
+    // ✅ Normalize phone number (VERY IMPORTANT)
+    const digits = String(contact).replace(/\D/g, "");
+    if (digits.length < 10) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or missing contact. Contact must be a valid phone number.",
+        message: "Invalid contact number",
       });
     }
+    const fixedContact = `+91${digits.slice(-10)}`;
+
+    // ✅ Enforce minimum ₹10
+    const rupees = Math.max(Number(amount), 10);
 
     const paymentLink = await razorpay.paymentLink.create({
-      amount: Math.round(Number(amount) * 100), // Convert to paise
+      amount: rupees * 100, // paise
       currency: "INR",
       description: "Order Payment",
       reference_id: orderId || Date.now().toString(),
       customer: {
         name: customerName || "Customer",
-        contact: contact.startsWith("+") ? contact : contact,
+        contact: fixedContact,
       },
       callback_url: "https://wepick-rho.vercel.app/payment-success",
       callback_method: "get",
@@ -62,7 +63,7 @@ export default async function handler(
       paymentLinkId: paymentLink.id,
     });
   } catch (error: any) {
-    console.error("Create link error:", error);
+    console.error("RAZORPAY CREATE LINK ERROR:", error);
 
     return res.status(500).json({
       success: false,
