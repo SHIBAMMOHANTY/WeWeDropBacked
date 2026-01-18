@@ -1,51 +1,41 @@
-import type { NextApiRequest, NextApiResponse } from "next";
 import Razorpay from "razorpay";
+import { NextResponse } from "next/server";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
   key_secret: process.env.RAZORPAY_KEY_SECRET!,
 });
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  // Allow POST only
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      success: false,
-      message: "Method Not Allowed. Use POST.",
-    });
-  }
-
+export async function POST(req: Request) {
   try {
-    const { amount, customerName, contact, orderId } = req.body;
+    const body = await req.json();
+    console.log("CREATE LINK PAYLOAD:", body);
 
-    console.log("CREATE LINK PAYLOAD:", req.body);
+    const { amount, customerName, contact, orderId } = body;
 
-    // ✅ Validate amount
-    if (!amount || isNaN(Number(amount))) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid amount",
-      });
+    if (!amount || !contact) {
+      return NextResponse.json(
+        { success: false, message: "amount and contact required" },
+        { status: 400 }
+      );
     }
 
-    // ✅ Normalize phone number (VERY IMPORTANT)
+    // ✅ Normalize phone
     const digits = String(contact).replace(/\D/g, "");
     if (digits.length < 10) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid contact number",
-      });
+      return NextResponse.json(
+        { success: false, message: "Invalid contact number" },
+        { status: 400 }
+      );
     }
+
     const fixedContact = `+91${digits.slice(-10)}`;
 
     // ✅ Enforce minimum ₹10
     const rupees = Math.max(Number(amount), 10);
 
     const paymentLink = await razorpay.paymentLink.create({
-      amount: rupees * 100, // paise
+      amount: rupees * 100,
       currency: "INR",
       description: "Order Payment",
       reference_id: orderId || Date.now().toString(),
@@ -57,7 +47,7 @@ export default async function handler(
       callback_method: "get",
     });
 
-    return res.status(200).json({
+    return NextResponse.json({
       success: true,
       short_url: paymentLink.short_url,
       paymentLinkId: paymentLink.id,
@@ -65,12 +55,15 @@ export default async function handler(
   } catch (error: any) {
     console.error("RAZORPAY CREATE LINK ERROR:", error);
 
-    return res.status(500).json({
-      success: false,
-      message:
-        error?.error?.description ||
-        error?.message ||
-        "Failed to create payment link",
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        message:
+          error?.error?.description ||
+          error?.message ||
+          "Failed to create payment link",
+      },
+      { status: 500 }
+    );
   }
 }
