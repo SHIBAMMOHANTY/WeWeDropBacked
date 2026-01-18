@@ -13,29 +13,30 @@ export async function POST(req: Request) {
 
     const { amount, customerName, contact, orderId } = body;
 
-    if (!amount || !contact) {
+    // ✅ Validate amount (allow ₹1)
+    const rupees = Number(amount);
+    if (isNaN(rupees) || rupees <= 0) {
       return NextResponse.json(
-        { success: false, message: "amount and contact required" },
+        { success: false, message: "Invalid amount" },
         { status: 400 }
       );
     }
 
-    // ✅ Normalize phone
-    const digits = String(contact).replace(/\D/g, "");
+    // ✅ Normalize Indian phone number
+    const digits = String(contact || "").replace(/\D/g, "");
     if (digits.length < 10) {
       return NextResponse.json(
         { success: false, message: "Invalid contact number" },
         { status: 400 }
       );
     }
-
     const fixedContact = `+91${digits.slice(-10)}`;
 
-    // ✅ Enforce minimum ₹10
-    const rupees = Math.max(Number(amount), 10);
+    // ✅ Convert to paise (NO forced minimum)
+    const amountInPaise = Math.round(rupees * 100);
 
     const paymentLink = await razorpay.paymentLink.create({
-      amount: rupees * 100,
+      amount: amountInPaise,
       currency: "INR",
       description: "Order Payment",
       reference_id: orderId || Date.now().toString(),
@@ -51,6 +52,7 @@ export async function POST(req: Request) {
       success: true,
       short_url: paymentLink.short_url,
       paymentLinkId: paymentLink.id,
+      chargedAmount: rupees, // 👈 helpful for frontend
     });
   } catch (error: any) {
     console.error("RAZORPAY CREATE LINK ERROR:", error);
