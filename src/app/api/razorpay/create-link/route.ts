@@ -19,21 +19,30 @@ export default async function handler(
   try {
     const { amount, customerName, contact, orderId } = req.body;
 
-    if (!amount || !contact) {
+    // Ensure amount is a valid number
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       return res.status(400).json({
         success: false,
-        message: "amount and contact are required",
+        message: "Invalid or missing amount. Amount must be a positive number.",
+      });
+    }
+
+    // Ensure contact is a valid phone number
+    if (!contact || !/^\+?\d{10,15}$/.test(contact)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or missing contact. Contact must be a valid phone number.",
       });
     }
 
     const paymentLink = await razorpay.paymentLink.create({
-      amount: Number(amount) * 100, // paise
+      amount: Math.round(Number(amount) * 100), // Convert to paise
       currency: "INR",
       description: "Order Payment",
       reference_id: orderId || Date.now().toString(),
       customer: {
         name: customerName || "Customer",
-        contact: contact.startsWith("+91") ? contact : `+91${contact}`,
+        contact: contact.startsWith("+") ? contact : contact,
       },
       callback_url: "https://wepick-rho.vercel.app/payment-success",
       callback_method: "get",
