@@ -1,4 +1,4 @@
-import { NextApiRequest, NextApiResponse } from "next";
+import type { NextApiRequest, NextApiResponse } from "next";
 import Razorpay from "razorpay";
 
 const razorpay = new Razorpay({
@@ -11,38 +11,47 @@ export default async function handler(
   res: NextApiResponse
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
+    return res
+      .status(405)
+      .json({ success: false, message: "Method not allowed" });
   }
 
   try {
     const { paymentLinkId } = req.body;
 
     if (!paymentLinkId) {
-      return res.status(400).json({ error: "paymentLinkId required" });
+      return res.status(400).json({
+        success: false,
+        status: "INVALID",
+        message: "paymentLinkId is required",
+      });
     }
 
-    // 🔁 Retry mechanism (wait for Razorpay update)
-    let paymentLink;
-    for (let i = 0; i < 3; i++) {
-      paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
-      if (paymentLink.status === "paid") break;
-      await new Promise((r) => setTimeout(r, 2000));
-    }
+    const paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
 
-    if (paymentLink?.status === "paid") {
+    // Razorpay statuses: created | issued | paid | cancelled | expired
+    if (paymentLink.status === "paid") {
+      // ✅ PAYMENT CONFIRMED
       return res.status(200).json({
         success: true,
         status: "PAID",
-        paymentLink,
       });
     }
 
     return res.status(200).json({
       success: false,
-      status: paymentLink?.status || "UNKNOWN",
+      status: paymentLink.status || "PENDING",
     });
-  } catch (error) {
-    console.error("Verification error:", error);
-    return res.status(500).json({ error: "Verification failed" });
+  } catch (error: any) {
+    console.error("Verify payment error:", error);
+
+    return res.status(500).json({
+      success: false,
+      status: "ERROR",
+      message:
+        error?.error?.description ||
+        error?.message ||
+        "Verification failed",
+    });
   }
 }
