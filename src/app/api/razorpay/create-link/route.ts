@@ -9,25 +9,29 @@ const razorpay = new Razorpay({
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { amount = 199, customerName, contact } = body;
+    const { amount = 199, customerName, contact, orderId } = body;
 
     const paymentLink = await razorpay.paymentLink.create({
       amount: amount * 100,
       currency: "INR",
       description: "Order Payment",
+      reference_id: orderId, // IMPORTANT
       customer: {
         name: customerName || "Customer",
-        contact: contact || "9999999999",
+        contact: "+91" + contact,
       },
+      callback_url: "https://yourdomain.com/payment-success",
+      callback_method: "get",
     });
 
     return NextResponse.json({
-      url: paymentLink.short_url, // 🔑 REQUIRED
+      short_url: paymentLink.short_url,
+      paymentLinkId: paymentLink.id,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Razorpay error:", err);
     return NextResponse.json(
-      { error: "Failed to create payment link" },
+      { error: err?.error?.description || err.message },
       { status: 500 }
     );
   }

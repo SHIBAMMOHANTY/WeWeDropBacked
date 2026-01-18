@@ -1,5 +1,10 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { razorpay } from "@/lib/razorpay";
+import { NextApiRequest, NextApiResponse } from "next";
+import Razorpay from "razorpay";
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_secret: process.env.RAZORPAY_KEY_SECRET!,
+});
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,10 +17,19 @@ export default async function handler(
   try {
     const { paymentLinkId } = req.body;
 
-    const paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
+    if (!paymentLinkId) {
+      return res.status(400).json({ error: "paymentLinkId required" });
+    }
 
-    if (paymentLink.status === "paid") {
-      // ✅ Payment successful
+    // 🔁 Retry mechanism (wait for Razorpay update)
+    let paymentLink;
+    for (let i = 0; i < 3; i++) {
+      paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
+      if (paymentLink.status === "paid") break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    if (paymentLink?.status === "paid") {
       return res.status(200).json({
         success: true,
         status: "PAID",
@@ -25,7 +39,7 @@ export default async function handler(
 
     return res.status(200).json({
       success: false,
-      status: paymentLink.status,
+      status: paymentLink?.status || "UNKNOWN",
     });
   } catch (error) {
     console.error("Verification error:", error);
