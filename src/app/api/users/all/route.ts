@@ -25,6 +25,7 @@ export async function GET(req: { url: string | URL; }) {
     return NextResponse.json({
       success: true,
       users: formattedUsers,
+      total,
       pagination: {
         page,
         limit,
