@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log("CREATE LINK PAYLOAD:", body);
 
-    const { amount, customerName, contact, orderId } = body;
+    const { amount, customerName, contact, orderId, callback_url } = body;
 
     // ✅ Validate amount (allow ₹1)
     const rupees = Number(amount);
@@ -35,7 +35,11 @@ export async function POST(req: Request) {
     // ✅ Convert to paise (NO forced minimum)
     const amountInPaise = Math.round(rupees * 100);
 
-    const paymentLink = await razorpay.paymentLink.create({
+    // ✅ Use provided callback_url or default to deep link
+    const redirectUrl = callback_url || "wepick://payment-result"; // Your app's deep link
+    console.log("Using callback URL:", redirectUrl);
+
+    const paymentLink = razorpay.paymentLink.create({
       amount: amountInPaise,
       currency: "INR",
       description: "Order Payment",
@@ -43,16 +47,36 @@ export async function POST(req: Request) {
       customer: {
         name: customerName || "Customer",
         contact: fixedContact,
+        email: `${digits.slice(-10)}@temp.com` // Razorpay requires email
       },
-      callback_url: "https://wepick-rho.vercel.app/payment-success",
+      // 🔥 CRITICAL CHANGE: Use deep link instead of web URL
+      callback_url: redirectUrl,
       callback_method: "get",
+
+      // ✅ Optional: Add web fallback for testing
+      options: {
+        checkout: {
+          name: "WePick",
+          // prefill removed due to type incompatibility
+          theme: {
+            hide_topbar: false
+          },
+          // Note: 'redirect' property removed due to type incompatibility
+        }
+      },
+      notes: {
+        order_id: orderId,
+        source: "mobile_app",
+        app_scheme: "wepick" // For tracking
+      }
     });
 
     return NextResponse.json({
       success: true,
-      short_url: paymentLink.short_url,
-      paymentLinkId: paymentLink.id,
-      chargedAmount: rupees, // 👈 helpful for frontend
+      short_url: (await paymentLink).short_url,
+      paymentLinkId: (await paymentLink).id,
+      chargedAmount: rupees,
+      callback_url: redirectUrl, // Send back for debugging
     });
   } catch (error: any) {
     console.error("RAZORPAY CREATE LINK ERROR:", error);
