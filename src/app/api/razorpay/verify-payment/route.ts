@@ -14,14 +14,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          status: "INVALID",
+          status: "UNPAID",
           message: "paymentLinkId is required",
         },
         { status: 400 }
       );
     }
 
-    const paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
+    let paymentLink;
+    try {
+      paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
+    } catch (error) {
+      // Invalid or not found payment link
+      return NextResponse.json(
+        {
+          success: false,
+          status: "UNPAID",
+          message: "Invalid or missing payment link",
+        },
+        { status: 200 }
+      );
+    }
 
     // Razorpay statuses: created | issued | paid | cancelled | expired
     if (paymentLink.status === "paid") {
@@ -34,7 +47,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        status: paymentLink.status || "PENDING",
+        status: "UNPAID",
+        message: "Payment not completed",
       },
       { status: 200 }
     );
