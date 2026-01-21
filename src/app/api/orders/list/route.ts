@@ -19,4 +19,23 @@ export async function GET(req: NextRequest) {
 		return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
 	}
 }
+
+// PATCH /api/orders/list?id=123
+export async function PATCH(req: NextRequest) {
+	try {
+		const { searchParams } = new URL(req.url);
+		const id = searchParams.get("id");
+		if (!id) {
+			return NextResponse.json({ error: "Missing id" }, { status: 400 });
+		}
+		const data = await req.json();
+		const updatedOrder = await prisma.order.update({
+			where: { id: Number(id) },
+			data,
+		});
+		return NextResponse.json(updatedOrder);
+	} catch (error) {
+		return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
+	}
+}
 // TODO: implement orders list route
