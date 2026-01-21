@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+import { NextRequest, NextResponse } from "next/server";
 import Razorpay from "razorpay";
 
 const razorpay = new Razorpay({
@@ -6,25 +6,19 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET!,
 });
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== "POST") {
-    return res
-      .status(405)
-      .json({ success: false, message: "Method not allowed" });
-  }
-
+export async function POST(req: NextRequest) {
   try {
-    const { paymentLinkId } = req.body;
+    const { paymentLinkId } = await req.json();
 
     if (!paymentLinkId) {
-      return res.status(400).json({
-        success: false,
-        status: "INVALID",
-        message: "paymentLinkId is required",
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          status: "INVALID",
+          message: "paymentLinkId is required",
+        },
+        { status: 400 }
+      );
     }
 
     const paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
@@ -32,26 +26,30 @@ export default async function handler(
     // Razorpay statuses: created | issued | paid | cancelled | expired
     if (paymentLink.status === "paid") {
       // ✅ PAYMENT CONFIRMED
-      return res.status(200).json({
+      return NextResponse.json({
         success: true,
         status: "PAID",
       });
     }
-
-    return res.status(200).json({
-      success: false,
-      status: paymentLink.status || "PENDING",
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        status: paymentLink.status || "PENDING",
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
     console.error("Verify payment error:", error);
-
-    return res.status(500).json({
-      success: false,
-      status: "ERROR",
-      message:
-        error?.error?.description ||
-        error?.message ||
-        "Verification failed",
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        status: "ERROR",
+        message:
+          error?.error?.description ||
+          error?.message ||
+          "Verification failed",
+      },
+      { status: 500 }
+    );
   }
 }
