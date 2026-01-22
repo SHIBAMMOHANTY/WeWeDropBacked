@@ -54,17 +54,9 @@ export async function POST(req: NextRequest) {
     // Razorpay statuses: created | issued | paid | cancelled | expired
     if (paymentLink.status === "paid") {
       // ✅ PAYMENT CONFIRMED
-      // Fetch payments associated with the link to get paymentId
-      let paymentId = null;
-      try {
-        const paymentsResponse = await razorpay.payments.all();
-        const payment = paymentsResponse.items.find((p: any) => p.payment_link_id === paymentLinkId);
-        if (payment) {
-          paymentId = payment.id;
-        }
-      } catch (error) {
-        console.warn("Failed to fetch payment details:", error);
-      }
+      // Get paymentId from the paymentLink's payments array
+      const payments = Array.isArray(paymentLink.payments) ? paymentLink.payments : [];
+      const paymentId = payments.length > 0 ? payments[0].id : null;
 
       const res = NextResponse.json({
         success: true,
