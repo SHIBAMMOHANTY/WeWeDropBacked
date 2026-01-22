@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-// CORS middleware for Next.js API route
+import Razorpay from "razorpay";
+
 function setCorsHeaders(response: NextResponse) {
   response.headers.set("Access-Control-Allow-Origin", "*");
   response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  response.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
   return response;
 }
 
 export async function OPTIONS() {
-  // Handle CORS preflight
   const response = NextResponse.json({}, { status: 200 });
   return setCorsHeaders(response);
 }
-import Razorpay from "razorpay";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -24,69 +26,70 @@ export async function POST(req: NextRequest) {
     const { paymentLinkId } = await req.json();
 
     if (!paymentLinkId) {
-      const res = NextResponse.json(
-        {
-          success: false,
-          status: "UNPAID",
-          message: "paymentLinkId is required",
-        },
-        { status: 400 }
+      return setCorsHeaders(
+        NextResponse.json(
+          { success: false, status: "ERROR", message: "paymentLinkId required" },
+          { status: 400 }
+        )
       );
-      return setCorsHeaders(res);
     }
 
-    let paymentLink;
-    try {
-      paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
-    } catch (error) {
-      // Invalid or not found payment link
-      const res = NextResponse.json(
-        {
-          success: false,
-          status: "UNPAID",
-          message: "Invalid or missing payment link",
-        },
-        { status: 200 }
+    // 1️⃣ Fetch payment link
+    const paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
+
+    // 2️⃣ If NOT paid yet
+    if (paymentLink.status !== "paid") {
+      return setCorsHeaders(
+        NextResponse.json({
+          success: true,
+          status: "PENDING",
+        })
       );
-      return setCorsHeaders(res);
     }
 
-    // Razorpay statuses: created | issued | paid | cancelled | expired
-    if (paymentLink.status === "paid") {
-      // ✅ PAYMENT CONFIRMED
-      // Get paymentId from the paymentLink's payments array
-      const payments = Array.isArray(paymentLink.payments) ? paymentLink.payments : [];
-      const paymentId = payments.length > 0 ? payments[0].id : null;
+    // 3️⃣ Fetch payments under this link
+    const payments = await razorpay.payments.all({
+      payment_link: paymentLinkId,
+    });
 
-      const res = NextResponse.json({
+    // 4️⃣ Find CAPTURED payment
+    const successfulPayment = payments.items.find(
+      (p: any) => p.status === "captured"
+    );
+
+    if (!successfulPayment) {
+      return setCorsHeaders(
+        NextResponse.json({
+          success: true,
+          status: "PENDING",
+          message: "Payment not captured yet",
+        })
+      );
+    }
+
+    // ✅ FINAL SUCCESS RESPONSE
+    return setCorsHeaders(
+      NextResponse.json({
         success: true,
         status: "PAID",
-        paymentId: paymentId, // Include paymentId here
-      });
-      return setCorsHeaders(res);
-    }
-    const res = NextResponse.json(
-      {
-        success: false,
-        status: "UNPAID",
-        message: "Payment not completed",
-      },
-      { status: 200 }
+        paymentId: successfulPayment.id, // pay_XXXX
+      })
     );
-    return setCorsHeaders(res);
   } catch (error: any) {
     console.error("Verify payment error:", error);
-    const res = NextResponse.json(
-      {
-        success: false,
-        status: "ERROR",
-        message:
-          error?.error?.description ||
-          error?.message ||
-          "Verification failed",
-      },
-      { status: 500 }
+
+    return setCorsHeaders(
+      NextResponse.json(
+        {
+          success: false,
+          status: "ERROR",
+          message:
+            error?.error?.description ||
+            error?.message ||
+            "Verification failed",
+        },
+        { status: 500 }
+      )
     );
-    return setCorsHeaders(res);
   }
 }
