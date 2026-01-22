@@ -1,4 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+// CORS middleware for Next.js API route
+function setCorsHeaders(response: NextResponse) {
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  return response;
+}
+
+export async function OPTIONS() {
+  // Handle CORS preflight
+  const response = NextResponse.json({}, { status: 200 });
+  return setCorsHeaders(response);
+}
 import Razorpay from "razorpay";
 
 const razorpay = new Razorpay({
@@ -11,7 +24,7 @@ export async function POST(req: NextRequest) {
     const { paymentLinkId } = await req.json();
 
     if (!paymentLinkId) {
-      return NextResponse.json(
+      const res = NextResponse.json(
         {
           success: false,
           status: "UNPAID",
@@ -19,6 +32,7 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 }
       );
+      return setCorsHeaders(res);
     }
 
     let paymentLink;
@@ -26,7 +40,7 @@ export async function POST(req: NextRequest) {
       paymentLink = await razorpay.paymentLink.fetch(paymentLinkId);
     } catch (error) {
       // Invalid or not found payment link
-      return NextResponse.json(
+      const res = NextResponse.json(
         {
           success: false,
           status: "UNPAID",
@@ -34,17 +48,19 @@ export async function POST(req: NextRequest) {
         },
         { status: 200 }
       );
+      return setCorsHeaders(res);
     }
 
     // Razorpay statuses: created | issued | paid | cancelled | expired
     if (paymentLink.status === "paid") {
       // ✅ PAYMENT CONFIRMED
-      return NextResponse.json({
+      const res = NextResponse.json({
         success: true,
         status: "PAID",
       });
+      return setCorsHeaders(res);
     }
-    return NextResponse.json(
+    const res = NextResponse.json(
       {
         success: false,
         status: "UNPAID",
@@ -52,9 +68,10 @@ export async function POST(req: NextRequest) {
       },
       { status: 200 }
     );
+    return setCorsHeaders(res);
   } catch (error: any) {
     console.error("Verify payment error:", error);
-    return NextResponse.json(
+    const res = NextResponse.json(
       {
         success: false,
         status: "ERROR",
@@ -65,5 +82,6 @@ export async function POST(req: NextRequest) {
       },
       { status: 500 }
     );
+    return setCorsHeaders(res);
   }
 }
