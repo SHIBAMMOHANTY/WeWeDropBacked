@@ -4,6 +4,7 @@ import { verifyToken } from "@/lib/auth";
 
 // GET /api/orders/status
 export async function GET(req: NextRequest) {
+  console.log("DATABASE_URL:", process.env.DATABASE_URL);
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -17,20 +18,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
+    console.log("User:", user);
+
     let orders;
-    if (user.role === "ADMIN") {
+    if (user.role === "SUPER_ADMIN") {
       // Admin: return all orders
-      orders = await prisma.order.findMany({ orderBy: { id: "desc" } });
+      console.log("Fetching all orders for admin");
+      orders = await prisma.order.findMany({ orderBy: { createdAt: "desc" } });
     } else {
       // User: return only their orders
+      console.log("Fetching orders for user:", user.id);
       orders = await prisma.order.findMany({
         where: { userId: user.id },
-        orderBy: { id: "desc" },
+        orderBy: { createdAt: "desc" },
       });
     }
+    console.log("Orders fetched:", orders.length);
     return NextResponse.json(orders);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
+    console.error("Error fetching orders:", error);
+    return NextResponse.json({ error: "Failed to fetch orders", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
 
@@ -46,21 +53,43 @@ export async function PATCH(req: NextRequest) {
   try {
     const { status } = await req.json();
 
-    if (!status) {
+    if (status === undefined || status === null) {
       return NextResponse.json({ error: "Missing status" }, { status: 400 });
+    }
+
+    const statusMap: Record<string, number> = {
+      "PENDING": 0,
+      "PICKUP_REQUESTED": 1,
+      "REJECTED": -1,
+      "READY_FOR_PICKUP": 2,
+      "REPAIRING": 3,
+      "DELIVERED": 4
+    };
+
+    let numericStatus: number;
+    if (typeof status === 'string') {
+      numericStatus = statusMap[status];
+      if (numericStatus === undefined) {
+        return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+      }
+    } else if (typeof status === 'number') {
+      numericStatus = status;
+    } else {
+      return NextResponse.json({ error: "Status must be string or number" }, { status: 400 });
     }
 
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
-      data: { status },
+      data: { orderStatus: numericStatus },
       select: {
         id: true,
-        status: true,
+        orderStatus: true,
       },
     });
 
     return NextResponse.json(updatedOrder);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to update order status" }, { status: 500 });
+    console.error("Error updating order status:", error);
+    return NextResponse.json({ error: "Failed to update order status", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

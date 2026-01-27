@@ -1,7 +1,6 @@
-import { initializeDatabase, checkConnection } from "../src/config/db.config";
+import { checkConnection } from "../src/config/db.config";
 
 async function main() {
-  initializeDatabase();
   const res = await checkConnection();
   if (res.connected) {
     console.log("OK:", res.message);

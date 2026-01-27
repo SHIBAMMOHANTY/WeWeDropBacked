@@ -26,12 +26,12 @@ enum MembershipType {
 }
 
 enum OrderStatus {
-  PENDING
-  PICKUP_REQUESTED
-  REJECTED
-  READY_FOR_PICKUP
-  REPAIRING
-  DELIVERED
+  PENDING  //0
+  PICKUP_REQUESTED //1
+  REJECTED //-1
+  READY_FOR_PICKUP //2
+  REPAIRING //3
+  DELIVERED //4
 }
 
 //////////////////////
@@ -125,7 +125,7 @@ model Order {
   fix             String?
 
   amount          Int
-  orderStatus     OrderStatus   @default(PENDING)
+  orderStatus     Int   @default(0)
   paymentId       String?
 
   payments        Payment[]
