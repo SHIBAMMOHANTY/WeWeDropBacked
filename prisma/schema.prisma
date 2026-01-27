@@ -49,6 +49,12 @@ model User {
   isActive    Boolean          @default(true)
   createdAt   DateTime         @default(now())
 
+  // GST (Optional)
+  gstName         String?
+  gstNumber       String?
+  gstAddress      String?
+  gstCertificate  String?   // uploaded file URL
+
   orders      Order[]
   payments    Payment[]
 

@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { phone, username, password, confirmPassword, role, email } = body;
+    const { phone, username, password, confirmPassword, role, email, gstName, gstNumber, gstAddress, gstCertificate } = body;
     if (!phone || !username || !password || !confirmPassword) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -29,6 +29,10 @@ export async function POST(req: Request) {
         password: hashed,
         role: role || 'USER',
         email: email || null,
+        gstName: gstName || null,
+        gstNumber: gstNumber || null,
+        gstAddress: gstAddress || null,
+        gstCertificate: gstCertificate || null,
       },
       select: {
         id: true,
@@ -40,6 +44,10 @@ export async function POST(req: Request) {
         membership: true,
         isActive: true,
         createdAt: true,
+        gstName: true,
+        gstNumber: true,
+        gstAddress: true,
+        gstCertificate: true,
       },
     });
     const token = signToken({ id: user.id, role: user.role });
