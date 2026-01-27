@@ -21,11 +21,11 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { username, phone, password } = await req.json();
+    const { username, phone, email, password } = await req.json();
 
-    if ((!username && !phone) || !password) {
+    if ((!username && !phone && !email) || !password) {
       return new NextResponse(
-        JSON.stringify({ error: "Username or phone and password required" }),
+        JSON.stringify({ error: "Username, phone, or email and password required" }),
         {
           status: 400,
           headers: corsHeaders,
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
     const orConditions = [];
     if (username) orConditions.push({ username });
     if (phone) orConditions.push({ phone });
+    if (email) orConditions.push({ email });
     const user = await prisma.user.findFirst({
       where: orConditions.length > 0 ? { OR: orConditions } : {},
     });
