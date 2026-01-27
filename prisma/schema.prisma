@@ -113,6 +113,14 @@ model Order {
   pincode         String?
   fullAddress     String?
 
+  // Additional fields for order update
+  preferredDate   DateTime?
+  warrantyStatus  String?
+  issueType       String?
+  area            String?
+  pickupAddress   String?
+  fix             String?
+
   amount          Int
   orderStatus     Int           @default(0) // -1 = REJECTED, 0 = PENDING, 1 = READY_FOR_PICKUP, 2 = REPAIRING, 3 = DELIVERED
   paymentId       String?
