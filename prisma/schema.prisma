@@ -27,6 +27,7 @@ enum MembershipType {
 
 enum OrderStatus {
   PENDING
+  PICKUP_REQUESTED
   REJECTED
   READY_FOR_PICKUP
   REPAIRING
