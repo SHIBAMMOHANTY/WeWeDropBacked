@@ -26,16 +26,16 @@ export async function PATCH(req: NextRequest) {
 		const { searchParams } = new URL(req.url);
 		const id = searchParams.get("id");
 		if (!id) {
-			return NextResponse.json({ error: "Missing id" }, { status: 400 });
+			return NextResponse.json({ status: "error", message: "Missing id" }, { status: 400 });
 		}
 		const data = await req.json();
 		const updatedOrder = await prisma.order.update({
-			where: { id: Number(id) },
+			where: { id: id },
 			data,
 		});
-		return NextResponse.json(updatedOrder);
+		return NextResponse.json({ status: "success", order: updatedOrder });
 	} catch (error) {
-		return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
+		return NextResponse.json({ status: "error", message: "Failed to update order" }, { status: 500 });
 	}
 }
 // TODO: implement orders list route
