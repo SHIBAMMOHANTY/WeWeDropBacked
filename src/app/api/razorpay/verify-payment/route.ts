@@ -1,6 +1,6 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import Razorpay from "razorpay";
-import { prisma } from "@/lib/prisma";
 
 function setCorsHeaders(response: NextResponse) {
   response.headers.set("Access-Control-Allow-Origin", "*");
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3️⃣ Fetch payments under this link
-    const payments = await (razorpay.payments.all as any)({
+    const payments = await razorpay.payments.all({
       payment_link: paymentLinkId,
     });
 
@@ -66,36 +66,6 @@ export async function POST(req: NextRequest) {
           message: "Payment not captured yet",
         })
       );
-    }
-
-    // Update orders and create payment records
-    if (!paymentLink.reference_id) {
-      return setCorsHeaders(
-        NextResponse.json({
-          success: false,
-          status: "ERROR",
-          message: "Invalid reference_id",
-        }, { status: 400 })
-      );
-    }
-    const orderIds = JSON.parse(paymentLink.reference_id);
-    for (const orderId of orderIds) {
-      const order = await prisma.order.findUnique({ where: { id: orderId } });
-      if (order) {
-        await prisma.order.update({
-          where: { id: orderId },
-          data: { paymentId: successfulPayment.id }
-        });
-        await prisma.payment.create({
-          data: {
-            userId: order.userId,
-            orderId: orderId,
-            amount: order.amount,
-            status: "PAID",
-            razorpayId: successfulPayment.id
-          }
-        });
-      }
     }
 
     // ✅ FINAL SUCCESS RESPONSE
