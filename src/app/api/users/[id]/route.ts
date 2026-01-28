@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import bcrypt from 'bcryptjs';
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -11,14 +11,21 @@ export async function GET(req: Request) {
     }
 
     const token = authHeader.split(" ")[1];
-    const decoded = verifyToken(token) as { id: string };
+    const decoded = verifyToken(token) as { id: string; role?: string };
 
     if (typeof decoded.id !== "string") {
       return NextResponse.json({ error: "Invalid token payload" }, { status: 401 });
     }
 
-   const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
+    const { id } = params;
+
+    // Allow access if requesting own profile or is SUPER_ADMIN
+    if (id !== decoded.id && decoded.role !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id },
       select: {
         id: true,
         phone: true,
@@ -44,7 +51,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -58,14 +65,15 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Invalid token payload" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { userId, username, email, password, gstName, gstNumber, gstAddress, gstCertificate } = body;
+    const { id } = params;
 
-    // Determine target user ID
-    let targetUserId = decoded.id;
-    if (userId && decoded.role === 'SUPER_ADMIN') {
-      targetUserId = userId;
+    // Allow update if own profile or is SUPER_ADMIN
+    if (id !== decoded.id && decoded.role !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+
+    const body = await req.json();
+    const { username, email, password, gstName, gstNumber, gstAddress, gstCertificate } = body;
 
     const updateData: any = {};
     if (username !== undefined) updateData.username = username;
@@ -80,7 +88,7 @@ export async function PATCH(req: Request) {
     if (gstCertificate !== undefined) updateData.gstCertificate = gstCertificate;
 
     const updatedUser = await prisma.user.update({
-      where: { id: targetUserId },
+      where: { id },
       data: updateData,
       select: {
         id: true,
