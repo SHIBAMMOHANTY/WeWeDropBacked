@@ -20,20 +20,52 @@ export async function GET(req: NextRequest) {
 	}
 }
 
-// PATCH /api/orders/list?id=123
+// PATCH /api/orders/list?id=123 or body with orderIds for bulk update
 export async function PATCH(req: NextRequest) {
 	try {
-		const { searchParams } = new URL(req.url);
-		const id = searchParams.get("id");
-		if (!id) {
-			return NextResponse.json({ status: "error", message: "Missing id" }, { status: 400 });
-		}
 		const data = await req.json();
-		const updatedOrder = await prisma.order.update({
-			where: { id: id },
-			data,
-		});
-		return NextResponse.json({ status: "success", order: updatedOrder });
+
+		if (data.orderIds && Array.isArray(data.orderIds)) {
+			// Bulk update for marking orders as paid
+			const paymentId = data.paymentId;
+			if (!paymentId) {
+				return NextResponse.json({ status: "error", message: "Missing paymentId for bulk update" }, { status: 400 });
+			}
+
+			const updatedOrders = [];
+			for (const orderId of data.orderIds) {
+				const order = await prisma.order.findUnique({ where: { id: orderId } });
+				if (order) {
+					await prisma.order.update({
+						where: { id: orderId },
+						data: { paymentId, orderStatus: 1 }, // 1 = APPROVED/PAID
+					});
+					await prisma.payment.create({
+						data: {
+							userId: order.userId,
+							orderId,
+							amount: order.amount,
+							status: "PAID",
+							razorpayId: null, // Manual payment
+						}
+					});
+					updatedOrders.push(orderId);
+				}
+			}
+			return NextResponse.json({ status: "success", updatedOrders });
+		} else {
+			// Single order update
+			const { searchParams } = new URL(req.url);
+			const id = searchParams.get("id");
+			if (!id) {
+				return NextResponse.json({ status: "error", message: "Missing id for single update" }, { status: 400 });
+			}
+			const updatedOrder = await prisma.order.update({
+				where: { id: id },
+				data,
+			});
+			return NextResponse.json({ status: "success", order: updatedOrder });
+		}
 	} catch (error) {
 		return NextResponse.json({ status: "error", message: "Failed to update order" }, { status: 500 });
 	}
