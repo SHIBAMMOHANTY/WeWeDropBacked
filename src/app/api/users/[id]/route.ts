@@ -42,7 +42,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, user });
+    return NextResponse.json({ success: true, user }, {
+      headers: {
+        'Referrer-Policy': 'no-referrer'
+      }
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Invalid token" },
@@ -102,7 +106,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       },
     });
 
-    return NextResponse.json({ success: true, user: updatedUser });
+    return NextResponse.json({ success: true, user: updatedUser }, {
+      headers: {
+        'Referrer-Policy': 'no-referrer'
+      }
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Failed to update user" },
