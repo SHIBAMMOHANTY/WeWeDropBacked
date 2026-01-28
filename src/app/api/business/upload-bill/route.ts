@@ -2,12 +2,24 @@
 import { NextResponse } from 'next/server';
 import { uploadToCloudinary } from '@/lib/upload';
 
-// Example: handle POST request for business upload-bill
 export async function POST(request: Request) {
-	// TODO: Parse form data and get file
-	// const formData = await request.formData();
-	// const file = formData.get('file');
-	// const result = await uploadToCloudinary(file);
-	// return NextResponse.json({ url: result.secure_url });
-	return NextResponse.json({ message: 'Business upload-bill endpoint (Cloudinary setup placeholder)' });
+  try {
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
+
+    if (!file) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+
+    // Convert file to buffer
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const result = await uploadToCloudinary(buffer, { folder: 'bills' });
+
+    return NextResponse.json({ url: result.secure_url, public_id: result.public_id });
+  } catch (error) {
+    console.error('Upload error:', error);
+    return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
+  }
 }
