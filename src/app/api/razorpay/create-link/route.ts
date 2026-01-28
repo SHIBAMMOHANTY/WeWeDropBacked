@@ -1,6 +1,6 @@
+
 import Razorpay from "razorpay";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -12,32 +12,13 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log("CREATE LINK PAYLOAD:", body);
 
-    const { orderIds, customerName, contact, callback_url } = body;
+    const { amount, customerName, contact, orderId, callback_url } = body;
 
-    // Validate orderIds
-    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+    // ✅ Validate amount (allow ₹1)
+    const rupees = Number(amount);
+    if (isNaN(rupees) || rupees <= 0) {
       return NextResponse.json(
-        { success: false, message: "orderIds must be a non-empty array" },
-        { status: 400 }
-      );
-    }
-
-    // Fetch orders and calculate total amount
-    const orders = await prisma.order.findMany({
-      where: { id: { in: orderIds } },
-    });
-    if (orders.length !== orderIds.length) {
-      return NextResponse.json(
-        { success: false, message: "Some orders not found" },
-        { status: 400 }
-      );
-    }
-    const totalAmount = orders.reduce((sum, o) => sum + o.amount, 0);
-
-    // ✅ Validate total amount (allow ₹1)
-    if (totalAmount <= 0) {
-      return NextResponse.json(
-        { success: false, message: "Invalid total amount" },
+        { success: false, message: "Invalid amount" },
         { status: 400 }
       );
     }
@@ -53,7 +34,7 @@ export async function POST(req: Request) {
     const fixedContact = `+91${digits.slice(-10)}`;
 
     // ✅ Convert to paise (NO forced minimum)
-    const amountInPaise = Math.round(totalAmount * 100);
+    const amountInPaise = Math.round(rupees * 100);
 
     // ✅ Use provided callback_url or default to deep link
     const redirectUrl = callback_url || "wepick://payment-result"; // Your app's deep link
@@ -63,7 +44,7 @@ export async function POST(req: Request) {
       amount: amountInPaise,
       currency: "INR",
       description: "Order Payment",
-      reference_id: JSON.stringify(orderIds),
+      reference_id: orderId || Date.now().toString(),
       customer: {
         name: customerName || "Customer",
         contact: fixedContact,
@@ -85,7 +66,7 @@ export async function POST(req: Request) {
         }
       },
       notes: {
-        order_ids: JSON.stringify(orderIds),
+        order_id: orderId,
         source: "mobile_app",
         app_scheme: "wepick" // For tracking
       }
@@ -95,7 +76,7 @@ export async function POST(req: Request) {
       success: true,
       short_url: (await paymentLink).short_url,
       paymentLinkId: (await paymentLink).id,
-      chargedAmount: totalAmount,
+      chargedAmount: rupees,
       callback_url: redirectUrl, // Send back for debugging
     });
   } catch (error: any) {
