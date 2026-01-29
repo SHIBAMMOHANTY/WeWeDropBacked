@@ -36,23 +36,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate billFile - can be a string URL or an object with uri
-    if (!data.billFile) {
-      return NextResponse.json(
-        { error: "billFile is required" },
-        { status: 400 }
-      );
-    }
-
+    // Validate billFile - expects the response from /api/business/upload-bill: { url: "...", public_id: "..." }
     let billImageUrl: string;
-    if (typeof data.billFile === 'string') {
-      billImageUrl = data.billFile;
-    } else if (
-      typeof data.billFile === 'object' &&
-      data.billFile.uri &&
-      typeof data.billFile.uri === 'string'
-    ) {
-      billImageUrl = data.billFile.uri;
+    if (typeof data.billFile === 'object' && data.billFile && data.billFile.url) {
+      billImageUrl = data.billFile.url;
     } else {
       return NextResponse.json(
         { error: "Invalid billFile structure" },
