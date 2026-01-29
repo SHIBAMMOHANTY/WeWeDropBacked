@@ -8,6 +8,9 @@ const corsHeaders = {
   'Content-Type': 'application/json',
 };
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function OPTIONS() {
   return new Response(null, {
     status: 204,

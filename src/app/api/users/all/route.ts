@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
@@ -17,6 +20,7 @@ export async function GET(req: { url: string | URL; }) {
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
+      include: { orders: true, payments: true },
     });
 
     // Format users (remove password)

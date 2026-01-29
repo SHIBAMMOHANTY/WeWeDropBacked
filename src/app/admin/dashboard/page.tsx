@@ -1,7 +1,7 @@
 
 import React from 'react'
-import { prisma } from '@/lib/prisma'
 import styles from './page.module.css'
+export const dynamic = "force-dynamic";
 
 async function getDbStatus() {
   try {
@@ -40,28 +40,20 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const dbStatus = await getDbStatus();
   // Pagination logic
   const page = searchParams?.userPage ? parseInt(searchParams.userPage as string) : 1;
-  const skip = (page - 1) * PAGE_SIZE;
-  const [users, totalUsers] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: { orders: true, payments: true },
-      skip,
-      take: PAGE_SIZE,
-    }),
-    prisma.user.count(),
-  ]);
+  const usersRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/users/all?page=${page}&limit=${PAGE_SIZE}`, { cache: 'no-store' });
+  const usersData = await usersRes.json();
+  const users = usersData.users;
+  const totalUsers = usersData.total;
 
-  const orders = await prisma.order.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: { user: true, business: true, payments: true },
-  })
+  const ordersRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/orders/all`, { cache: 'no-store' });
+  const ordersData = await ordersRes.json();
+  const orders = ordersData.orders;
 
-  const payments = await prisma.payment.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: { user: true, order: true },
-  })
+  const paymentsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/payments/all`, { cache: 'no-store' });
+  const payments = await paymentsRes.json();
 
-  const businesses = await prisma.business.findMany({ orderBy: { createdAt: 'desc' } })
+  const businessesRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/business/all`, { cache: 'no-store' });
+  const businesses = await businessesRes.json();
 
   // membership summary
   const membershipCounts = users.reduce((acc, u) => {

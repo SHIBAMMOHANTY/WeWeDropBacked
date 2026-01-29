@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { prisma } from '@/lib/prisma';
 import { signToken } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
