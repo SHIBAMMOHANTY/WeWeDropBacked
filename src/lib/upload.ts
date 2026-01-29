@@ -1,8 +1,8 @@
 
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from 'cloudinary';
 
 // Configure Cloudinary
-cloudinary.config({
+cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
   api_key: process.env.CLOUDINARY_API_KEY!,
   api_secret: process.env.CLOUDINARY_API_SECRET!,
@@ -11,7 +11,7 @@ cloudinary.config({
 export async function uploadToCloudinary(file: Buffer | string, options: { public_id?: string; folder?: string } = {}) {
   try {
     const result = await new Promise((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
+      cloudinary.v2.uploader.upload_stream(
         {
           folder: options.folder || 'wewedrop',
           public_id: options.public_id,
