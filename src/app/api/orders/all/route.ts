@@ -7,6 +7,8 @@ export async function GET(req: NextRequest) {
     const orders = await prisma.order.findMany({
       orderBy: { id: "desc" },
     });
+    console.log(`Fetched ${orders.length} orders from /all`);
+    console.log('First order status:', orders[0]?.orderStatus);
 
     const statusMap = {
       0: 'PENDING',

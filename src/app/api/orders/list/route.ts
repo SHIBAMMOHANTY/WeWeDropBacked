@@ -51,6 +51,7 @@ export async function PATCH(req: NextRequest) {
 			for (const orderId of data.orderIds) {
 				const order = await prisma.order.findUnique({ where: { id: orderId } });
 				if (order) {
+					console.log(`Updating order ${orderId} to status 1`);
 					await prisma.order.update({
 						where: { id: orderId },
 						data: { paymentId, orderStatus: 1 }, // 1 = APPROVED/PAID
@@ -67,6 +68,7 @@ export async function PATCH(req: NextRequest) {
 					updatedOrders.push(orderId);
 				}
 			}
+			console.log(`Bulk update completed for orders: ${updatedOrders}`);
 			return NextResponse.json({ status: "success", updatedOrders });
 		} else {
 			// Single order update
@@ -75,10 +77,12 @@ export async function PATCH(req: NextRequest) {
 			if (!id) {
 				return NextResponse.json({ status: "error", message: "Missing id for single update" }, { status: 400 });
 			}
+			console.log(`Updating single order ${id} with data:`, data);
 			const updatedOrder = await prisma.order.update({
 				where: { id: id },
 				data,
 			});
+			console.log(`Updated order:`, updatedOrder);
 			return NextResponse.json({ status: "success", order: updatedOrder });
 		}
 	} catch (error) {
