@@ -5,17 +5,10 @@ export const runtime = "nodejs";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
-
-type MembershipType = "BASIC" | "PREMIUM";
-// Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
-type OrderStatus = 0 | 1 | -1 | 2 | 3 | 4;
-
-
 export async function POST(req: Request) {
   try {
     const data = await req.json();
 
-    // Basic validation
     if (
       !data.userId ||
       !data.businessId ||
@@ -36,27 +29,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // Set billImage from billFile
-    const billImageUrl = typeof data.billFile === 'string' ? data.billFile : data.billFile?.url || String(data.billFile || '');
-
-    // Find business by dealerName if businessId is a string name
-    let actualBusinessId = data.businessId;
-    if (typeof data.businessId === 'string' && data.businessId.length > 0) {
-      const business = await prisma.business.findFirst({
-        where: { dealerName: data.businessId },
-        select: { id: true }
-      });
-      if (business) {
-        actualBusinessId = business.id;
-      } else {
-        return NextResponse.json(
-          { error: "Business not found" },
-          { status: 400 }
-        );
-      }
+    // Validate Cloudinary URL
+    if (typeof data.billFile !== "string" || !data.billFile.startsWith("http")) {
+      return NextResponse.json(
+        { error: "Invalid billFile URL" },
+        { status: 400 }
+      );
     }
 
-    // Enum validation (safe + simple)
     if (data.plan !== "membership") {
       return NextResponse.json(
         { error: "Invalid plan" },
@@ -67,39 +47,25 @@ export async function POST(req: Request) {
     const order = await prisma.order.create({
       data: {
         userId: data.userId,
-        businessId: actualBusinessId,
+        businessId: data.businessId,
         membershipType: "BASIC",
-        brandName: data.brand,
+        brandName: data.brand.trim(),
         productName: data.product,
         imeiNumber: data.imei,
-        billImage: billImageUrl,
+        billImage: data.billFile,
         serviceDate: new Date(data.billDate),
-        customerName: data.name,
+        customerName: data.name.trim(),
         contactNumber: data.phone,
         state: data.state,
         pincode: data.pincode,
-        fullAddress: data.address,
+        fullAddress: data.address || null,
         amount: 0,
         paymentId: null,
-        orderStatus: 0,
+        orderStatus: 0, // PENDING
       },
     });
 
-    const statusMap = {
-      0: 'PENDING',
-      1: 'PICKUP_REQUESTED',
-      '-1': 'REJECTED',
-      2: 'READY_FOR_PICKUP',
-      3: 'REPAIRING',
-      4: 'DELIVERED'
-    };
-
-    const orderWithStatus = {
-      ...order,
-      status: statusMap[order.orderStatus] || 'UNKNOWN'
-    };
-
-    return NextResponse.json(orderWithStatus, { status: 201 });
+    return NextResponse.json(order, { status: 201 });
   } catch (error) {
     console.error("ORDER CREATE ERROR:", error);
     return NextResponse.json(
