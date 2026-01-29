@@ -36,15 +36,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate billFile - accepts string URL or object with url
-    let billImageUrl: string;
-    if (typeof data.billFile === 'string') {
-      billImageUrl = data.billFile;
-    } else if (typeof data.billFile === 'object' && data.billFile && data.billFile.url) {
-      billImageUrl = data.billFile.url;
-    } else {
-      billImageUrl = String(data.billFile || '');
-    }
+    // Set billImage from billFile
+    const billImageUrl = typeof data.billFile === 'string' ? data.billFile : data.billFile?.url || String(data.billFile || '');
 
     // Find business by dealerName if businessId is a string name
     let actualBusinessId = data.businessId;
