@@ -83,7 +83,22 @@ export async function PATCH(req: NextRequest) {
 				data,
 			});
 			console.log(`Updated order:`, updatedOrder);
-			return NextResponse.json({ status: "success", order: updatedOrder });
+
+			const statusMap = {
+				0: 'PENDING',
+				1: 'PICKUP_REQUESTED',
+				'-1': 'REJECTED',
+				2: 'READY_FOR_PICKUP',
+				3: 'REPAIRING',
+				4: 'DELIVERED'
+			};
+
+			const orderWithStatus = {
+				...updatedOrder,
+				status: statusMap[updatedOrder.orderStatus] || 'UNKNOWN'
+			};
+
+			return NextResponse.json({ status: "success", order: orderWithStatus });
 		}
 	} catch (error) {
 		return NextResponse.json({ status: "error", message: "Failed to update order" }, { status: 500 });

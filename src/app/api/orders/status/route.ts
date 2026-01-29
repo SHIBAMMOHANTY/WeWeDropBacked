@@ -34,7 +34,22 @@ export async function GET(req: NextRequest) {
       });
     }
     console.log("Orders fetched:", orders.length);
-    return NextResponse.json(orders);
+
+    const statusMap = {
+      0: 'PENDING',
+      1: 'PICKUP_REQUESTED',
+      '-1': 'REJECTED',
+      2: 'READY_FOR_PICKUP',
+      3: 'REPAIRING',
+      4: 'DELIVERED'
+    };
+
+    const ordersWithStatus = orders.map(order => ({
+      ...order,
+      status: statusMap[order.orderStatus] || 'UNKNOWN'
+    }));
+
+    return NextResponse.json(ordersWithStatus);
   } catch (error) {
     console.error("Error fetching orders:", error);
     return NextResponse.json({ error: "Failed to fetch orders", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
@@ -87,7 +102,21 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(updatedOrder);
+    const statusMap = {
+      0: 'PENDING',
+      1: 'PICKUP_REQUESTED',
+      '-1': 'REJECTED',
+      2: 'READY_FOR_PICKUP',
+      3: 'REPAIRING',
+      4: 'DELIVERED'
+    };
+
+    const orderWithStatus = {
+      ...updatedOrder,
+      status: statusMap[updatedOrder.orderStatus] || 'UNKNOWN'
+    };
+
+    return NextResponse.json(orderWithStatus);
   } catch (error) {
     console.error("Error updating order status:", error);
     return NextResponse.json({ error: "Failed to update order status", details: error instanceof Error ? error.message : String(error) }, { status: 500 });

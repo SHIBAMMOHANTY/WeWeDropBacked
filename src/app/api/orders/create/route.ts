@@ -7,8 +7,8 @@ import { NextResponse } from "next/server";
 
 
 type MembershipType = "BASIC" | "PREMIUM";
-// Order status: 0 = PENDING, 1 = APPROVED, 2 = REJECTED
-type OrderStatus = 0 | 1 | 2;
+// Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
+type OrderStatus = 0 | 1 | -1 | 2 | 3 | 4;
 
 
 export async function POST(req: Request) {
@@ -60,7 +60,21 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(order, { status: 201 });
+    const statusMap = {
+      0: 'PENDING',
+      1: 'PICKUP_REQUESTED',
+      '-1': 'REJECTED',
+      2: 'READY_FOR_PICKUP',
+      3: 'REPAIRING',
+      4: 'DELIVERED'
+    };
+
+    const orderWithStatus = {
+      ...order,
+      status: statusMap[order.orderStatus] || 'UNKNOWN'
+    };
+
+    return NextResponse.json(orderWithStatus, { status: 201 });
   } catch (error) {
     console.error("ORDER CREATE ERROR:", error);
     return NextResponse.json(
