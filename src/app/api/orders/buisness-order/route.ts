@@ -36,15 +36,24 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate billFile object
-    if (
-      typeof data.billFile !== 'object' ||
-      !data.billFile.uri ||
-      !data.billFile.name ||
-      !data.billFile.mimeType ||
-      typeof data.billFile.size !== 'number' ||
-      typeof data.billFile.lastModified !== 'number'
+    // Validate billFile - can be a string URL or an object with uri
+    if (!data.billFile) {
+      return NextResponse.json(
+        { error: "billFile is required" },
+        { status: 400 }
+      );
+    }
+
+    let billImageUrl: string;
+    if (typeof data.billFile === 'string') {
+      billImageUrl = data.billFile;
+    } else if (
+      typeof data.billFile === 'object' &&
+      data.billFile.uri &&
+      typeof data.billFile.uri === 'string'
     ) {
+      billImageUrl = data.billFile.uri;
+    } else {
       return NextResponse.json(
         { error: "Invalid billFile structure" },
         { status: 400 }
@@ -67,7 +76,7 @@ export async function POST(req: Request) {
         brandName: data.brand,
         productName: data.product,
         imeiNumber: data.imei,
-        billImage: data.billFile.uri,
+        billImage: billImageUrl,
         serviceDate: new Date(data.billDate),
         customerName: data.name,
         contactNumber: data.phone,
