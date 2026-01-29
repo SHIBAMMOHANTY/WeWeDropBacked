@@ -37,10 +37,23 @@ export async function POST(req: Request) {
       );
     }
 
-    if (data.plan !== "membership") {
+    // Validate billDate
+    const serviceDate = new Date(data.billDate);
+    if (isNaN(serviceDate.getTime())) {
       return NextResponse.json(
-        { error: "Invalid plan" },
+        { error: "Invalid billDate format" },
         { status: 400 }
+      );
+    }
+
+    // Check for duplicate IMEI
+    const existingOrder = await prisma.order.findFirst({
+      where: { imeiNumber: data.imei }
+    });
+    if (existingOrder) {
+      return NextResponse.json(
+        { error: "An order with this IMEI already exists" },
+        { status: 409 }
       );
     }
 

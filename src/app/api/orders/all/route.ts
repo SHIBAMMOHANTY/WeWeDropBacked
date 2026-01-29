@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     console.log(`Fetched ${orders.length} orders from /all`);
     console.log('First order status:', orders[0]?.orderStatus);
 
-    const statusMap = {
+    const statusMap: { [key: number]: string } = {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
       '-1': 'REJECTED',
