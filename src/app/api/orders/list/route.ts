@@ -14,7 +14,22 @@ export async function GET(req: NextRequest) {
 			where: { userId: userId },
 			orderBy: { id: "desc" },
 		});
-		return NextResponse.json(orders);
+
+		const statusMap = {
+			0: 'PENDING',
+			1: 'PICKUP_REQUESTED',
+			'-1': 'REJECTED',
+			2: 'READY_FOR_PICKUP',
+			3: 'REPAIRING',
+			4: 'DELIVERED'
+		};
+
+		const ordersWithStatus = orders.map(order => ({
+			...order,
+			status: statusMap[order.orderStatus] || 'UNKNOWN'
+		}));
+
+		return NextResponse.json(ordersWithStatus);
 	} catch (error) {
 		return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
 	}
