@@ -4,6 +4,15 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
+// OPTIONS handler for CORS preflight
+export async function OPTIONS() {
+  const response = new Response(null, { status: 204 });
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  return response;
+}
+
 // GET /api/orders/all
 export async function GET(req: NextRequest) {
   console.log("GET /api/orders/all called");
@@ -29,8 +38,16 @@ export async function GET(req: NextRequest) {
       status: statusMap[order.orderStatus] || 'UNKNOWN'
     }));
 
-    return NextResponse.json({ orders: ordersWithStatus, totalCount });
+    const response = NextResponse.json({ orders: ordersWithStatus, totalCount });
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return response;
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch all orders" }, { status: 500 });
+    const response = NextResponse.json({ error: "Failed to fetch all orders" }, { status: 500 });
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return response;
   }
 }
