@@ -36,15 +36,31 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate billFile - expects the response from /api/business/upload-bill: { url: "...", public_id: "..." }
+    // Validate billFile - accepts string URL or object with url
     let billImageUrl: string;
-    if (typeof data.billFile === 'object' && data.billFile && data.billFile.url) {
+    if (typeof data.billFile === 'string') {
+      billImageUrl = data.billFile;
+    } else if (typeof data.billFile === 'object' && data.billFile && data.billFile.url) {
       billImageUrl = data.billFile.url;
     } else {
-      return NextResponse.json(
-        { error: "Invalid billFile structure" },
-        { status: 400 }
-      );
+      billImageUrl = String(data.billFile || '');
+    }
+
+    // Find business by dealerName if businessId is a string name
+    let actualBusinessId = data.businessId;
+    if (typeof data.businessId === 'string' && data.businessId.length > 0) {
+      const business = await prisma.business.findFirst({
+        where: { dealerName: data.businessId },
+        select: { id: true }
+      });
+      if (business) {
+        actualBusinessId = business.id;
+      } else {
+        return NextResponse.json(
+          { error: "Business not found" },
+          { status: 400 }
+        );
+      }
     }
 
     // Enum validation (safe + simple)
@@ -58,7 +74,7 @@ export async function POST(req: Request) {
     const order = await prisma.order.create({
       data: {
         userId: data.userId,
-        businessId: data.businessId,
+        businessId: actualBusinessId,
         membershipType: "BASIC",
         brandName: data.brand,
         productName: data.product,
