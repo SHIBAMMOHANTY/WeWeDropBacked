@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     }
     console.log("Orders fetched:", orders.length);
 
-    const statusMap = {
+    const statusMap: { [key: number]: string } = {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
       '-1': 'REJECTED',
@@ -102,7 +102,7 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
-    const statusMap = {
+    const statusMapReverse: { [key: number]: string } = {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
       '-1': 'REJECTED',
@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest) {
 
     const orderWithStatus = {
       ...updatedOrder,
-      status: statusMap[updatedOrder.orderStatus] || 'UNKNOWN'
+      status: statusMapReverse[updatedOrder.orderStatus] || 'UNKNOWN'
     };
 
     return NextResponse.json(orderWithStatus);

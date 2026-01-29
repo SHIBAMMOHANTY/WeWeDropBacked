@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       },
     });
 
-    const statusMap = {
+    const statusMap: { [key: number]: string } = {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
       '-1': 'REJECTED',

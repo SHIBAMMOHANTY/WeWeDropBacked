@@ -3,11 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/orders/all
 export async function GET(req: NextRequest) {
+  console.log("GET /api/orders/all called");
   try {
     const orders = await prisma.order.findMany({
       orderBy: { id: "desc" },
     });
-    console.log(`Fetched ${orders.length} orders from /all`);
+    const totalCount = await prisma.order.count();
+    console.log(`Fetched ${orders.length} orders from /all, totalCount: ${totalCount}`);
     console.log('First order status:', orders[0]?.orderStatus);
 
     const statusMap: { [key: number]: string } = {
@@ -24,7 +26,7 @@ export async function GET(req: NextRequest) {
       status: statusMap[order.orderStatus] || 'UNKNOWN'
     }));
 
-    return NextResponse.json(ordersWithStatus);
+    return NextResponse.json({ orders: ordersWithStatus, totalCount });
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch all orders" }, { status: 500 });
   }

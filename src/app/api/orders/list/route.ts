@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 			orderBy: { id: "desc" },
 		});
 
-		const statusMap = {
+		const statusMap: { [key: number]: string } = {
 			0: 'PENDING',
 			1: 'PICKUP_REQUESTED',
 			'-1': 'REJECTED',
@@ -84,7 +84,7 @@ export async function PATCH(req: NextRequest) {
 			});
 			console.log(`Updated order:`, updatedOrder);
 
-			const statusMap = {
+			const statusMap: { [key: number]: string } = {
 				0: 'PENDING',
 				1: 'PICKUP_REQUESTED',
 				'-1': 'REJECTED',
