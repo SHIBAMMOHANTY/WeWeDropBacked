@@ -6,25 +6,15 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req: { url: string | URL; }) {
   try {
-    // Parse pagination params
-    const { searchParams } = new URL(req.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
-    const skip = (page - 1) * limit;
-
-    // Get total count
-    const total = await prisma.user.count();
-    console.log('Total users in database:', total);
-
-    // Get paginated users
+    // Get all users without pagination
     const users = await prisma.user.findMany({
-      skip,
-      take: limit,
       orderBy: { createdAt: 'desc' },
       include: { orders: true, payments: true },
     });
     console.log('Fetched users count:', users.length);
-    console.log('First user createdAt:', users[0]?.createdAt);
+
+    // Get total count
+    const total = users.length;
 
     // Format users (remove password)
     const formattedUsers = users.map(({ password, ...user }) => user);
@@ -34,12 +24,6 @@ export async function GET(req: { url: string | URL; }) {
       success: true,
       users: formattedUsers,
       total,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
     });
 
     // Add CORS headers
