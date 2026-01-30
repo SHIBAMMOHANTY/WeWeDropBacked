@@ -53,6 +53,7 @@ export async function POST(req: Request) {
         gstCertificate: true,
       },
     });
+    console.log('User created successfully:', user.id, user.username, user.createdAt);
     const token = signToken({ id: user.id, role: user.role });
     // Don't return password
     const { password: _, ...userSafe } = user;

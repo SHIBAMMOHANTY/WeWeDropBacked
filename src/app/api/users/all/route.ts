@@ -14,6 +14,7 @@ export async function GET(req: { url: string | URL; }) {
 
     // Get total count
     const total = await prisma.user.count();
+    console.log('Total users in database:', total);
 
     // Get paginated users
     const users = await prisma.user.findMany({
@@ -22,6 +23,8 @@ export async function GET(req: { url: string | URL; }) {
       orderBy: { createdAt: 'desc' },
       include: { orders: true, payments: true },
     });
+    console.log('Fetched users count:', users.length);
+    console.log('First user createdAt:', users[0]?.createdAt);
 
     // Format users (remove password)
     const formattedUsers = users.map(({ password, ...user }) => user);
