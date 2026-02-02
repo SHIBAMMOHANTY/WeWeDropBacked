@@ -48,6 +48,13 @@ export async function GET(req: Request) {
         membership: true,
         isActive: true,
         createdAt: true,
+        numericId: true,
+        gstName: true,
+        gstNumber: true,
+        gstAddress: true,
+        gstCertificate: true,
+        orders: true,
+        payments: true,
       },
     });
 
@@ -125,6 +132,13 @@ export async function PATCH(req: Request) {
         membership: true,
         isActive: true,
         createdAt: true,
+        numericId: true,
+        gstName: true,
+        gstNumber: true,
+        gstAddress: true,
+        gstCertificate: true,
+        orders: true,
+        payments: true,
       },
     });
 
