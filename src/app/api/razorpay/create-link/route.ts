@@ -1,4 +1,3 @@
-
 import Razorpay from "razorpay";
 import { NextResponse } from "next/server";
 
@@ -36,8 +35,8 @@ export async function POST(req: Request) {
     // ✅ Convert to paise (NO forced minimum)
     const amountInPaise = Math.round(rupees * 100);
 
-    // ✅ Use provided callback_url or default to deep link
-    const redirectUrl = callback_url || "wepick://payment-result"; // Your app's deep link
+    // ✅ Use provided callback_url or default to the correct deep link scheme
+    const redirectUrl = callback_url || "wepickwedrop://payment-result"; // Updated to match your app's scheme
     console.log("Using callback URL:", redirectUrl);
 
     const paymentLink = razorpay.paymentLink.create({
@@ -68,7 +67,7 @@ export async function POST(req: Request) {
       notes: {
         order_id: orderId,
         source: "mobile_app",
-        app_scheme: "wepick" // For tracking
+        app_scheme: "wepickwedrop" // Updated for tracking
       }
     });
 
