@@ -1,4 +1,3 @@
-
 import Razorpay from "razorpay";
 import { NextResponse } from "next/server";
 
@@ -36,11 +35,8 @@ export async function POST(req: Request) {
     // ✅ Convert to paise (NO forced minimum)
     const amountInPaise = Math.round(rupees * 100);
 
-    // ✅ Use provided callback_url or default to deep link
-    const redirectUrl = callback_url || "wepick://payment-result"; // Your app's deep link
-    console.log("Using callback URL:", redirectUrl);
-
-    const paymentLink = razorpay.paymentLink.create({
+    // ✅ Only set callback_url if a valid web URL is provided
+    const paymentLinkOptions = {
       amount: amountInPaise,
       currency: "INR",
       description: "Order Payment",
@@ -50,34 +46,33 @@ export async function POST(req: Request) {
         contact: fixedContact,
         email: `${digits.slice(-10)}@temp.com` // Razorpay requires email
       },
-      // 🔥 CRITICAL CHANGE: Use deep link instead of web URL
-      callback_url: redirectUrl,
-      callback_method: "get",
-
-      // ✅ Optional: Add web fallback for testing
+      // Conditionally add callback_url only if it's a valid web URL
+      ...(callback_url && callback_url.startsWith('http') ? { 
+        callback_url, 
+        callback_method: "get" 
+      } : {}),
       options: {
         checkout: {
           name: "WePick",
-          // prefill removed due to type incompatibility
           theme: {
             hide_topbar: false
           },
-          // Note: 'redirect' property removed due to type incompatibility
         }
       },
       notes: {
         order_id: orderId,
         source: "mobile_app",
-        app_scheme: "wepick" // For tracking
+        app_scheme: "wepickwedrop" // For tracking
       }
-    });
+    };
+
+    const paymentLink = razorpay.paymentLink.create(paymentLinkOptions);
 
     return NextResponse.json({
       success: true,
       short_url: (await paymentLink).short_url,
       paymentLinkId: (await paymentLink).id,
       chargedAmount: rupees,
-      callback_url: redirectUrl, // Send back for debugging
     });
   } catch (error: any) {
     console.error("RAZORPAY CREATE LINK ERROR:", error);
