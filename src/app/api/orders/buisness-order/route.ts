@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       !data.plan ||
       !data.state ||
       !data.billDate ||
-      !data.billFile
+      !data.billImage
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -31,9 +31,9 @@ export async function POST(req: Request) {
     }
 
     // Validate Cloudinary URL
-    if (typeof data.billFile !== "string" || !data.billFile.startsWith("http")) {
+    if (typeof data.billImage !== "string" || !data.billImage.startsWith("http")) {
       return NextResponse.json(
-        { error: "Invalid billFile URL" },
+        { error: "Invalid billImage URL" },
         { status: 400 }
       );
     }
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
         brandName: data.brand.trim(),
         productName: data.product,
         imeiNumber: data.imei,
-        billImage: data.billFile,
+        billImage: data.billImage,
         serviceDate: new Date(data.billDate),
         customerName: data.name.trim(),
         contactNumber: data.phone,
