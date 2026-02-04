@@ -40,6 +40,17 @@ export async function POST(req: Request) {
       );
     }
 
+    // Check for duplicate IMEI
+    const existingOrder = await prisma.order.findFirst({
+      where: { imeiNumber: data.imeiNumber }
+    });
+    if (existingOrder) {
+      return NextResponse.json(
+        { error: "An order with this IMEI already exists" },
+        { status: 409 }
+      );
+    }
+
     const order = await prisma.order.create({
       data: {
         userId: data.userId,
