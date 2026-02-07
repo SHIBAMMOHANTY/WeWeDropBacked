@@ -42,66 +42,116 @@ export async function PATCH(req: NextRequest) {
 	try {
 		const data = await req.json();
 
-		if (data.orderIds && Array.isArray(data.orderIds)) {
-			// Bulk update for marking orders as paid
-			const paymentId = data.paymentId;
-			if (!paymentId) {
-				return NextResponse.json({ status: "error", message: "Missing paymentId for bulk update" }, { status: 400 });
-			}
+		   // Bulk update with individual amounts
+		   if (data.orders && Array.isArray(data.orders)) {
+			   const paymentId = data.paymentId;
+			   if (!paymentId) {
+				   return NextResponse.json({ status: "error", message: "Missing paymentId for bulk update" }, { status: 400 });
+			   }
 
-			const updatedOrders = [];
-			for (const orderId of data.orderIds) {
-				const order = await prisma.order.findUnique({ where: { id: orderId } });
-				if (order) {
-					console.log(`Updating order ${orderId} to status 1`);
-					await prisma.order.update({
-						where: { id: orderId },
-						data: { paymentId, orderStatus: 1 }, // 1 = APPROVED/PAID
-					});
-					await prisma.payment.create({
-						data: {
-							userId: order.userId,
-							orderId,
-							amount: order.amount,
-							status: "PAID",
-							razorpayId: null, // Manual payment
-						}
-					});
-					updatedOrders.push(orderId);
-				}
-			}
-			console.log(`Bulk update completed for orders: ${updatedOrders}`);
-			return NextResponse.json({ status: "success", updatedOrders });
-		} else {
-			// Single order update
-			const { searchParams } = new URL(req.url);
-			const id = searchParams.get("id");
-			if (!id) {
-				return NextResponse.json({ status: "error", message: "Missing id for single update" }, { status: 400 });
-			}
-			console.log(`Updating single order ${id} with data:`, data);
-			const updatedOrder = await prisma.order.update({
-				where: { id: id },
-				data,
-			});
-			console.log(`Updated order:`, updatedOrder);
+			   const updatedOrders = [];
+			   for (const item of data.orders) {
+				   const { orderId, amount } = item;
+				   if (!orderId || amount == null) {
+					   return NextResponse.json({ status: "error", message: "Missing orderId or amount in bulk item" }, { status: 400 });
+				   }
+				   const order = await prisma.order.findUnique({ where: { id: orderId } });
+				   if (order) {
+					   await prisma.order.update({
+						   where: { id: orderId },
+						   data: { paymentId, orderStatus: 1, amount }, // 1 = APPROVED/PAID
+					   });
+					   await prisma.payment.create({
+						   data: {
+							   userId: order.userId,
+							   orderId,
+							   amount,
+							   status: "PAID",
+							   razorpayId: null,
+						   }
+					   });
+					   updatedOrders.push(orderId);
+				   }
+			   }
+			   return NextResponse.json({ status: "success", updatedOrders });
+		   } else if (data.orderIds && Array.isArray(data.orderIds)) {
+			   // Bulk update for marking orders as paid (legacy)
+			   const paymentId = data.paymentId;
+			   const amount = data.amount;
+			   if (!paymentId) {
+				   return NextResponse.json({ status: "error", message: "Missing paymentId for bulk update" }, { status: 400 });
+			   }
+			   if (amount == null) {
+				   return NextResponse.json({ status: "error", message: "Missing amount for bulk update" }, { status: 400 });
+			   }
 
-			const statusMap: { [key: number]: string } = {
-				0: 'PENDING',
-				1: 'PICKUP_REQUESTED',
-				'-1': 'REJECTED',
-				2: 'READY_FOR_PICKUP',
-				3: 'REPAIRING',
-				4: 'DELIVERED'
-			};
+			   const updatedOrders = [];
+			   for (const orderId of data.orderIds) {
+				   const order = await prisma.order.findUnique({ where: { id: orderId } });
+				   if (order) {
+					   await prisma.order.update({
+						   where: { id: orderId },
+						   data: { paymentId, orderStatus: 1, amount }, // 1 = APPROVED/PAID
+					   });
+					   await prisma.payment.create({
+						   data: {
+							   userId: order.userId,
+							   orderId,
+							   amount,
+							   status: "PAID",
+							   razorpayId: null,
+						   }
+					   });
+					   updatedOrders.push(orderId);
+				   }
+			   }
+			   return NextResponse.json({ status: "success", updatedOrders });
+		   } else {
+			   // Single order update
+			   const { searchParams } = new URL(req.url);
+			   const id = searchParams.get("id");
+			   const paymentId = data.paymentId;
+			   const amount = data.amount;
+			   if (!id) {
+				   return NextResponse.json({ status: "error", message: "Missing id for single update" }, { status: 400 });
+			   }
+			   if (!paymentId) {
+				   return NextResponse.json({ status: "error", message: "Missing paymentId for single update" }, { status: 400 });
+			   }
+			   if (amount == null) {
+				   return NextResponse.json({ status: "error", message: "Missing amount for single update" }, { status: 400 });
+			   }
+			   const updatedOrder = await prisma.order.update({
+				   where: { id: id },
+				   data,
+			   });
 
-			const orderWithStatus = {
-				...updatedOrder,
-				status: statusMap[updatedOrder.orderStatus] || 'UNKNOWN'
-			};
+			   await prisma.payment.create({
+				   data: {
+					   userId: updatedOrder.userId,
+					   orderId: updatedOrder.id,
+					   amount,
+					   status: "PAID",
+					   razorpayId: null,
+				   }
+			   });
 
-			return NextResponse.json({ status: "success", order: orderWithStatus });
-		}
+			   const statusMap: { [key: number]: string } = {
+				   0: 'PENDING',
+				   1: 'PICKUP_REQUESTED',
+				   '-1': 'REJECTED',
+				   2: 'READY_FOR_PICKUP',
+				   3: 'REPAIRING',
+				   4: 'DELIVERED'
+			   };
+
+			   const orderWithStatus = {
+				   ...updatedOrder,
+				   status: statusMap[updatedOrder.orderStatus] || 'UNKNOWN'
+			   };
+
+			   return NextResponse.json({ status: "success", order: orderWithStatus });
+		   }
 	} catch (error) {
 		return NextResponse.json({ status: "error", message: "Failed to update order" }, { status: 500 });
 	}
