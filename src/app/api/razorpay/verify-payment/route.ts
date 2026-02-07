@@ -40,12 +40,9 @@ export async function POST(req: NextRequest) {
 
     // 2️⃣ If NOT paid yet
     if (paymentLink.status !== "paid") {
-      return setCorsHeaders(
-        NextResponse.json({
-          success: true,
-          status: "PENDING",
-        })
-      );
+      const payload = { success: true, status: "PENDING" };
+      console.log("POST /api/razorpay/verify-payment response:", payload);
+      return setCorsHeaders(NextResponse.json(payload));
     }
 
     // 3️⃣ Fetch payments under this link
@@ -59,38 +56,32 @@ export async function POST(req: NextRequest) {
     );
 
     if (!successfulPayment) {
-      return setCorsHeaders(
-        NextResponse.json({
-          success: true,
-          status: "PENDING",
-          message: "Payment not captured yet",
-        })
-      );
+      const payload = {
+        success: true,
+        status: "PENDING",
+        message: "Payment not captured yet",
+      };
+      console.log("POST /api/razorpay/verify-payment response:", payload);
+      return setCorsHeaders(NextResponse.json(payload));
     }
 
     // ✅ FINAL SUCCESS RESPONSE
-    return setCorsHeaders(
-      NextResponse.json({
-        success: true,
-        status: "PAID",
-        paymentId: successfulPayment.id, // pay_XXXX
-      })
-    );
+    const payload = {
+      success: true,
+      status: "PAID",
+      paymentId: successfulPayment.id, // pay_XXXX
+    };
+    console.log("POST /api/razorpay/verify-payment response:", payload);
+    return setCorsHeaders(NextResponse.json(payload));
   } catch (error: any) {
     console.error("Verify payment error:", error);
-
-    return setCorsHeaders(
-      NextResponse.json(
-        {
-          success: false,
-          status: "ERROR",
-          message:
-            error?.error?.description ||
-            error?.message ||
-            "Verification failed",
-        },
-        { status: 500 }
-      )
-    );
+    const payload = {
+      success: false,
+      status: "ERROR",
+      message:
+        error?.error?.description || error?.message || "Verification failed",
+    };
+    console.log("POST /api/razorpay/verify-payment response:", payload);
+    return setCorsHeaders(NextResponse.json(payload, { status: 500 }));
   }
 }
