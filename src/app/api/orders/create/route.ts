@@ -68,7 +68,8 @@ export async function POST(req: Request) {
         fullAddress: data.fullAddress ?? null,
         amount: data.amount,
         paymentId: data.paymentId, // Add paymentId to order
-        orderStatus: 0, // 0 = PENDING, 1 = READY_FOR_PICKUP, 2 = REPAIRING, 3 = DELIVERED, -1 = REJECTED
+        // If membership is BASIC, set status to 1 (PICKUP_REQUESTED), else keep PENDING (0)
+        orderStatus: data.membershipType === "BASIC" ? 1 : 0,
       },
     });
 
