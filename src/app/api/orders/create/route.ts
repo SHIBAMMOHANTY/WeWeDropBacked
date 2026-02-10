@@ -41,14 +41,26 @@ export async function POST(req: Request) {
     }
 
     // Check for duplicate IMEI
-    const existingOrder = await prisma.order.findFirst({
-      where: { imeiNumber: data.imeiNumber }
-    });
+    const existingOrder = await prisma.order.findFirst({ where: { imeiNumber: data.imeiNumber } });
     if (existingOrder) {
-      return NextResponse.json(
-        { error: "An order with this IMEI already exists" },
-        { status: 409 }
-      );
+      // If something already exists for this IMEI, update its status automatically
+      const newStatus: OrderStatus = data.membershipType === "BASIC" ? 1 as OrderStatus : existingOrder.orderStatus as OrderStatus;
+      const updated = await prisma.order.update({
+        where: { id: existingOrder.id },
+        data: { orderStatus: newStatus },
+      });
+
+      const statusMap: { [key: number]: string } = {
+        0: 'PENDING',
+        1: 'PICKUP_REQUESTED',
+        '-1': 'REJECTED',
+        2: 'READY_FOR_PICKUP',
+        3: 'REPAIRING',
+        4: 'DELIVERED'
+      };
+
+      const response = { ...updated, status: statusMap[updated.orderStatus] || 'UNKNOWN' };
+      return NextResponse.json(response, { status: 200 });
     }
 
     const order = await prisma.order.create({
