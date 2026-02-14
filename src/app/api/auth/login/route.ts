@@ -37,6 +37,11 @@ export async function POST(req: Request) {
     }
     const typeStr = typeof type === 'string' ? type.trim().toLowerCase() : undefined;
 
+    // Require explicit type
+    if (!typeStr) {
+      return new NextResponse(JSON.stringify({ error: "Login type is required" }), { status: 400, headers: corsHeaders });
+    }
+
     // helper to return 401 for invalid creds
     const invalidCreds = () =>
       new NextResponse(JSON.stringify({ error: "Invalid credentials" }), {
@@ -48,7 +53,7 @@ export async function POST(req: Request) {
     let found: any = null;
     let tokenPayload: any = null;
 
-    if (!typeStr || typeStr === 'user' || typeStr === 'users') {
+    if (typeStr === 'user' || typeStr === 'users') {
       const orConditions: any[] = [];
       if (username) orConditions.push({ username });
       if (phone) orConditions.push({ phone });
