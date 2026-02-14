@@ -24,7 +24,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { username, phone, email, password } = await req.json();
+    const { username, phone, email, password, type } = await req.json();
 
     if ((!username && !phone && !email) || !password) {
       return new NextResponse(
@@ -35,55 +35,70 @@ export async function POST(req: Request) {
         }
       );
     }
+    const typeStr = typeof type === 'string' ? type.trim().toLowerCase() : undefined;
 
-    const orConditions = [];
-    if (username) orConditions.push({ username });
-    if (phone) orConditions.push({ phone });
-    if (email) orConditions.push({ email });
-    const user = await prisma.user.findFirst({
-      where: orConditions.length > 0 ? { OR: orConditions } : {},
-    });
-
-    if (!user) {
-      return new NextResponse(
-        JSON.stringify({ error: "User not found" }),
-        {
-          status: 404,
-          headers: corsHeaders,
-        }
-      );
-    }
-
-
-    if (!user.password || typeof user.password !== 'string') {
-      return new NextResponse(
-        JSON.stringify({ error: "Invalid credentials" }),
-        {
-          status: 401,
-          headers: corsHeaders,
-        }
-      );
-    }
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) {
-      return new NextResponse(
-        JSON.stringify({ error: "Invalid credentials" }),
-        {
-          status: 401,
-          headers: corsHeaders,
-        }
-      );
-    }
-
-    const token = signToken({ id: user.id, role: user.role });
-    const { password: _, ...userSafe } = user;
-    return new NextResponse(
-      JSON.stringify({ user: userSafe, token }),
-      {
-        status: 200,
+    // helper to return 401 for invalid creds
+    const invalidCreds = () =>
+      new NextResponse(JSON.stringify({ error: "Invalid credentials" }), {
+        status: 401,
         headers: corsHeaders,
+      });
+
+    // Depending on requested type, query appropriate model
+    let found: any = null;
+    let tokenPayload: any = null;
+
+    if (!typeStr || typeStr === 'user' || typeStr === 'users') {
+      const orConditions: any[] = [];
+      if (username) orConditions.push({ username });
+      if (phone) orConditions.push({ phone });
+      if (email) orConditions.push({ email });
+      found = await prisma.user.findFirst({ where: orConditions.length > 0 ? { OR: orConditions } : {} });
+      if (!found) {
+        return new NextResponse(JSON.stringify({ error: "User not found" }), { status: 404, headers: corsHeaders });
       }
-    );
+      if (!found.password || typeof found.password !== 'string') return invalidCreds();
+      const match = await bcrypt.compare(password, found.password);
+      if (!match) return invalidCreds();
+      tokenPayload = { id: found.id, role: found.role };
+    } else if (typeStr === 'business' || typeStr === 'buisness' || typeStr === 'buisnesss') {
+      // Business login supports email or contactNumber (phone)
+      const orConditions: any[] = [];
+      if (email) orConditions.push({ email });
+      if (phone) orConditions.push({ contactNumber: phone });
+      if (username) orConditions.push({ dealerName: username });
+      found = await prisma.business.findFirst({ where: orConditions.length > 0 ? { OR: orConditions } : {} });
+      if (!found) {
+        return new NextResponse(JSON.stringify({ error: "Business not found" }), { status: 404, headers: corsHeaders });
+      }
+      if (!found.password || typeof found.password !== 'string') return invalidCreds();
+      const match = await bcrypt.compare(password, found.password);
+      if (!match) return invalidCreds();
+      tokenPayload = { id: found.id, role: 'BUSINESS' };
+    } else if (typeStr === 'admin' || typeStr === 'superadmin' || typeStr === 'super-admin' || typeStr === 'super_admin') {
+      // Admin login uses email
+      if (!email) {
+        return new NextResponse(JSON.stringify({ error: "Admin login requires email" }), { status: 400, headers: corsHeaders });
+      }
+      found = await prisma.admin.findFirst({ where: { email } });
+      if (!found) {
+        return new NextResponse(JSON.stringify({ error: "Admin not found" }), { status: 404, headers: corsHeaders });
+      }
+      if (!found.password || typeof found.password !== 'string') return invalidCreds();
+      const match = await bcrypt.compare(password, found.password);
+      if (!match) return invalidCreds();
+      tokenPayload = { id: found.id, role: found.role || 'SUPER_ADMIN' };
+    } else {
+      return new NextResponse(JSON.stringify({ error: "Invalid login type" }), { status: 400, headers: corsHeaders });
+    }
+
+    const token = signToken(tokenPayload);
+    // strip password from returned object
+    if (found && typeof found === 'object') {
+      const { password: __, ...safe } = found as any;
+      return new NextResponse(JSON.stringify({ user: safe, token }), { status: 200, headers: corsHeaders });
+    }
+    return new NextResponse(JSON.stringify({ error: "Unexpected error" }), { status: 500, headers: corsHeaders });
   } catch (error: any) {
     return new NextResponse(
       JSON.stringify({ error: "Internal server error" }),
