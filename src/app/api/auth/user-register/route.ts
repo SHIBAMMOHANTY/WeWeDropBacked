@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { signToken } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
+import { Role } from '@prisma/client';
 
 export async function POST(req: Request) {
   try {
@@ -25,17 +26,21 @@ export async function POST(req: Request) {
     }
     // Hash password
     const hashed = await bcrypt.hash(password, 10);
+    const normalizedRole = typeof role === 'string' ? role.trim().toUpperCase() : (role ? String(role).toUpperCase() : 'USER');
+    const isActiveFlag = normalizedRole === 'BUSINESS' ? false : true;
+
     const user = await prisma.user.create({
       data: {
         phone,
         username,
         password: hashed,
-        role: role || 'USER',
+        role: normalizedRole as Role,
         email: email || null,
         gstName: gstName || null,
         gstNumber: gstNumber || null,
         gstAddress: gstAddress || null,
         gstCertificate: gstCertificate || null,
+        isActive: isActiveFlag,
       },
       select: {
         id: true,
@@ -53,7 +58,7 @@ export async function POST(req: Request) {
         gstCertificate: true,
       },
     });
-    console.log('User created successfully:', user.id, user.username, user.createdAt);
+    console.log('User created successfully:', user.id, user.username, user.createdAt, 'isActive=', user.isActive);
     const token = signToken({ id: user.id, role: user.role });
     // Don't return password
     const { password: _, ...userSafe } = user;
