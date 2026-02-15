@@ -68,7 +68,7 @@ export async function POST(req: Request) {
       if (!match && found.password === password) {
         try {
           const hashed = await bcrypt.hash(password, 10);
-          await prisma.business.update({ where: { id: found.id }, data: { password: hashed } });
+          await prisma.user.update({ where: { id: found.id }, data: { password: hashed } });
           match = true;
         } catch (e) {
           // ignore migration failure; proceed only if plain match
@@ -84,17 +84,46 @@ export async function POST(req: Request) {
       if (phone) orConditions.push({ contactNumber: phone });
       if (username) orConditions.push({ dealerName: username });
       found = await prisma.business.findFirst({ where: orConditions.length > 0 ? { OR: orConditions } : {} });
+      // Fallbacks: normalize email/phone and try again if not found
+      if (!found && email) {
+        const emailNorm = email.trim();
+        // try lowercase
+        found = await prisma.business.findFirst({ where: { email: emailNorm.toLowerCase() } }).catch(() => null);
+      }
+      if (!found && email) {
+        const emailNorm = email.trim();
+        // try contains (case-insensitive) if supported
+        try {
+          found = await prisma.business.findFirst({ where: { email: { contains: emailNorm, mode: 'insensitive' } } });
+        } catch (e) {
+          // provider may not support mode; ignore
+        }
+      }
+      if (!found && phone) {
+        const digits = phone.replace(/\D/g, '');
+        if (digits) {
+          // try matching contactNumber contains digits
+          try {
+            found = await prisma.business.findFirst({ where: { contactNumber: { contains: digits } } });
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
       if (!found) {
         return new NextResponse(JSON.stringify({ error: "Business not found" }), { status: 404, headers: corsHeaders });
       }
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
       let match = await bcrypt.compare(password, found.password);
+      // If password stored in plain-text (legacy), migrate to hashed password
       if (!match && found.password === password) {
         try {
           const hashed = await bcrypt.hash(password, 10);
-          await prisma.user.update({ where: { id: found.id }, data: { password: hashed } });
+          await prisma.business.update({ where: { id: found.id }, data: { password: hashed } });
           match = true;
         } catch (e) {
+          // ignore migration failure; proceed only if plain match
           match = true;
         }
       }
