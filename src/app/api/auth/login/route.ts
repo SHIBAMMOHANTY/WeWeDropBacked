@@ -63,7 +63,18 @@ export async function POST(req: Request) {
         return new NextResponse(JSON.stringify({ error: "User not found" }), { status: 404, headers: corsHeaders });
       }
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
-      const match = await bcrypt.compare(password, found.password);
+      let match = await bcrypt.compare(password, found.password);
+      // If password stored in plain-text (legacy), migrate to hashed password
+      if (!match && found.password === password) {
+        try {
+          const hashed = await bcrypt.hash(password, 10);
+          await prisma.business.update({ where: { id: found.id }, data: { password: hashed } });
+          match = true;
+        } catch (e) {
+          // ignore migration failure; proceed only if plain match
+          match = true;
+        }
+      }
       if (!match) return invalidCreds();
       tokenPayload = { id: found.id, role: found.role };
     } else if (typeStr === 'business' || typeStr === 'buisness' || typeStr === 'buisnesss') {
@@ -77,7 +88,16 @@ export async function POST(req: Request) {
         return new NextResponse(JSON.stringify({ error: "Business not found" }), { status: 404, headers: corsHeaders });
       }
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
-      const match = await bcrypt.compare(password, found.password);
+      let match = await bcrypt.compare(password, found.password);
+      if (!match && found.password === password) {
+        try {
+          const hashed = await bcrypt.hash(password, 10);
+          await prisma.user.update({ where: { id: found.id }, data: { password: hashed } });
+          match = true;
+        } catch (e) {
+          match = true;
+        }
+      }
       if (!match) return invalidCreds();
       tokenPayload = { id: found.id, role: 'BUSINESS' };
     } else if (typeStr === 'admin' || typeStr === 'superadmin' || typeStr === 'super-admin' || typeStr === 'super_admin') {
@@ -90,7 +110,16 @@ export async function POST(req: Request) {
         return new NextResponse(JSON.stringify({ error: "Admin not found" }), { status: 404, headers: corsHeaders });
       }
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
-      const match = await bcrypt.compare(password, found.password);
+      let match = await bcrypt.compare(password, found.password);
+      if (!match && found.password === password) {
+        try {
+          const hashed = await bcrypt.hash(password, 10);
+          await prisma.admin.update({ where: { id: found.id }, data: { password: hashed } });
+          match = true;
+        } catch (e) {
+          match = true;
+        }
+      }
       if (!match) return invalidCreds();
       tokenPayload = { id: found.id, role: found.role || 'SUPER_ADMIN' };
     } else {
