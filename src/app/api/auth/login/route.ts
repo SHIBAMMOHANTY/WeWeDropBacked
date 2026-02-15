@@ -35,11 +35,27 @@ export async function POST(req: Request) {
         }
       );
     }
-    const typeStr = typeof type === 'string' ? type.trim().toLowerCase() : undefined;
+    const typeRaw = typeof type === 'string' ? type.trim().toLowerCase() : '';
 
-    // Require explicit type
-    if (!typeStr) {
+    // Require explicit type (but allow small typos via canonical mapping)
+    if (!typeRaw) {
       return new NextResponse(JSON.stringify({ error: "Login type is required" }), { status: 400, headers: corsHeaders });
+    }
+
+    // Map common variants/mistypes to canonical types
+    let typeCanonical = typeRaw;
+    if (['user', 'users', 'customer', 'u'].includes(typeRaw)) typeCanonical = 'user';
+    else if (['business', 'bus', 'buisness', 'buisnesss', 'biz', 'b'].includes(typeRaw)) typeCanonical = 'business';
+    else if (['admin', 'superadmin', 'super-admin', 'super_admin', 's', 'a'].includes(typeRaw)) typeCanonical = 'admin';
+    else {
+      // fallback: try first-letter heuristic
+      const first = typeRaw[0];
+      if (first === 'b') typeCanonical = 'business';
+      else if (first === 'u') typeCanonical = 'user';
+      else if (first === 'a' || first === 's') typeCanonical = 'admin';
+      else {
+        return new NextResponse(JSON.stringify({ error: "Invalid login type" }), { status: 400, headers: corsHeaders });
+      }
     }
 
     // helper to return 401 for invalid creds
@@ -53,7 +69,7 @@ export async function POST(req: Request) {
     let found: any = null;
     let tokenPayload: any = null;
 
-    if (typeStr === 'user' || typeStr === 'users') {
+    if (typeCanonical === 'user') {
       const orConditions: any[] = [];
       if (username) orConditions.push({ username });
       if (phone) orConditions.push({ phone });
@@ -77,7 +93,7 @@ export async function POST(req: Request) {
       }
       if (!match) return invalidCreds();
       tokenPayload = { id: found.id, role: found.role };
-    } else if (typeStr === 'business' || typeStr === 'buisness' || typeStr === 'buisnesss') {
+    } else if (typeCanonical === 'business') {
       // Business login supports email or contactNumber (phone)
       const orConditions: any[] = [];
       if (email) orConditions.push({ email });
@@ -129,7 +145,7 @@ export async function POST(req: Request) {
       }
       if (!match) return invalidCreds();
       tokenPayload = { id: found.id, role: 'BUSINESS' };
-    } else if (typeStr === 'admin' || typeStr === 'superadmin' || typeStr === 'super-admin' || typeStr === 'super_admin') {
+    } else if (typeCanonical === 'admin') {
       // Admin login uses email
       if (!email) {
         return new NextResponse(JSON.stringify({ error: "Admin login requires email" }), { status: 400, headers: corsHeaders });
