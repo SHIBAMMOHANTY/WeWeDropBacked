@@ -127,9 +127,67 @@ export async function POST(req: Request) {
         }
       }
 
-      if (!found) {
-        return new NextResponse(JSON.stringify({ error: "Business not found" }), { status: 404, headers: corsHeaders });
-      }
+        if (!found) {
+          // Try matching a `User` record with role BUSINESS (some accounts stored in User table)
+          const userOr: any[] = [];
+          if (email) userOr.push({ email });
+          if (phone) userOr.push({ phone });
+          if (username) userOr.push({ username });
+          if (userOr.length > 0) {
+            try {
+              const userFound = await prisma.user.findFirst({ where: { AND: [{ role: 'BUSINESS' }, { OR: userOr }] } });
+              if (userFound) {
+                if (!userFound.password || typeof userFound.password !== 'string') return invalidCreds();
+                let match = await bcrypt.compare(password, userFound.password);
+                if (!match && userFound.password === password) {
+                  try {
+                    const hashed = await bcrypt.hash(password, 10);
+                    await prisma.user.update({ where: { id: userFound.id }, data: { password: hashed } });
+                    match = true;
+                  } catch (e) {
+                    match = true;
+                  }
+                }
+                if (!match) return invalidCreds();
+                const token = signToken({ id: userFound.id, role: userFound.role });
+                const { password: __, ...safe } = userFound as any;
+                return new NextResponse(JSON.stringify({ user: safe, token }), { status: 200, headers: corsHeaders });
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          // If caller requested debug, return candidate businesses (safe fields only)
+          const { debug } = await (async () => {
+            try {
+              return await req.json();
+            } catch (e) {
+              return { debug: false };
+            }
+          })();
+
+          if (debug) {
+            const digits = phone ? phone.replace(/\D/g, '') : '';
+            const candidateFilters: any[] = [];
+            if (email) candidateFilters.push({ email });
+            if (email) candidateFilters.push({ email: email.trim().toLowerCase() });
+            if (digits) candidateFilters.push({ contactNumber: { contains: digits } });
+            if (username) candidateFilters.push({ dealerName: { contains: username } });
+            let candidates: any[] = [];
+            try {
+              if (candidateFilters.length > 0) {
+                candidates = await prisma.business.findMany({ where: { OR: candidateFilters }, take: 20 });
+              }
+            } catch (e) {
+              // ignore query errors
+            }
+            const safe = candidates.map(c => ({ id: c.id, email: c.email, contactNumber: c.contactNumber, dealerName: c.dealerName, approved: c.approved, isActive: c.isActive }));
+            return new NextResponse(JSON.stringify({ error: 'Business not found', candidates: safe }), { status: 404, headers: corsHeaders });
+          }
+
+          return new NextResponse(JSON.stringify({ error: "Business not found" }), { status: 404, headers: corsHeaders });
+        }
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
       let match = await bcrypt.compare(password, found.password);
       // If password stored in plain-text (legacy), migrate to hashed password
@@ -151,6 +209,31 @@ export async function POST(req: Request) {
         return new NextResponse(JSON.stringify({ error: "Admin login requires email" }), { status: 400, headers: corsHeaders });
       }
       found = await prisma.admin.findFirst({ where: { email } });
+      // Fallback: check `User` table for SUPER_ADMIN role
+      if (!found) {
+        try {
+          const userFound = await prisma.user.findFirst({ where: { AND: [{ role: 'SUPER_ADMIN' }, { email }] } });
+          if (userFound) {
+            if (!userFound.password || typeof userFound.password !== 'string') return invalidCreds();
+            let match = await bcrypt.compare(password, userFound.password);
+            if (!match && userFound.password === password) {
+              try {
+                const hashed = await bcrypt.hash(password, 10);
+                await prisma.user.update({ where: { id: userFound.id }, data: { password: hashed } });
+                match = true;
+              } catch (e) {
+                match = true;
+              }
+            }
+            if (!match) return invalidCreds();
+            const token = signToken({ id: userFound.id, role: userFound.role });
+            const { password: __, ...safe } = userFound as any;
+            return new NextResponse(JSON.stringify({ user: safe, token }), { status: 200, headers: corsHeaders });
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
       if (!found) {
         return new NextResponse(JSON.stringify({ error: "Admin not found" }), { status: 404, headers: corsHeaders });
       }
