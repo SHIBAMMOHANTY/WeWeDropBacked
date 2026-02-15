@@ -75,6 +75,7 @@ export async function POST(req: Request) {
       if (phone) orConditions.push({ phone });
       if (email) orConditions.push({ email });
       found = await prisma.user.findFirst({ where: orConditions.length > 0 ? { OR: orConditions } : {} });
+
       if (!found) {
         return new NextResponse(JSON.stringify({ error: "User not found" }), { status: 404, headers: corsHeaders });
       }
@@ -138,6 +139,9 @@ export async function POST(req: Request) {
               const userFound = await prisma.user.findFirst({ where: { AND: [{ role: 'BUSINESS' }, { OR: userOr }] } });
               if (userFound) {
                 if (!userFound.password || typeof userFound.password !== 'string') return invalidCreds();
+                if (Object.prototype.hasOwnProperty.call(userFound, 'isActive') && userFound.isActive === false) {
+                  return new NextResponse(JSON.stringify({ error: 'Account is inactive' }), { status: 403, headers: corsHeaders });
+                }
                 let match = await bcrypt.compare(password, userFound.password);
                 if (!match && userFound.password === password) {
                   try {
@@ -215,6 +219,9 @@ export async function POST(req: Request) {
           const userFound = await prisma.user.findFirst({ where: { AND: [{ role: 'SUPER_ADMIN' }, { email }] } });
           if (userFound) {
             if (!userFound.password || typeof userFound.password !== 'string') return invalidCreds();
+            if (Object.prototype.hasOwnProperty.call(userFound, 'isActive') && userFound.isActive === false) {
+              return new NextResponse(JSON.stringify({ error: 'Account is inactive' }), { status: 403, headers: corsHeaders });
+            }
             let match = await bcrypt.compare(password, userFound.password);
             if (!match && userFound.password === password) {
               try {
@@ -252,6 +259,11 @@ export async function POST(req: Request) {
       tokenPayload = { id: found.id, role: found.role || 'SUPER_ADMIN' };
     } else {
       return new NextResponse(JSON.stringify({ error: "Invalid login type" }), { status: 400, headers: corsHeaders });
+    }
+
+    // Prevent login for inactive accounts when `isActive` flag exists
+    if (found && Object.prototype.hasOwnProperty.call(found, 'isActive') && found.isActive === false) {
+      return new NextResponse(JSON.stringify({ error: 'Account is inactive' }), { status: 403, headers: corsHeaders });
     }
 
     const token = signToken(tokenPayload);
