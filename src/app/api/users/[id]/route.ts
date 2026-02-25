@@ -110,7 +110,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     const body = await req.json();
-    const { username, email, password, gstName, gstNumber, gstAddress, gstCertificate } = body;
+    const { username, email, password, gstName, gstNumber, gstAddress, gstCertificate, isActive } = body;
 
     const updateData: any = {};
     if (username !== undefined) updateData.username = username;
@@ -124,6 +124,38 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (gstAddress !== undefined) updateData.gstAddress = gstAddress;
     if (gstCertificate !== undefined) updateData.gstCertificate = gstCertificate;
 
+    // Handle isActive specially: only allow SUPER_ADMIN to change this flag
+    if (isActive !== undefined) {
+      if (decoded.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: "Forbidden" }, {
+          status: 403,
+          headers: corsHeaders
+        });
+      }
+
+      // Robust parsing: accept boolean, string 'true'/'false', and numeric 1/0
+      let parsedIsActive: boolean | undefined;
+      if (typeof isActive === 'boolean') {
+        parsedIsActive = isActive;
+      } else if (typeof isActive === 'string') {
+        const lower = isActive.trim().toLowerCase();
+        if (lower === 'true') parsedIsActive = true;
+        else if (lower === 'false') parsedIsActive = false;
+        else {
+          const num = Number(isActive);
+          if (!Number.isNaN(num)) parsedIsActive = Boolean(num);
+          else {
+            return NextResponse.json({ error: 'Invalid isActive value' }, { status: 400, headers: corsHeaders });
+          }
+        }
+      } else if (typeof isActive === 'number') {
+        parsedIsActive = Boolean(isActive);
+      } else {
+        return NextResponse.json({ error: 'Invalid isActive value' }, { status: 400, headers: corsHeaders });
+      }
+
+      updateData.isActive = parsedIsActive;
+    }
     const updatedUser = await prisma.user.update({
       where: { id },
       data: updateData,
