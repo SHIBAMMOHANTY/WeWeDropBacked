@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
 	try {
 		const body = await req.json();
-		const { phone, role, membership } = body;
+				const { phone, role, membership, avatar } = body;
 		if (!phone) {
 			return NextResponse.json({ error: "Phone is required" }, { status: 400 });
 		}
@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
 				phone,
 				role: role || "USER",
 				membership: membership || null,
+						avatar: typeof avatar === 'string' ? avatar : "",
 			},
 		});
 		return NextResponse.json({ user });

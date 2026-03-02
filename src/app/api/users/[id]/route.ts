@@ -51,6 +51,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         phone: true,
         username: true,
         email: true,
+        avatar: true,
         role: true,
         membership: true,
         isActive: true,
@@ -110,7 +111,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     const body = await req.json();
-    const { username, email, password, gstName, gstNumber, gstAddress, gstCertificate, isActive } = body;
+    const { username, email, password, gstName, gstNumber, gstAddress, gstCertificate, isActive, avatar } = body;
 
     const updateData: any = {};
     if (username !== undefined) updateData.username = username;
@@ -123,6 +124,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
     if (gstAddress !== undefined) updateData.gstAddress = gstAddress;
     if (gstCertificate !== undefined) updateData.gstCertificate = gstCertificate;
+
+    // Avatar: allow setting a URL string or null to remove
+    if (avatar !== undefined) {
+      // For Prisma with default empty string, treat `null` as removal -> set to empty string
+      if (avatar === null) {
+        updateData.avatar = "";
+      } else if (typeof avatar === 'string') {
+        updateData.avatar = avatar;
+      } else {
+        return NextResponse.json({ error: 'Invalid avatar value' }, { status: 400, headers: corsHeaders });
+      }
+    }
 
     // Handle isActive specially: only allow SUPER_ADMIN to change this flag
     if (isActive !== undefined) {
@@ -164,6 +177,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         phone: true,
         username: true,
         email: true,
+        avatar: true,
         role: true,
         membership: true,
         isActive: true,

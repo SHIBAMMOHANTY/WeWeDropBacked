@@ -16,8 +16,11 @@ export async function GET(req: { url: string | URL; }) {
     // Get total count
     const total = users.length;
 
-    // Format users (remove password)
-    const formattedUsers = users.map(({ password, ...user }) => user);
+    // Format users (remove password) and ensure avatar is present
+    const formattedUsers = users.map(({ password, avatar, ...user }) => ({
+      ...user,
+      avatar: avatar ?? "",
+    }));
 
     // Create response with CORS headers
     const response = NextResponse.json({
