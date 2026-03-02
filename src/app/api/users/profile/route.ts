@@ -44,6 +44,7 @@ export async function GET(req: Request) {
         phone: true,
         username: true,
         email: true,
+        avatar: true,
         role: true,
         membership: true,
         isActive: true,
@@ -100,7 +101,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { userId, username, email, password, gstName, gstNumber, gstAddress, gstCertificate } = body;
+    const { userId, username, email, password, gstName, gstNumber, gstAddress, gstCertificate, avatar } = body;
 
     // Determine target user ID
     let targetUserId = decoded.id;
@@ -119,6 +120,11 @@ export async function PATCH(req: Request) {
     if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
     if (gstAddress !== undefined) updateData.gstAddress = gstAddress;
     if (gstCertificate !== undefined) updateData.gstCertificate = gstCertificate;
+    if (avatar !== undefined) {
+      if (avatar === null) updateData.avatar = "";
+      else if (typeof avatar === 'string') updateData.avatar = avatar;
+      else return NextResponse.json({ error: 'Invalid avatar value' }, { status: 400, headers: corsHeaders });
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id: targetUserId },
@@ -128,6 +134,7 @@ export async function PATCH(req: Request) {
         phone: true,
         username: true,
         email: true,
+        avatar: true,
         role: true,
         membership: true,
         isActive: true,
