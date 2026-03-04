@@ -58,26 +58,26 @@ export async function POST(req: Request) {
       );
     }
 
-    const order = await prisma.order.create({
-      data: {
-        userId: data.userId,
-        businessId: data.businessId,
-        membershipType: "BASIC",
-        brandName: data.brand.trim(),
-        productName: data.product,
-        imeiNumber: data.imei,
-        billImage: data.billImage,
-        serviceDate: new Date(data.billDate),
-        customerName: data.name.trim(),
-        contactNumber: data.phone,
-        state: data.state,
-        pincode: data.pincode,
-        fullAddress: data.address || null,
-        amount: 0,
-        paymentId: null,
-        orderStatus: 0, // PENDING
-      },
-    });
+      const order = await prisma.order.create({
+        data: {
+          userId: data.userId,
+          businessId: data.businessId,
+          membershipType: data.membershipType ? data.membershipType : "BASIC",
+          brandName: data.brand.trim(),
+          productName: data.product,
+          imeiNumber: data.imei,
+          billImage: data.billImage,
+          serviceDate: new Date(data.billDate),
+          customerName: data.name.trim(),
+          contactNumber: data.phone,
+          state: data.state,
+          pincode: data.pincode,
+          fullAddress: data.address || null,
+          amount: 0,
+          paymentId: null,
+          orderStatus: 0, // PENDING
+        },
+      });
 
     return NextResponse.json(order, { status: 201 });
   } catch (error) {
