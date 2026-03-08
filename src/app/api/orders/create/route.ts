@@ -31,6 +31,7 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    // preferredDate is optional, no validation needed
 
     // Enum validation (safe + simple)
     if (!["BASIC", "PREMIUM"].includes(data.membershipType)) {
@@ -82,6 +83,7 @@ export async function POST(req: Request) {
         paymentId: data.paymentId, // Add paymentId to order
         // If membership is BASIC, set status to 1 (PICKUP_REQUESTED), else keep PENDING (0)
         orderStatus: data.membershipType === "BASIC" ? 1 : 0,
+        preferredDate: data.preferredDate ? new Date(data.preferredDate) : null,
       },
     });
 
