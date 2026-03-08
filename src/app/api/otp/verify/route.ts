@@ -1,4 +1,5 @@
-import { verifyOTP } from '../../../lib/otp';
+
+import { verifyOTP } from '@/lib/otp';
 
 export async function POST(req: Request) {
   const { email, otp } = await req.json();

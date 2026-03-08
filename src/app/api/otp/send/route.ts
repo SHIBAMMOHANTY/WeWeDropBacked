@@ -3,6 +3,11 @@ import { sendOTP } from '../../../lib/otp';
 export async function POST(req: Request) {
   const { email } = await req.json();
   if (!email) {
+import { sendOTP } from '@/lib/otp';
+
+export async function POST(req: Request) {
+  const { email } = await req.json();
+  if (!email) {
     return new Response(JSON.stringify({ error: 'Email required' }), { status: 400 });
   }
   try {
