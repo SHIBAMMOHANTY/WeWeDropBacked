@@ -8,7 +8,8 @@ export async function POST(req: Request) {
   try {
     await sendOTP(email);
     return new Response(JSON.stringify({ success: true }), { status: 200 });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: 'Failed to send OTP' }), { status: 500 });
+  } catch (err: any) {
+    console.error('OTP send error:', err);
+    return new Response(JSON.stringify({ error: 'Failed to send OTP', details: err?.message || String(err) }), { status: 500 });
   }
 }
