@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: 'Email and OTP required' }), { status: 400 });
   }
   const valid = verifyOTP(email, otp);
-  if (valid) {
+  if (await valid) {
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   } else {
     return new Response(JSON.stringify({ error: 'Invalid or expired OTP' }), { status: 400 });

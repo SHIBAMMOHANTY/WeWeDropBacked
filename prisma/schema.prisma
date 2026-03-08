@@ -1,3 +1,14 @@
+//////////////////////
+// OTP
+//////////////////////
+
+model OTP {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String
+  otp       String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
 // Prisma schema placeholder
 // Add your datasource and models here.
 generator client {
