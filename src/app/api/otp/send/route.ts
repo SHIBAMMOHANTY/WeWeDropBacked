@@ -1,8 +1,3 @@
-import { sendOTP } from '../../../lib/otp';
-
-export async function POST(req: Request) {
-  const { email } = await req.json();
-  if (!email) {
 import { sendOTP } from '@/lib/otp';
 
 export async function POST(req: Request) {
