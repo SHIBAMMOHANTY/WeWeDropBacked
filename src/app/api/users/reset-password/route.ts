@@ -44,13 +44,29 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400, headers: corsHeaders });
     }
 
-    const record = await entity.findFirst({ where: whereClause });
+    let record = await entity.findFirst({ where: whereClause });
+    // If not found in business table, check user table for BUSINESS role
+    if (!record && type === 'business') {
+      record = await prisma.user.findFirst({
+        where: {
+          OR: [
+            email ? { email } : undefined,
+            phone ? { phone } : undefined,
+          ].filter(Boolean),
+          role: 'BUSINESS',
+        },
+      });
+      if (record) {
+        entity = prisma.user;
+        entityType = 'User';
+      }
+    }
     if (!record) {
       return NextResponse.json({ error: `${entityType} not found` }, { status: 404, headers: corsHeaders });
     }
 
-    if (type === 'user' && record.role !== 'USER' && record.role !== 'SUPER_ADMIN') {
-      return NextResponse.json({ error: 'Not a user account' }, { status: 403, headers: corsHeaders });
+    if (type === 'user' && !['USER', 'SUPER_ADMIN', 'BUSINESS'].includes(record.role)) {
+      return NextResponse.json({ error: 'Not a user/business account' }, { status: 403, headers: corsHeaders });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
