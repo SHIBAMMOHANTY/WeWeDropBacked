@@ -79,6 +79,10 @@ export async function POST(req: Request) {
       if (!found) {
         return new NextResponse(JSON.stringify({ error: "User not found" }), { status: 404, headers: corsHeaders });
       }
+      // Prevent BUSINESS users from logging in as type 'user'
+      if (found.role && typeof found.role === 'string' && found.role.toUpperCase() === 'BUSINESS') {
+        return new NextResponse(JSON.stringify({ error: "Business users must log in with type 'business'" }), { status: 403, headers: corsHeaders });
+      }
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
       let match = await bcrypt.compare(password, found.password);
       // If password stored in plain-text (legacy), migrate to hashed password
