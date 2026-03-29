@@ -16,6 +16,17 @@ type OrderStatus = 0 | 1 | -1 | 2 | 3 | 4;
 
 export async function POST(req: Request) {
   try {
+    // Require Bearer token in Authorization header
+    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { error: "Missing or invalid Authorization header" },
+        { status: 401 }
+      );
+    }
+
+    // Optionally, you can verify the token here if you want
+
     const data = await req.json();
 
     // Basic validation
@@ -34,6 +45,15 @@ export async function POST(req: Request) {
       );
     }
     // preferredDate is optional, no validation needed
+
+    // Check if userId is valid
+    const user = await prisma.user.findUnique({ where: { id: data.userId } });
+    if (!user) {
+      return NextResponse.json(
+        { error: "Invalid userId" },
+        { status: 400 }
+      );
+    }
 
     // Enum validation (safe + simple)
     if (!["BASIC", "PREMIUM", "ELITE"].includes(data.membershipType)) {
