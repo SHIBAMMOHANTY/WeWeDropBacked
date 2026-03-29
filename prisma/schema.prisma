@@ -34,6 +34,7 @@ enum Role {
 enum MembershipType {
   BASIC
   PREMIUM
+  ELITE
 }
 
 enum OrderStatus {
@@ -149,6 +150,9 @@ model Order {
   paymentId       String?
 
   payments        Payment[]
+
+  // Expiry date for ELITE membership
+  expireDate      DateTime?
 
   createdAt       DateTime      @default(now())
 }

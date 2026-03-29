@@ -9,6 +9,8 @@ import { NextResponse } from "next/server";
 
 type MembershipType = "BASIC" | "PREMIUM";
 // Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
+type MembershipType = "BASIC" | "PREMIUM" | "ELITE";
+// Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
 type OrderStatus = 0 | 1 | -1 | 2 | 3 | 4;
 
 
@@ -34,7 +36,7 @@ export async function POST(req: Request) {
     // preferredDate is optional, no validation needed
 
     // Enum validation (safe + simple)
-    if (!["BASIC", "PREMIUM"].includes(data.membershipType)) {
+    if (!["BASIC", "PREMIUM", "ELITE"].includes(data.membershipType)) {
       return NextResponse.json(
         { error: "Invalid membership type" },
         { status: 400 }
@@ -45,10 +47,23 @@ export async function POST(req: Request) {
     const existingOrder = await prisma.order.findFirst({ where: { imeiNumber: data.imeiNumber } });
     if (existingOrder) {
       // If something already exists for this IMEI, update its status automatically
-      const newStatus: OrderStatus = data.membershipType === "BASIC" ? 1 as OrderStatus : existingOrder.orderStatus as OrderStatus;
+      let newStatus: OrderStatus = existingOrder.orderStatus as OrderStatus;
+      let expireDate: Date | null = null;
+      let expired = false;
+      if (data.membershipType === "BASIC") {
+        newStatus = 1 as OrderStatus;
+      } else if (data.membershipType === "ELITE") {
+        // ELITE behaves like PREMIUM for status, so do not set to 1 or 2, just keep existing or PREMIUM logic
+        // Set expireDate to one year from now if not already set
+        expireDate = existingOrder.expireDate ? new Date(existingOrder.expireDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        expired = expireDate < new Date();
+      }
       const updated = await prisma.order.update({
         where: { id: existingOrder.id },
-        data: { orderStatus: newStatus },
+        data: {
+          orderStatus: newStatus,
+          ...(data.membershipType === "ELITE" ? { expireDate } : {}),
+        },
       });
 
       const statusMap: { [key: number]: string } = {
@@ -60,10 +75,20 @@ export async function POST(req: Request) {
         4: 'DELIVERED'
       };
 
-      const response = { ...updated, status: statusMap[updated.orderStatus] || 'UNKNOWN' };
+      const response = {
+        ...updated,
+        status: statusMap[updated.orderStatus] || 'UNKNOWN',
+        ...(data.membershipType === "ELITE" ? { expireDate, expired } : {}),
+      };
       return NextResponse.json(response, { status: 200 });
     }
 
+    let expireDate: Date | null = null;
+    let expired = false;
+    if (data.membershipType === "ELITE") {
+      expireDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      expired = false;
+    }
     const order = await prisma.order.create({
       data: {
         userId: data.userId,
@@ -84,6 +109,7 @@ export async function POST(req: Request) {
         // If membership is BASIC, set status to 1 (PICKUP_REQUESTED), else keep PENDING (0)
         orderStatus: data.membershipType === "BASIC" ? 1 : 0,
         preferredDate: data.preferredDate ? new Date(data.preferredDate) : null,
+        ...(data.membershipType === "ELITE" ? { expireDate } : {}),
       },
     });
 
@@ -98,7 +124,8 @@ export async function POST(req: Request) {
 
     const orderWithStatus = {
       ...order,
-      status: statusMap[order.orderStatus] || 'UNKNOWN'
+      status: statusMap[order.orderStatus] || 'UNKNOWN',
+      ...(data.membershipType === "ELITE" ? { expireDate, expired } : {}),
     };
 
     return NextResponse.json(orderWithStatus, { status: 201 });
