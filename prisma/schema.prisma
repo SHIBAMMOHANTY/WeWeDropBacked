@@ -155,6 +155,7 @@ model Order {
   expireDate      DateTime?
 
   createdAt       DateTime      @default(now())
+  deleted         Boolean       @default(false)
 }
 
 //////////////////////
