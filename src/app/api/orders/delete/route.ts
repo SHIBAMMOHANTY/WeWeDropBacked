@@ -10,7 +10,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 		}
 		const updated = await prisma.order.update({
 			where: { id },
-			data: { isDeleted: true },
+			data: { deleted: true },
 		});
 		return NextResponse.json({ success: true, order: updated });
 	} catch (error) {

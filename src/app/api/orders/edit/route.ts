@@ -11,12 +11,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 		const updateData = await req.json();
 		// Check if order exists and is not deleted
 		const order = await prisma.order.findUnique({ where: { id } });
-		if (!order || order.isDeleted) {
+		if (!order || order.deleted) {
 			return NextResponse.json({ error: "Order not found or deleted" }, { status: 404 });
 		}
-		// Prevent editing the primary key and isDeleted directly
+		// Prevent editing the primary key and deleted directly
 		delete updateData.id;
-		delete updateData.isDeleted;
+		delete updateData.deleted;
 		const updated = await prisma.order.update({
 			where: { id },
 			data: updateData,
