@@ -19,10 +19,10 @@ export async function GET(req: NextRequest) {
   try {
     // Only fetch non-deleted orders
     const orders = await prisma.order.findMany({
-      where: { deleted: false },
+      where: { isDeleted: false },
       orderBy: { id: "desc" },
     });
-    const totalCount = await prisma.order.count({ where: { deleted: false } });
+    const totalCount = await prisma.order.count({ where: { isDeleted: false } });
     console.log(`Fetched ${orders.length} orders from /all, totalCount: ${totalCount}`);
     console.log('First order status:', orders[0]?.orderStatus);
 

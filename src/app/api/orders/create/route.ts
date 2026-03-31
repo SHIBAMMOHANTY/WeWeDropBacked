@@ -7,8 +7,6 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 
-type MembershipType = "BASIC" | "PREMIUM";
-// Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
 type MembershipType = "BASIC" | "PREMIUM" | "ELITE";
 // Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
 type OrderStatus = 0 | 1 | -1 | 2 | 3 | 4;
