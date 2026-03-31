@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "PATCH, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
@@ -14,7 +14,7 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: corsHeaders });
 }
 
-export async function POST(req: Request) {
+export async function PATCH(req: Request) {
   try {
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
