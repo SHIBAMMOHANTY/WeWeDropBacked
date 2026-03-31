@@ -26,7 +26,22 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Missing order id" }, { status: 400, headers: corsHeaders });
     }
 
-    // Only allow updating certain fields
+
+    // Enum mappings
+    const membershipTypeMap: Record<string | number, string> = {
+      'BASIC': 'BASIC', 'basic': 'BASIC', 0: 'BASIC',
+      'PREMIUM': 'PREMIUM', 'premium': 'PREMIUM', 1: 'PREMIUM',
+      'ELITE': 'ELITE', 'elite': 'ELITE', 2: 'ELITE',
+    };
+    const orderStatusMap: Record<string | number, string> = {
+      0: 'PENDING', 'PENDING': 'PENDING',
+      1: 'PICKUP_REQUESTED', 'PICKUP_REQUESTED': 'PICKUP_REQUESTED',
+      '-1': 'REJECTED', -1: 'REJECTED', 'REJECTED': 'REJECTED',
+      2: 'READY_FOR_PICKUP', 'READY_FOR_PICKUP': 'READY_FOR_PICKUP',
+      3: 'REPAIRING', 'REPAIRING': 'REPAIRING',
+      4: 'DELIVERED', 'DELIVERED': 'DELIVERED',
+    };
+
     const allowedFields = [
       "membershipType", "brandName", "productName", "imeiNumber", "billImage",
       "customerName", "contactNumber", "state", "pincode", "fullAddress",
@@ -35,7 +50,15 @@ export async function PATCH(req: Request) {
     const updateData: any = {};
     for (const key of allowedFields) {
       if (data[key] !== undefined) {
-        updateData[key] = data[key];
+        if (key === 'membershipType') {
+          const mapped = membershipTypeMap[data[key]];
+          if (mapped) updateData[key] = mapped;
+        } else if (key === 'orderStatus') {
+          const mapped = orderStatusMap[data[key]];
+          if (mapped) updateData[key] = mapped;
+        } else {
+          updateData[key] = data[key];
+        }
       }
     }
     if (updateData.preferredDate) {
