@@ -65,6 +65,12 @@ export async function PATCH(req: Request) {
       updateData.preferredDate = new Date(updateData.preferredDate);
     }
 
+    // Check if order exists and is not deleted
+    const existingOrder = await prisma.order.findFirst({ where: { id: data.id, deleted: false } });
+    if (!existingOrder) {
+      return NextResponse.json({ error: "Order not found or already deleted" }, { status: 404, headers: corsHeaders });
+    }
+
     const updated = await prisma.order.update({
       where: { id: data.id, deleted: false },
       data: updateData,
