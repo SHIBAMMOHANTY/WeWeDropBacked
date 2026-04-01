@@ -113,6 +113,7 @@ model Business {
 
 model Order {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  orderId         String?       @unique
 
   // Relations
   userId          String
@@ -127,6 +128,7 @@ model Order {
   productName     String
   imeiNumber      String
   billImage       String
+  utrScreenshot   String?
   serviceDate     DateTime
 
   customerName    String
@@ -144,6 +146,7 @@ model Order {
   area            String?
   pickupAddress   String?
   fix             String?
+  remark          String?
 
   amount          Int
   orderStatus     Int   @default(0)

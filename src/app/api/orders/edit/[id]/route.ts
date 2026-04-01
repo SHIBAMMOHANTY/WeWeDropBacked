@@ -33,9 +33,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 		// Prevent editing the primary key and deleted directly
 		delete updateData.id;
 		delete updateData.deleted;
+		// Only allow remark to be updated if present in the payload
+		const updatePayload = { ...updateData };
+		if (typeof updateData.remark !== 'undefined') {
+			updatePayload.remark = updateData.remark;
+		}
 		const updated = await prisma.order.update({
 			where: { id },
-			data: updateData,
+			data: updatePayload,
 		});
 		const response = NextResponse.json({ success: true, order: updated });
 		response.headers.set('Access-Control-Allow-Origin', '*');

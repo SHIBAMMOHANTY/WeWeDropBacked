@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
 
     const ordersWithStatus = orders.map(order => ({
       ...order,
-      status: statusMap[order.orderStatus] || 'UNKNOWN'
+      status: statusMap[order.orderStatus] || 'UNKNOWN',
+      remark: order.remark || null
     }));
 
     const response = NextResponse.json({ orders: ordersWithStatus, totalCount });

@@ -37,18 +37,13 @@ export async function GET(req: NextRequest) {
 			orderBy: { id: "desc" },
 		});
 
-		const statusMap: { [key: number]: string } = {
-			0: 'PENDING',
-			1: 'PICKUP_REQUESTED',
-			'-1': 'REJECTED',
-			2: 'READY_FOR_PICKUP',
-			3: 'REPAIRING',
-			4: 'DELIVERED'
-		};
+
 
 		const ordersWithStatus = orders.map(order => ({
 			...order,
-			status: mapOrderStatus(order.orderStatus)
+			status: mapOrderStatus(order.orderStatus),
+			utrScreenshot: order.utrScreenshot || null,
+			remark: order.remark || null
 		}));
 
 		return NextResponse.json(ordersWithStatus);
@@ -67,7 +62,19 @@ export async function PATCH(req: NextRequest) {
 		   if (Array.isArray(data.orders) && data.orders.length > 0) {
 			   const topPaymentId = data.paymentId ?? null;
 
-			   const updatedOrders: string[] = [];
+			   const updatedOrders: { id: string, orderId: string }[] = [];
+			   // Find the current max orderId number
+			   const maxOrderIdOrder = await prisma.order.findMany({
+				   where: { orderId: { not: null } },
+				   orderBy: { orderId: "desc" },
+				   take: 1
+			   });
+			   let maxOrderNum = 0;
+			   if (maxOrderIdOrder.length > 0 && maxOrderIdOrder[0].orderId) {
+				   const match = maxOrderIdOrder[0].orderId.match(/WPWD-(\d+)/);
+				   if (match) maxOrderNum = parseInt(match[1], 10);
+			   }
+
 			   for (const item of data.orders) {
 				   // Accept either `orderId` or `id` from caller
 				   const orderKey = item.orderId ?? item.id ?? item._id;
@@ -86,7 +93,19 @@ export async function PATCH(req: NextRequest) {
 				   }
 
 				   const orderIdStr = String(orderKey);
-				   const order = await prisma.order.findUnique({ where: { id: orderIdStr } });
+				   let order = await prisma.order.findUnique({ where: { id: orderIdStr } });
+				   let generatedOrderId = order?.orderId;
+				   if (order && !order.orderId) {
+					   // Generate new orderId
+					   maxOrderNum++;
+					   generatedOrderId = `WPWD-${String(maxOrderNum).padStart(3, "0")}`;
+					   await prisma.order.update({
+						   where: { id: orderIdStr },
+						   data: { orderId: generatedOrderId }
+					   });
+					   // Refresh order
+					   order = await prisma.order.findUnique({ where: { id: orderIdStr } });
+				   }
 				   if (order) {
 					   let newStatus: number | undefined;
 					   if (item.hasOwnProperty('orderStatus')) {
@@ -117,7 +136,7 @@ export async function PATCH(req: NextRequest) {
 							   razorpayId: itemPaymentId || null,
 						   }
 					   });
-					   updatedOrders.push(orderIdStr);
+					   updatedOrders.push({ id: orderIdStr, orderId: generatedOrderId || "" });
 				   }
 			   }
 			   const payload = { status: "success", updatedOrders };
@@ -247,19 +266,45 @@ export async function PATCH(req: NextRequest) {
 			   delete updateData.amount;
 
 			   // interpret orderStatus: if explicitly 0 -> do not change; otherwise coerce to Number
+			   let shouldGenerateOrderId = false;
 			   if (updateData.hasOwnProperty('orderStatus')) {
 				   const s = Number(updateData.orderStatus);
 				   if (s === 0) {
 					   delete updateData.orderStatus; // do not change
 				   } else {
 					   updateData.orderStatus = s;
+					   if (s === 1) {
+						   shouldGenerateOrderId = true;
+					   }
+				   }
+			   }
+
+			   // Generate orderId if status is 1 and orderId does not exist
+			   let generatedOrderId = null;
+			   if (shouldGenerateOrderId) {
+				   const order = await prisma.order.findUnique({ where: { id } });
+				   if (order && !order.orderId) {
+					   // Find the current max orderId number
+					   const maxOrderIdOrder = await prisma.order.findMany({
+						   where: { orderId: { not: null } },
+						   orderBy: { orderId: "desc" },
+						   take: 1
+					   });
+					   let maxOrderNum = 0;
+					   if (maxOrderIdOrder.length > 0 && maxOrderIdOrder[0].orderId) {
+						   const match = maxOrderIdOrder[0].orderId.match(/WPWD-(\d+)/);
+						   if (match) maxOrderNum = parseInt(match[1], 10);
+					   }
+					   maxOrderNum++;
+					   generatedOrderId = `WPWD-${String(maxOrderNum).padStart(3, "0")}`;
+					   updateData.orderId = generatedOrderId;
 				   }
 			   }
 
 			   const updatedOrder = await prisma.order.update({ where: { id }, data: updateData });
 
 			   const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
-			   const payload = { status: "success", order: orderWithStatus };
+			   const payload = { status: "success", order: orderWithStatus, orderId: generatedOrderId };
 			   console.log("PATCH response payload:", payload);
 			   return NextResponse.json(payload);
 		   }

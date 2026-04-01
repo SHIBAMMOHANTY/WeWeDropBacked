@@ -30,10 +30,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate Cloudinary URL
+    // Validate Cloudinary URL for billImage
     if (typeof data.billImage !== "string" || !data.billImage.startsWith("http")) {
       return NextResponse.json(
         { error: "Invalid billImage URL" },
+        { status: 400 }
+      );
+    }
+    // Validate Cloudinary URL for utrScreenshot if provided
+    if (data.utrScreenshot && (typeof data.utrScreenshot !== "string" || !data.utrScreenshot.startsWith("http"))) {
+      return NextResponse.json(
+        { error: "Invalid utrScreenshot URL" },
         { status: 400 }
       );
     }
@@ -67,6 +74,7 @@ export async function POST(req: Request) {
           productName: data.product,
           imeiNumber: data.imei,
           billImage: data.billImage,
+          utrScreenshot: data.utrScreenshot || null,
           serviceDate: new Date(data.billDate),
           customerName: data.name.trim(),
           contactNumber: data.phone,

@@ -47,7 +47,9 @@ export async function GET(req: NextRequest) {
       4: 'DELIVERED'
     };
 
-    const ordersWithStatus = orders.map(order => ({
+    // Filter out orders where deleted is true
+    const filteredOrders = orders.filter(order => !order.deleted);
+    const ordersWithStatus = filteredOrders.map(order => ({
       ...order,
       status: statusMap[order.orderStatus] || 'UNKNOWN'
     }));
