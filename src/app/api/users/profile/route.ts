@@ -54,7 +54,9 @@ export async function GET(req: Request) {
         gstNumber: true,
         gstAddress: true,
         gstCertificate: true,
-        orders: true,
+        orders: {
+          where: { deleted: false },
+        },
         payments: true,
       },
     });
