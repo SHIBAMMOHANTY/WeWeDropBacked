@@ -16,8 +16,8 @@ export async function POST(req: NextRequest) {
 		const user = await prisma.user.create({
 			data: {
 				phone,
-				role: role || "USER",
-				membership: membership || null,
+				   role: role || "USER",
+				   membership: membership || null,
 						avatar: typeof avatar === 'string' ? avatar : "",
 			},
 		});

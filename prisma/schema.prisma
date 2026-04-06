@@ -10,7 +10,7 @@ model OTP {
   createdAt DateTime @default(now())
 }
 // Prisma schema placeholder
-// Add your datasource and models here.
+// MIGRATION: Added DELIVERY_AGENT to Role, deliveryAgentId to Order, and deliveryAgent relation.
 generator client {
   provider = "prisma-client-js"
 }
@@ -29,6 +29,7 @@ enum Role {
   SUPER_ADMIN
   USER
   BUSINESS
+  DELIVERY_AGENT
 }
 
 enum MembershipType {
@@ -67,7 +68,8 @@ model User {
   gstAddress      String?
   gstCertificate  String?   // uploaded file URL
 
-  orders      Order[]
+  orders              Order[] @relation("OrderUser")
+  deliveryAssignments Order[] @relation("OrderDeliveryAgent")
   payments    Payment[]
 
   // Avatar image URL with default empty string
@@ -118,8 +120,10 @@ model Order {
   // Relations
   userId          String
   businessId      String?
+  deliveryAgentId String?
 
-  user            User?         @relation(fields: [userId], references: [id])
+  user            User?         @relation("OrderUser", fields: [userId], references: [id])
+  deliveryAgent   User?         @relation("OrderDeliveryAgent", fields: [deliveryAgentId], references: [id])
   business        Business?     @relation(fields: [businessId], references: [id])
 
   // Service Details
