@@ -196,3 +196,18 @@ model Admin {
   role      Role     @default(SUPER_ADMIN)
   createdAt DateTime @default(now())
 }
+
+//////////////////////
+// MEMBERSHIP PRICING
+//////////////////////
+
+model MembershipPricing {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  category  String   // "USER" or "BUSINESS"
+  type      String   // "BASIC", "PREMIUM", "ELITE"
+  price     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([category, type])
+}
