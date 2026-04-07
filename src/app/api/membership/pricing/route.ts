@@ -6,13 +6,13 @@ import { NextRequest, NextResponse } from "next/server";
 // In-memory store for prices (replace with DB in production)
 let membershipPrices: Record<string, Record<string, number>> = {
   USER: {
-    BASIC: 122,
-    PREMIUM: 155,
-    ELITE: 145,
+    BASIC: 0,
+    PREMIUM: 0,
+    ELITE: 0,
   },
   BUSINESS: {
-    PREMIUM: 155,
-    ELITE: 145,
+    PREMIUM: 0,
+    ELITE: 0,
   },
 };
 
