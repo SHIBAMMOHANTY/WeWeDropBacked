@@ -10,9 +10,21 @@ let membershipPrices: Record<string, number> = {
   ELITE: 0,
 };
 
+// CORS headers
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, PATCH, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+// Handle preflight requests
+export async function OPTIONS() {
+  return new NextResponse(null, { headers: corsHeaders });
+}
+
 // GET: Return current prices
 export async function GET() {
-  return NextResponse.json(membershipPrices);
+  return NextResponse.json(membershipPrices, { headers: corsHeaders });
 }
 
 // PATCH: Update price for a membership type
@@ -21,14 +33,14 @@ export async function PATCH(req: NextRequest) {
   try {
     const { type, price } = await req.json();
     if (!type || !["BASIC", "PREMIUM", "ELITE"].includes(type)) {
-      return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid type" }, { status: 400, headers: corsHeaders });
     }
     if (typeof price !== "number" || price < 0) {
-      return NextResponse.json({ error: "Invalid price" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid price" }, { status: 400, headers: corsHeaders });
     }
     membershipPrices[type] = price;
-    return NextResponse.json({ success: true, prices: membershipPrices });
+    return NextResponse.json({ success: true, prices: membershipPrices }, { headers: corsHeaders });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to update price" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update price" }, { status: 500, headers: corsHeaders });
   }
 }
