@@ -4,10 +4,16 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 
 // In-memory store for prices (replace with DB in production)
-let membershipPrices: Record<string, number> = {
-  BASIC: 0,
-  PREMIUM: 0,
-  ELITE: 0,
+let membershipPrices: Record<string, Record<string, number>> = {
+  USER: {
+    BASIC: 122,
+    PREMIUM: 155,
+    ELITE: 145,
+  },
+  BUSINESS: {
+    PREMIUM: 155,
+    ELITE: 145,
+  },
 };
 
 // CORS headers
@@ -28,17 +34,24 @@ export async function GET() {
 }
 
 // PATCH: Update price for a membership type
-// Body: { type: "BASIC" | "PREMIUM" | "ELITE", price: number }
+// Body: { category: "USER" | "BUSINESS", type: "BASIC" | "PREMIUM" | "ELITE", price: number }
 export async function PATCH(req: NextRequest) {
   try {
-    const { type, price } = await req.json();
+    const { category, type, price } = await req.json();
+    if (!category || !["USER", "BUSINESS"].includes(category)) {
+      return NextResponse.json({ error: "Invalid category" }, { status: 400, headers: corsHeaders });
+    }
     if (!type || !["BASIC", "PREMIUM", "ELITE"].includes(type)) {
       return NextResponse.json({ error: "Invalid type" }, { status: 400, headers: corsHeaders });
+    }
+    // Business only supports PREMIUM and ELITE
+    if (category === "BUSINESS" && type === "BASIC") {
+      return NextResponse.json({ error: "BUSINESS category does not support BASIC tier" }, { status: 400, headers: corsHeaders });
     }
     if (typeof price !== "number" || price < 0) {
       return NextResponse.json({ error: "Invalid price" }, { status: 400, headers: corsHeaders });
     }
-    membershipPrices[type] = price;
+    membershipPrices[category][type] = price;
     return NextResponse.json({ success: true, prices: membershipPrices }, { headers: corsHeaders });
   } catch (error) {
     return NextResponse.json({ error: "Failed to update price" }, { status: 500, headers: corsHeaders });
