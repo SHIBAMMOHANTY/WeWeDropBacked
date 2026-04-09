@@ -152,7 +152,7 @@ model Order {
   fix             String?
   remark          String?
 
-  amount          Decimal
+  amount          Float
   orderStatus     Int   @default(0)
   paymentId       String?
 
@@ -178,7 +178,7 @@ model Payment {
   user        User?    @relation(fields: [userId], references: [id])
   order       Order?   @relation(fields: [orderId], references: [id])
 
-  amount      Decimal
+  amount      Float
   status      String   // CREATED | PAID | FAILED
   razorpayId  String?
 
