@@ -80,6 +80,8 @@ export async function PATCH(req: NextRequest) {
 				   const orderKey = item.orderId ?? item.id ?? item._id;
 				   const amount = item.amount ?? item.total ?? null;
 				   const itemPaymentId = item.paymentId ?? topPaymentId;
+				   const utrScreenshot = item.utrScreenshot ?? null;
+				   const warrantyStatus = item.warrantyStatus ?? null;
 
 				   if (orderKey == null || amount == null) {
 					   const payload = { status: "error", message: "Missing order id or amount in bulk item" };
@@ -121,8 +123,10 @@ export async function PATCH(req: NextRequest) {
 					   } else {
 						   newStatus = undefined; // do not change when not provided
 					   }
-					   const updateData: any = { paymentId: itemPaymentId, amount };
+					   const updateData: any = { paymentId: itemPaymentId, amount: parseFloat(String(amount)) };
 					   if (newStatus !== undefined) updateData.orderStatus = newStatus;
+					   if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
+					   if (warrantyStatus !== null) updateData.warrantyStatus = warrantyStatus;
 					   await prisma.order.update({
 						   where: { id: orderIdStr },
 						   data: updateData,
@@ -131,7 +135,7 @@ export async function PATCH(req: NextRequest) {
 						   data: {
 							   userId: order.userId,
 							   orderId: orderIdStr,
-							   amount,
+							   amount: parseFloat(String(amount)),
 							   status: "PAID",
 							   razorpayId: itemPaymentId || null,
 						   }
@@ -146,6 +150,8 @@ export async function PATCH(req: NextRequest) {
 			   // Bulk update for marking orders as paid (legacy)
 			   const paymentId = data.paymentId;
 			   const amount = data.amount;
+			   const utrScreenshot = data.utrScreenshot ?? null;
+			   const warrantyStatus = data.warrantyStatus ?? null;
 			   if (!paymentId) {
 				   const payload = { status: "error", message: "Missing paymentId for bulk update" };
 				   console.log("PATCH response payload:", payload);
@@ -175,8 +181,10 @@ export async function PATCH(req: NextRequest) {
 					   } else {
 						   newStatus = undefined;
 					   }
-					   const updateData: any = { paymentId, amount };
+					   const updateData: any = { paymentId, amount: parseFloat(String(amount)) };
 					   if (newStatus !== undefined) updateData.orderStatus = newStatus;
+					   if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
+					   if (warrantyStatus !== null) updateData.warrantyStatus = warrantyStatus;
 					   await prisma.order.update({
 						   where: { id: orderIdStr },
 						   data: updateData,
@@ -185,7 +193,7 @@ export async function PATCH(req: NextRequest) {
 						   data: {
 							   userId: order.userId,
 							   orderId: orderIdStr,
-							   amount,
+							   amount: parseFloat(String(amount)),
 							   status: "PAID",
 							   razorpayId: null,
 						   }
@@ -212,6 +220,8 @@ export async function PATCH(req: NextRequest) {
 				   // payment flow requires both paymentId and amount
 				   const paymentId = data.paymentId;
 				   const amount = data.amount;
+				   const utrScreenshot = data.utrScreenshot ?? null;
+				   const warrantyStatus = data.warrantyStatus ?? null;
 				   if (!paymentId) {
 					   const payload = { status: "error", message: "Missing paymentId for single update" };
 					   console.log("PATCH response payload:", payload);
@@ -238,8 +248,10 @@ export async function PATCH(req: NextRequest) {
 					   newStatus = undefined; // do not change by default
 				   }
 
-				   const updateData: any = { paymentId: data.paymentId, amount: data.amount };
+				   const updateData: any = { paymentId: data.paymentId, amount: parseFloat(String(amount)) };
 				   if (newStatus !== undefined) updateData.orderStatus = newStatus;
+				   if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
+				   if (warrantyStatus !== null) updateData.warrantyStatus = warrantyStatus;
 
 				   const updatedOrder = await prisma.order.update({ where: { id }, data: updateData });
 
@@ -247,7 +259,7 @@ export async function PATCH(req: NextRequest) {
 					   data: {
 						   userId: updatedOrder.userId,
 						   orderId: updatedOrder.id,
-						   amount: data.amount,
+						   amount: parseFloat(String(amount)),
 						   status: "PAID",
 						   razorpayId: null,
 					   }
