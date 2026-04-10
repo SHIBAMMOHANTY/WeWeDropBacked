@@ -17,10 +17,13 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   console.log("GET /api/orders/all called");
   try {
-    // Only fetch non-deleted orders
+    // Only fetch non-deleted orders, include business phone
     const orders = await prisma.order.findMany({
       where: { deleted: false },
       orderBy: { id: "desc" },
+      include: {
+        business: { select: { contactNumber: true } }
+      },
     });
     const totalCount = await prisma.order.count({ where: { deleted: false } });
     console.log(`Fetched ${orders.length} orders from /all, totalCount: ${totalCount}`);
@@ -37,6 +40,8 @@ export async function GET(req: NextRequest) {
 
     const ordersWithStatus = orders.map(order => ({
       ...order,
+      businessId: order.businessId, // keep businessId
+      businessPhone: order.business?.contactNumber || null, // use contactNumber as businessPhone
       status: statusMap[order.orderStatus] || 'UNKNOWN',
       remark: order.remark || null
     }));
