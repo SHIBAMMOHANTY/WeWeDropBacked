@@ -39,14 +39,16 @@ export async function GET(req: NextRequest) {
 
 
 
-		       const ordersWithStatus = orders.map(order => ({
-			       ...order,
-			       status: mapOrderStatus(order.orderStatus),
-			       utrScreenshot: order.utrScreenshot || null,
-			       invoicePdf: order.invoicePdf || null,
-			       billingDate: order.billingDate || null,
-			       remark: order.remark || null
-		       }));
+			const ordersWithStatus = orders.map(order => ({
+				...order,
+				status: mapOrderStatus(order.orderStatus),
+				utrScreenshot: order.utrScreenshot || null,
+				invoicePdf: order.invoicePdf || null,
+				billingDate: order.billingDate || null,
+				remark: order.remark || null,
+				receiverName: order.receiverName || null,
+				mobileNumber: order.mobileNumber || null
+			}));
 
 		       return NextResponse.json(ordersWithStatus);
 

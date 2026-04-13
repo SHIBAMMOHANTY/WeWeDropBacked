@@ -94,6 +94,8 @@ export async function POST(req: Request) {
     amount: typeof data.amount === "number" ? data.amount : 0, // <-- FIXED
     paymentId: null,
     orderStatus: 0, // PENDING
+    receiverName: data.receiverName ?? null,
+    mobileNumber: data.mobileNumber ?? null,
   },
 });
 

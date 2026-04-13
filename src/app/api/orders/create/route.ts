@@ -146,6 +146,8 @@ export async function POST(req: Request) {
         // If membership is BASIC, set status to 1 (PICKUP_REQUESTED), else keep PENDING (0)
         orderStatus: data.membershipType === "BASIC" ? 1 : 0,
         preferredDate: data.preferredDate ? new Date(data.preferredDate) : null,
+        receiverName: data.receiverName ?? null,
+        mobileNumber: data.mobileNumber ?? null,
         ...(data.membershipType === "ELITE" ? { expireDate } : {}),
       },
     });
