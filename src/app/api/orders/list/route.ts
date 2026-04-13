@@ -39,21 +39,16 @@ export async function GET(req: NextRequest) {
 
 
 
-		const ordersWithStatus = orders.map(order => ({
-			...order,
-			status: mapOrderStatus(order.orderStatus),
-			utrScreenshot: order.utrScreenshot || null,
-		invoicePdf: order.invoicePdf || null,
-	} catch (error) {
-		return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
-	}
-}
+		       const ordersWithStatus = orders.map(order => ({
+			       ...order,
+			       status: mapOrderStatus(order.orderStatus),
+			       utrScreenshot: order.utrScreenshot || null,
+			       invoicePdf: order.invoicePdf || null,
+			       billingDate: order.billingDate || null,
+			       remark: order.remark || null
+		       }));
 
-// PATCH /api/orders/list?id=123 or body with orderIds for bulk update
-export async function PATCH(req: NextRequest) {
-	try {
-		const data = await req.json();
-		console.log("PATCH /api/orders/list incoming payload:", data);
+		       return NextResponse.json(ordersWithStatus);
 
 		   // Bulk update with individual amounts
 		   if (Array.isArray(data.orders) && data.orders.length > 0) {
