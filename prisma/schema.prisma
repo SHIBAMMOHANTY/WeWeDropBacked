@@ -133,6 +133,7 @@ model Order {
   imeiNumber      String
   billImage       String
   utrScreenshot   String?
+  invoicePdf      String?
   serviceDate     DateTime
 
   customerName    String

@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
     const filteredOrders = orders.filter(order => !order.deleted);
     const ordersWithStatus = filteredOrders.map(order => ({
       ...order,
+      invoicePdf: order.invoicePdf || null,
       status: statusMap[order.orderStatus] || 'UNKNOWN'
     }));
 

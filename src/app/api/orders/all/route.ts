@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
         imeiNumber: order.imeiNumber,
         billImage: order.billImage,
         utrScreenshot: order.utrScreenshot,
+        invoicePdf: order.invoicePdf,
         serviceDate: order.serviceDate,
         customerName: order.customerName,
         contactNumber: order.contactNumber,

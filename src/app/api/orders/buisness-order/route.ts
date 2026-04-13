@@ -45,6 +45,14 @@ export async function POST(req: Request) {
       );
     }
 
+    // Validate Cloudinary URL for invoicePdf if provided
+    if (data.invoicePdf && (typeof data.invoicePdf !== "string" || !data.invoicePdf.startsWith("http"))) {
+      return NextResponse.json(
+        { error: "Invalid invoicePdf URL" },
+        { status: 400 }
+      );
+    }
+
     // Validate billDate
     const serviceDate = new Date(data.billDate);
     if (isNaN(serviceDate.getTime())) {
@@ -75,6 +83,7 @@ export async function POST(req: Request) {
     imeiNumber: data.imei,
     billImage: data.billImage,
     utrScreenshot: data.utrScreenshot || null,
+    invoicePdf: data.invoicePdf || null,
     serviceDate: new Date(data.billDate),
     customerName: data.name.trim(),
     contactNumber: data.phone,

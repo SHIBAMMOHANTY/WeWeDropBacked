@@ -61,6 +61,22 @@ export async function POST(req: Request) {
       );
     }
 
+    // Validate Cloudinary URL for invoicePdf if provided
+    if (data.invoicePdf && (typeof data.invoicePdf !== "string" || !data.invoicePdf.startsWith("http"))) {
+      return NextResponse.json(
+        { error: "Invalid invoicePdf URL" },
+        { status: 400 }
+      );
+    }
+
+    // Validate Cloudinary URL for invoicePdf if provided
+    if (data.invoicePdf && (typeof data.invoicePdf !== "string" || !data.invoicePdf.startsWith("http"))) {
+      return NextResponse.json(
+        { error: "Invalid invoicePdf URL" },
+        { status: 400 }
+      );
+    }
+
     // Check for duplicate IMEI
     const existingOrder = await prisma.order.findFirst({ where: { imeiNumber: data.imeiNumber } });
     if (existingOrder) {
@@ -116,6 +132,8 @@ export async function POST(req: Request) {
         productName: data.productName,
         imeiNumber: data.imeiNumber,
         billImage: data.billImage ?? "",
+        utrScreenshot: data.utrScreenshot ?? null,
+        invoicePdf: data.invoicePdf ?? null,
         serviceDate: new Date(),
         customerName: data.customerName ?? "",
         contactNumber: data.contactNumber ?? "",

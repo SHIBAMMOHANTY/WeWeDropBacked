@@ -43,10 +43,7 @@ export async function GET(req: NextRequest) {
 			...order,
 			status: mapOrderStatus(order.orderStatus),
 			utrScreenshot: order.utrScreenshot || null,
-			remark: order.remark || null
-		}));
-
-		return NextResponse.json(ordersWithStatus);
+		invoicePdf: order.invoicePdf || null,
 	} catch (error) {
 		return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
 	}
