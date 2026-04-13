@@ -72,6 +72,7 @@ export async function GET(req: NextRequest) {
         utrScreenshot: order.utrScreenshot,
         invoicePdf: order.invoicePdf,
         serviceDate: order.serviceDate,
+        billingDate: order.billingDate,
         customerName: order.customerName,
         contactNumber: order.contactNumber,
         state: order.state,

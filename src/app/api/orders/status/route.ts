@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
     const ordersWithStatus = filteredOrders.map(order => ({
       ...order,
       invoicePdf: order.invoicePdf || null,
+      billingDate: order.billingDate || null,
       status: statusMap[order.orderStatus] || 'UNKNOWN'
     }));
 

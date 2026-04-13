@@ -135,6 +135,7 @@ model Order {
   utrScreenshot   String?
   invoicePdf      String?
   serviceDate     DateTime
+  billingDate     DateTime?
 
   customerName    String
   contactNumber   String

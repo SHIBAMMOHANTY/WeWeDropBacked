@@ -85,6 +85,7 @@ export async function POST(req: Request) {
     utrScreenshot: data.utrScreenshot || null,
     invoicePdf: data.invoicePdf || null,
     serviceDate: new Date(data.billDate),
+    billingDate: data.billingDate ? new Date(data.billingDate) : null,
     customerName: data.name.trim(),
     contactNumber: data.phone,
     state: data.state,
