@@ -126,9 +126,9 @@ export async function PATCH(req: NextRequest) {
 						newStatus = undefined; // do not change when not provided
 					}
 					const updateData: any = { paymentId: itemPaymentId, amount: parseFloat(String(amount)) };
-				// If pickupAddress is in payload, set fullAddress to empty string
+				// If pickupAddress is in payload, set fullAddress to pickupAddress value
 				if (item.pickupAddress !== undefined) {
-					updateData.fullAddress = "";
+					updateData.fullAddress = item.pickupAddress;
 				}
 				if (newStatus !== undefined) updateData.orderStatus = newStatus;
 					if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
@@ -190,9 +190,9 @@ export async function PATCH(req: NextRequest) {
 						newStatus = undefined;
 					}
 					const updateData: any = { paymentId, amount: parseFloat(String(amount)) };
-				// If pickupAddress is in payload, set fullAddress to empty string
+				// If pickupAddress is in payload, set fullAddress to pickupAddress value
 				if (data.pickupAddress !== undefined) {
-					updateData.fullAddress = "";
+					updateData.fullAddress = data.pickupAddress;
 				}
 				if (newStatus !== undefined) updateData.orderStatus = newStatus;
 					if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
@@ -263,9 +263,9 @@ export async function PATCH(req: NextRequest) {
 				}
 
 				const updateData: any = { paymentId: data.paymentId, amount: parseFloat(String(amount)) };
-				// If pickupAddress is in payload, set fullAddress to empty string
+				// If pickupAddress is in payload, set fullAddress to pickupAddress value
 				if (data.pickupAddress !== undefined) {
-					updateData.fullAddress = "";
+					updateData.fullAddress = data.pickupAddress;
 				}
 				if (newStatus !== undefined) updateData.orderStatus = newStatus;
 				if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
@@ -294,9 +294,9 @@ export async function PATCH(req: NextRequest) {
 				// remove payment fields if present
 				delete updateData.paymentId;
 				delete updateData.amount;
-			// If pickupAddress is in payload, set fullAddress to empty string
+			// If pickupAddress is in payload, set fullAddress to pickupAddress value
 			if (updateData.pickupAddress !== undefined) {
-				updateData.fullAddress = "";
+				updateData.fullAddress = updateData.pickupAddress;
 			}
 
 			// interpret orderStatus: if explicitly 0 -> do not change; otherwise coerce to Number

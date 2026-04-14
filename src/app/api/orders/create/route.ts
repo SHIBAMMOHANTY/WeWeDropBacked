@@ -96,9 +96,9 @@ export async function POST(req: Request) {
         orderStatus: newStatus,
         ...(data.membershipType === "ELITE" ? { expireDate } : {}),
       };
-      // If pickupAddress is in payload, set fullAddress to empty string
+      // If pickupAddress is in payload, set fullAddress to pickupAddress value
       if (data.pickupAddress !== undefined) {
-        updateData.fullAddress = "";
+        updateData.fullAddress = data.pickupAddress;
       }
       const updated = await prisma.order.update({
         where: { id: existingOrder.id },
@@ -128,8 +128,8 @@ export async function POST(req: Request) {
       expireDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
       expired = false;
     }
-    // If pickupAddress is in payload, set fullAddress to empty string
-    const fullAddress = data.pickupAddress !== undefined ? "" : (data.fullAddress ?? null);
+    // If pickupAddress is in payload, set fullAddress to pickupAddress value
+    const fullAddress = data.pickupAddress !== undefined ? data.pickupAddress : (data.fullAddress ?? null);
     const order = await prisma.order.create({
       data: {
         userId: data.userId,

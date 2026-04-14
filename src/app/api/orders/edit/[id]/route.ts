@@ -33,9 +33,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 		// Prevent editing the primary key and deleted directly
 		delete updateData.id;
 		delete updateData.deleted;
-		// If pickupAddress is in payload, set fullAddress to empty string
+		// If pickupAddress is in payload, set fullAddress to pickupAddress value
 		if (updateData.pickupAddress !== undefined) {
-			updateData.fullAddress = "";
+			updateData.fullAddress = updateData.pickupAddress;
 		}
 		// Only allow remark to be updated if present in the payload
 		const updatePayload = { ...updateData };
