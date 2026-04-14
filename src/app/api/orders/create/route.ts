@@ -92,12 +92,17 @@ export async function POST(req: Request) {
         expireDate = existingOrder.expireDate ? new Date(existingOrder.expireDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
         expired = expireDate < new Date();
       }
+      const updateData: any = {
+        orderStatus: newStatus,
+        ...(data.membershipType === "ELITE" ? { expireDate } : {}),
+      };
+      // If pickupAddress is in payload, set fullAddress to empty string
+      if (data.pickupAddress !== undefined) {
+        updateData.fullAddress = "";
+      }
       const updated = await prisma.order.update({
         where: { id: existingOrder.id },
-        data: {
-          orderStatus: newStatus,
-          ...(data.membershipType === "ELITE" ? { expireDate } : {}),
-        },
+        data: updateData,
       });
 
       const statusMap: { [key: number]: string } = {
@@ -123,6 +128,8 @@ export async function POST(req: Request) {
       expireDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
       expired = false;
     }
+    // If pickupAddress is in payload, set fullAddress to empty string
+    const fullAddress = data.pickupAddress !== undefined ? "" : (data.fullAddress ?? null);
     const order = await prisma.order.create({
       data: {
         userId: data.userId,
@@ -140,7 +147,7 @@ export async function POST(req: Request) {
         contactNumber: data.contactNumber ?? "",
         state: data.state ?? null,
         pincode: data.pincode ?? null,
-        fullAddress: data.fullAddress ?? null,
+        fullAddress: fullAddress,
         amount: data.amount,
         paymentId: data.paymentId, // Add paymentId to order
         // If membership is BASIC, set status to 1 (PICKUP_REQUESTED), else keep PENDING (0)

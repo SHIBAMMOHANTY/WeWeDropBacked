@@ -126,7 +126,11 @@ export async function PATCH(req: NextRequest) {
 						newStatus = undefined; // do not change when not provided
 					}
 					const updateData: any = { paymentId: itemPaymentId, amount: parseFloat(String(amount)) };
-					if (newStatus !== undefined) updateData.orderStatus = newStatus;
+				// If pickupAddress is in payload, set fullAddress to empty string
+				if (item.pickupAddress !== undefined) {
+					updateData.fullAddress = "";
+				}
+				if (newStatus !== undefined) updateData.orderStatus = newStatus;
 					if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
 					if (warrantyStatus !== null) updateData.warrantyStatus = warrantyStatus;
 					if (item.receiverName !== undefined) updateData.receiverName = item.receiverName;
@@ -186,7 +190,11 @@ export async function PATCH(req: NextRequest) {
 						newStatus = undefined;
 					}
 					const updateData: any = { paymentId, amount: parseFloat(String(amount)) };
-					if (newStatus !== undefined) updateData.orderStatus = newStatus;
+				// If pickupAddress is in payload, set fullAddress to empty string
+				if (data.pickupAddress !== undefined) {
+					updateData.fullAddress = "";
+				}
+				if (newStatus !== undefined) updateData.orderStatus = newStatus;
 					if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
 					if (warrantyStatus !== null) updateData.warrantyStatus = warrantyStatus;
 					if (data.receiverName !== undefined) updateData.receiverName = data.receiverName;
@@ -255,12 +263,15 @@ export async function PATCH(req: NextRequest) {
 				}
 
 				const updateData: any = { paymentId: data.paymentId, amount: parseFloat(String(amount)) };
+				// If pickupAddress is in payload, set fullAddress to empty string
+				if (data.pickupAddress !== undefined) {
+					updateData.fullAddress = "";
+				}
 				if (newStatus !== undefined) updateData.orderStatus = newStatus;
 				if (utrScreenshot !== null) updateData.utrScreenshot = utrScreenshot;
 				if (warrantyStatus !== null) updateData.warrantyStatus = warrantyStatus;
 				if (data.receiverName !== undefined) updateData.receiverName = data.receiverName;
 				if (data.mobileNumber !== undefined) updateData.mobileNumber = data.mobileNumber;
-
 				const updatedOrder = await prisma.order.update({ where: { id }, data: updateData });
 
 				await prisma.payment.create({
@@ -283,49 +294,53 @@ export async function PATCH(req: NextRequest) {
 				// remove payment fields if present
 				delete updateData.paymentId;
 				delete updateData.amount;
+			// If pickupAddress is in payload, set fullAddress to empty string
+			if (updateData.pickupAddress !== undefined) {
+				updateData.fullAddress = "";
+			}
 
-				// interpret orderStatus: if explicitly 0 -> do not change; otherwise coerce to Number
-				let shouldGenerateOrderId = false;
-				if (updateData.hasOwnProperty('orderStatus')) {
-					const s = Number(updateData.orderStatus);
-					if (s === 0) {
-						delete updateData.orderStatus; // do not change
-					} else {
-						updateData.orderStatus = s;
-						if (s === 1) {
-							shouldGenerateOrderId = true;
-						}
+			// interpret orderStatus: if explicitly 0 -> do not change; otherwise coerce to Number
+			let shouldGenerateOrderId = false;
+			if (updateData.hasOwnProperty('orderStatus')) {
+				const s = Number(updateData.orderStatus);
+				if (s === 0) {
+					delete updateData.orderStatus; // do not change
+				} else {
+					updateData.orderStatus = s;
+					if (s === 1) {
+						shouldGenerateOrderId = true;
 					}
 				}
+			}
 
-				// Generate orderId if status is 1 and orderId does not exist
-				let generatedOrderId = null;
-				if (shouldGenerateOrderId) {
-					const order = await prisma.order.findUnique({ where: { id } });
-					if (order && !order.orderId) {
-						// Find the current max orderId number
-						const maxOrderIdOrder = await prisma.order.findMany({
-							where: { orderId: { not: null } },
-							orderBy: { orderId: "desc" },
-							take: 1
-						});
-						let maxOrderNum = 0;
-						if (maxOrderIdOrder.length > 0 && maxOrderIdOrder[0].orderId) {
-							const match = maxOrderIdOrder[0].orderId.match(/WPWD-(\d+)/);
-							if (match) maxOrderNum = parseInt(match[1], 10);
-						}
-						maxOrderNum++;
-						generatedOrderId = `WPWD-${String(maxOrderNum).padStart(3, "0")}`;
-						updateData.orderId = generatedOrderId;
+			// Generate orderId if status is 1 and orderId does not exist
+			let generatedOrderId = null;
+			if (shouldGenerateOrderId) {
+				const order = await prisma.order.findUnique({ where: { id } });
+				if (order && !order.orderId) {
+					// Find the current max orderId number
+					const maxOrderIdOrder = await prisma.order.findMany({
+						where: { orderId: { not: null } },
+						orderBy: { orderId: "desc" },
+						take: 1
+					});
+					let maxOrderNum = 0;
+					if (maxOrderIdOrder.length > 0 && maxOrderIdOrder[0].orderId) {
+						const match = maxOrderIdOrder[0].orderId.match(/WPWD-(\d+)/);
+						if (match) maxOrderNum = parseInt(match[1], 10);
 					}
+					maxOrderNum++;
+					generatedOrderId = `WPWD-${String(maxOrderNum).padStart(3, "0")}`;
+					updateData.orderId = generatedOrderId;
 				}
+			}
 
-				const updatedOrder = await prisma.order.update({ where: { id }, data: updateData });
+			const updatedOrder = await prisma.order.update({ where: { id }, data: updateData });
 
-				const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
-				const payload = { status: "success", order: orderWithStatus, orderId: generatedOrderId };
-				console.log("PATCH response payload:", payload);
-				return NextResponse.json(payload);
+			const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
+			const payload = { status: "success", order: orderWithStatus, orderId: generatedOrderId };
+			console.log("PATCH response payload:", payload);
+			return NextResponse.json(payload);
 			}
 		}
 	} catch (error) {
