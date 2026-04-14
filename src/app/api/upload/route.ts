@@ -11,13 +11,26 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.CLOUDFLARE_R2_BUCKET!;
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
     if (!file) {
-      return Response.json({ error: "No file uploaded" }, { status: 400 });
+      return Response.json({ error: "No file uploaded" }, { status: 400, headers: corsHeaders });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -34,9 +47,9 @@ export async function POST(request: Request) {
 
     const fileUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE}/${key}`;
 
-    return Response.json({ success: true, url: fileUrl });
+    return Response.json({ success: true, url: fileUrl }, { headers: corsHeaders });
   } catch (error) {
     console.error("Upload error:", error);
-    return Response.json({ error: "Upload failed" }, { status: 500 });
+    return Response.json({ error: "Upload failed" }, { status: 500, headers: corsHeaders });
   }
 }
