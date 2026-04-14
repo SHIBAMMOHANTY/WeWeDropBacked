@@ -1,13 +1,4 @@
-import { NextApiRequest, NextApiResponse } from "next";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import formidable from "formidable";
-import fs from "fs";
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
 
 const s3 = new S3Client({
   region: "auto",
@@ -20,41 +11,32 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.CLOUDFLARE_R2_BUCKET!;
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
+export async function POST(request: Request) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get("file") as File;
 
-  const form = new formidable.IncomingForm();
-
-  form.parse(req, async (err, fields, files) => {
-    if (err) {
-      res.status(500).json({ error: "Error parsing form data" });
-      return;
-    }
-    const file = files.file;
     if (!file) {
-      res.status(400).json({ error: "No file uploaded" });
-      return;
+      return Response.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    const fileData = fs.readFileSync(file.filepath);
-    const key = `banner/${Date.now()}_${file.originalFilename}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const key = `banner/${Date.now()}_${file.name}`;
 
-    try {
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: BUCKET,
-          Key: key,
-          Body: fileData,
-          ContentType: file.mimetype,
-        })
-      );
-      const fileUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE}/${key}`;
-      res.status(200).json({ success: true, url: fileUrl });
-    } catch (error) {
-      res.status(500).json({ error: "Upload failed" });
-    }
-  });
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: file.type,
+      })
+    );
+
+    const fileUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE}/${key}`;
+
+    return Response.json({ success: true, url: fileUrl });
+  } catch (error) {
+    console.error("Upload error:", error);
+    return Response.json({ error: "Upload failed" }, { status: 500 });
+  }
 }
