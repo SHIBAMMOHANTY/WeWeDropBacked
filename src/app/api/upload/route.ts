@@ -1,6 +1,13 @@
-export const runtime = "edge";
-import { NextRequest, NextResponse } from "next/server";
+import { NextApiRequest, NextApiResponse } from "next";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import formidable from "formidable";
+import fs from "fs";
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 const s3 = new S3Client({
   region: "auto",
@@ -13,32 +20,41 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.CLOUDFLARE_R2_BUCKET!;
 
-export async function POST(req: NextRequest) {
-  try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File;
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
 
+  const form = new formidable.IncomingForm();
+
+  form.parse(req, async (err, fields, files) => {
+    if (err) {
+      res.status(500).json({ error: "Error parsing form data" });
+      return;
+    }
+    const file = files.file;
     if (!file) {
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+      res.status(400).json({ error: "No file uploaded" });
+      return;
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const filename = file.name;
-    const mimetype = file.type;
-    const key = `banner/${Date.now()}_${filename}`;
+    const fileData = fs.readFileSync(file.filepath);
+    const key = `banner/${Date.now()}_${file.originalFilename}`;
 
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: BUCKET,
-        Key: key,
-        Body: buffer,
-        ContentType: mimetype,
-      })
-    );
-
-    const fileUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE}/${key}`;
-    return NextResponse.json({ success: true, url: fileUrl });
-  } catch (error) {
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
-  }
+    try {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: BUCKET,
+          Key: key,
+          Body: fileData,
+          ContentType: file.mimetype,
+        })
+      );
+      const fileUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE}/${key}`;
+      res.status(200).json({ success: true, url: fileUrl });
+    } catch (error) {
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
 }
