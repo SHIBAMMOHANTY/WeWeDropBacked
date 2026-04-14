@@ -2,16 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-
-// In-memory banner storage (replace with DB in production)
-interface Banner {
-  id: string;
-  url: string;
-  createdAt: string;
-}
-
-let banners: Banner[] = [];
-let bannerIdCounter = 1;
+import { prisma } from "@/lib/prisma";
 
 // CORS headers
 const corsHeaders = {
@@ -33,15 +24,22 @@ export async function GET(req: NextRequest) {
     const bannerId = searchParams.get("id");
 
     if (bannerId) {
-      const banner = banners.find((b) => b.id === bannerId);
+      const banner = await prisma.banner.findUnique({
+        where: { id: bannerId },
+      });
       if (!banner) {
         return NextResponse.json({ error: "Banner not found" }, { status: 404, headers: corsHeaders });
       }
       return NextResponse.json({ banner }, { headers: corsHeaders });
     }
 
+    const banners = await prisma.banner.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+
     return NextResponse.json({ banners, total: banners.length }, { headers: corsHeaders });
   } catch (error) {
+    console.error("Failed to fetch banners:", error);
     return NextResponse.json({ error: "Failed to fetch banners" }, { status: 500, headers: corsHeaders });
   }
 }
@@ -55,15 +53,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid URL" }, { status: 400, headers: corsHeaders });
     }
 
-    const newBanner: Banner = {
-      id: `banner_${bannerIdCounter++}`,
-      url,
-      createdAt: new Date().toISOString(),
-    };
+    const newBanner = await prisma.banner.create({
+      data: { url },
+    });
 
-    banners.push(newBanner);
     return NextResponse.json({ success: true, banner: newBanner }, { status: 201, headers: corsHeaders });
   } catch (error) {
+    console.error("Failed to add banner:", error);
     return NextResponse.json({ error: "Failed to add banner" }, { status: 500, headers: corsHeaders });
   }
 }
@@ -77,14 +73,17 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Invalid ID or URL" }, { status: 400, headers: corsHeaders });
     }
 
-    const bannerIndex = banners.findIndex((b) => b.id === id);
-    if (bannerIndex === -1) {
+    const banner = await prisma.banner.update({
+      where: { id },
+      data: { url },
+    });
+
+    return NextResponse.json({ success: true, banner }, { headers: corsHeaders });
+  } catch (error) {
+    console.error("Failed to update banner:", error);
+    if ((error as any).code === "P2025") {
       return NextResponse.json({ error: "Banner not found" }, { status: 404, headers: corsHeaders });
     }
-
-    banners[bannerIndex].url = url;
-    return NextResponse.json({ success: true, banner: banners[bannerIndex] }, { headers: corsHeaders });
-  } catch (error) {
     return NextResponse.json({ error: "Failed to update banner" }, { status: 500, headers: corsHeaders });
   }
 }
@@ -100,14 +99,19 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Banner ID required" }, { status: 400, headers: corsHeaders });
     }
 
-    const bannerIndex = banners.findIndex((b) => b.id === bannerId);
-    if (bannerIndex === -1) {
+    const deletedBanner = await prisma.banner.delete({
+      where: { id: bannerId },
+    });
+
+    return NextResponse.json(
+      { success: true, message: "Banner deleted", banner: deletedBanner },
+      { headers: corsHeaders }
+    );
+  } catch (error) {
+    console.error("Failed to delete banner:", error);
+    if ((error as any).code === "P2025") {
       return NextResponse.json({ error: "Banner not found" }, { status: 404, headers: corsHeaders });
     }
-
-    const deletedBanner = banners.splice(bannerIndex, 1)[0];
-    return NextResponse.json({ success: true, message: "Banner deleted", banner: deletedBanner }, { headers: corsHeaders });
-  } catch (error) {
     return NextResponse.json({ error: "Failed to delete banner" }, { status: 500, headers: corsHeaders });
   }
 }
