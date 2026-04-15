@@ -85,6 +85,8 @@ export async function GET(req: NextRequest) {
         pickupAddress: order.pickupAddress,
         fix: order.fix,
         remark: order.remark,
+        receiverName: order.receiverName,
+        mobileNumber: order.mobileNumber,
         amount: order.amount,
         orderStatus: order.orderStatus,
         paymentId: order.paymentId,
