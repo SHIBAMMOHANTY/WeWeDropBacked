@@ -30,17 +30,32 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 			response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 			return response;
 		}
-		// Prevent editing the primary key and deleted directly
-		delete updateData.id;
-		delete updateData.deleted;
-		// If pickupAddress is in payload, set fullAddress to pickupAddress value
-		if (updateData.pickupAddress !== undefined) {
-			updateData.fullAddress = updateData.pickupAddress;
+		// Only allow explicit editable order fields
+		const allowedFields = [
+			'customerName',
+			'contactNumber',
+			'state',
+			'pincode',
+			'fullAddress',
+			'pickupAddress',
+			'preferredDate',
+			'warrantyStatus',
+			'issueType',
+			'area',
+			'fix',
+			'remark',
+			'receiverName',
+			'mobileNumber'
+		];
+		const updatePayload: any = {};
+		for (const key of allowedFields) {
+			if (updateData[key] !== undefined) {
+				updatePayload[key] = updateData[key];
+			}
 		}
-		// Only allow remark to be updated if present in the payload
-		const updatePayload = { ...updateData };
-		if (typeof updateData.remark !== 'undefined') {
-			updatePayload.remark = updateData.remark;
+		// If pickupAddress is in payload, set fullAddress to pickupAddress value
+		if (updatePayload.pickupAddress !== undefined) {
+			updatePayload.fullAddress = updatePayload.pickupAddress;
 		}
 		const updated = await prisma.order.update({
 			where: { id },
