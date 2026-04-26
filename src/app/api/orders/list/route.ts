@@ -4,6 +4,14 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
+// CORS headers
+const corsHeaders = {
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Methods": "GET, PATCH, OPTIONS",
+	"Access-Control-Allow-Headers": "Content-Type, Authorization",
+	"Access-Control-Max-Age": "86400",
+};
+
 function mapOrderStatus(status: unknown) {
 	const n = Number(status);
 	switch (n) {
@@ -25,6 +33,10 @@ function mapOrderStatus(status: unknown) {
 }
 
 // GET /api/orders/list?userId=123
+export async function OPTIONS(req: NextRequest) {
+	return new NextResponse(null, { status: 200, headers: corsHeaders });
+}
+
 export async function GET(req: NextRequest) {
 	try {
 		const { searchParams } = new URL(req.url);
@@ -75,10 +87,10 @@ export async function GET(req: NextRequest) {
 			status: mapOrderStatus(order.orderStatus),
 		}));
 
-		return NextResponse.json(ordersWithStatus);
+		return NextResponse.json(ordersWithStatus, { headers: corsHeaders });
 	} catch (error) {
 		console.error("GET /api/orders/list error:", error);
-		return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
+		return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500, headers: corsHeaders });
 	}
 }
 
@@ -115,12 +127,12 @@ export async function PATCH(req: NextRequest) {
 				if (orderKey == null || amount == null) {
 					const payload = { status: "error", message: "Missing order id or amount in bulk item" };
 					console.log("PATCH response payload:", payload);
-					return NextResponse.json(payload, { status: 400 });
+					return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 				}
 				if (!itemPaymentId) {
 					const payload = { status: "error", message: "Missing paymentId for some bulk items" };
 					console.log("PATCH response payload:", payload);
-					return NextResponse.json(payload, { status: 400 });
+					return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 				}
 
 				const orderIdStr = String(orderKey);
@@ -180,7 +192,7 @@ export async function PATCH(req: NextRequest) {
 			}
 			const payload = { status: "success", updatedOrders };
 			console.log("PATCH response payload:", payload);
-			return NextResponse.json(payload);
+			return NextResponse.json(payload, { headers: corsHeaders });
 		} else if (data.orderIds && Array.isArray(data.orderIds)) {
 			// Bulk update for marking orders as paid (legacy)
 			const paymentId = data.paymentId;
@@ -190,12 +202,12 @@ export async function PATCH(req: NextRequest) {
 			if (!paymentId) {
 				const payload = { status: "error", message: "Missing paymentId for bulk update" };
 				console.log("PATCH response payload:", payload);
-				return NextResponse.json(payload, { status: 400 });
+				return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 			}
 			if (amount == null) {
 				const payload = { status: "error", message: "Missing amount for bulk update" };
 				console.log("PATCH response payload:", payload);
-				return NextResponse.json(payload, { status: 400 });
+				return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 			}
 
 			const updatedOrders = [];
@@ -244,7 +256,7 @@ export async function PATCH(req: NextRequest) {
 			}
 			const payload = { status: "success", updatedOrders };
 			console.log("PATCH response payload:", payload);
-			return NextResponse.json(payload);
+			return NextResponse.json(payload, { headers: corsHeaders });
 		} else {
 			// Single order update
 			const { searchParams } = new URL(req.url);
@@ -252,7 +264,7 @@ export async function PATCH(req: NextRequest) {
 			if (!id) {
 				const payload = { status: "error", message: "Missing id for single update" };
 				console.log("PATCH response payload:", payload);
-				return NextResponse.json(payload, { status: 400 });
+				return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 			}
 
 			const isPaymentUpdate = data.hasOwnProperty('paymentId') || data.hasOwnProperty('amount');
@@ -266,12 +278,12 @@ export async function PATCH(req: NextRequest) {
 				if (!paymentId) {
 					const payload = { status: "error", message: "Missing paymentId for single update" };
 					console.log("PATCH response payload:", payload);
-					return NextResponse.json(payload, { status: 400 });
+					return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 				}
 				if (amount == null) {
 					const payload = { status: "error", message: "Missing amount for single update" };
 					console.log("PATCH response payload:", payload);
-					return NextResponse.json(payload, { status: 400 });
+					return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 				}
 
 				// compute orderStatus for payment update (preserve existing rules)
@@ -314,7 +326,7 @@ export async function PATCH(req: NextRequest) {
 				const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
 				const payload = { status: "success", order: orderWithStatus };
 				console.log("PATCH response payload:", payload);
-				return NextResponse.json(payload);
+				return NextResponse.json(payload, { headers: corsHeaders });
 			} else {
 				// Non-payment update: allow updating fields like preferredDate, warrantyStatus, etc.
 				const updateData: any = { ...data };
@@ -367,13 +379,13 @@ export async function PATCH(req: NextRequest) {
 			const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
 			const payload = { status: "success", order: orderWithStatus, orderId: generatedOrderId };
 			console.log("PATCH response payload:", payload);
-			return NextResponse.json(payload);
+			return NextResponse.json(payload, { headers: corsHeaders });
 			}
 		}
 	} catch (error) {
 		console.error("PATCH /api/orders/list error:", error);
 		const payload = { status: "error", message: "Internal server error" };
 		console.log("PATCH response payload:", payload);
-		return NextResponse.json(payload, { status: 500 });
+		return NextResponse.json(payload, { status: 500, headers: corsHeaders });
 	}
 }
