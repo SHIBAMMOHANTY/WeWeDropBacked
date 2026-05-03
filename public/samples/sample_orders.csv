@@ -1,0 +1,6 @@
+userId,membershipType,brandName,productName,imeiNumber,billImage,serviceDate,customerName,contactNumber,amount,state,pincode,fullAddress,issueType,area,warrantyStatus
+user001,BASIC,Samsung,Galaxy S21,123456789012345,https://example.com/bill1.jpg,2024-05-01,John Doe,9876543210,500,Maharashtra,400001,123 Main St Mumbai,Screen Crack,South Mumbai,Active
+user002,PREMIUM,Apple,iPhone 13,234567890123456,https://example.com/bill2.jpg,2024-05-02,Jane Smith,9876543211,1000,Karnataka,560001,456 High St Bangalore,Battery Issue,Indiranagar,Expired
+user003,ELITE,OnePlus,OnePlus 9,345678901234567,https://example.com/bill3.jpg,2024-05-03,Mike Johnson,9876543212,1500,Delhi,110001,789 Park Ave Delhi,Speaker Issue,East Delhi,Active
+user004,BASIC,Xiaomi,Redmi Note 10,456789012345678,https://example.com/bill4.jpg,2024-05-04,Sarah Williams,9876543213,400,Tamil Nadu,600001,321 Temple St Chennai,Camera Problem,T Nagar,Active
+user005,PREMIUM,Vivo,V21,567890123456789,https://example.com/bill5.jpg,2024-05-05,Robert Brown,9876543214,800,Telangana,500001,654 Lake Rd Hyderabad,Charging Issue,Jubilee Hills,Active
