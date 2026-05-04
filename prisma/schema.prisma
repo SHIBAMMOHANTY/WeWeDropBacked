@@ -171,6 +171,25 @@ model Order {
 }
 
 //////////////////////
+// ORDER HISTORY
+//////////////////////
+
+model OrderHistory {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId         String
+  userId          String?
+  actionType      String
+  sourceType      String
+  sourceRoute     String
+  requestPayload  Json?
+  appliedPayload  Json?
+  beforeState     Json?
+  afterState      Json?
+  batchId         String?
+  createdAt       DateTime @default(now())
+}
+
+//////////////////////
 // PAYMENT
 //////////////////////
 

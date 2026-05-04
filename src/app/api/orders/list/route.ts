@@ -37,6 +37,40 @@ function mapOrderStatus(status: unknown) {
 	}
 }
 
+function toJsonSafe(value: any) {
+	if (value === undefined) return undefined;
+	return JSON.parse(JSON.stringify(value));
+}
+
+async function recordOrderHistory(entry: {
+	orderId: string;
+	userId?: string | null;
+	actionType: string;
+	sourceType: string;
+	sourceRoute: string;
+	requestPayload?: any;
+	appliedPayload?: any;
+	beforeState?: any;
+	afterState?: any;
+	batchId?: string | null;
+}) {
+	const db: any = prisma;
+	await db.orderHistory.create({
+		data: {
+			orderId: entry.orderId,
+			userId: entry.userId ?? null,
+			actionType: entry.actionType,
+			sourceType: entry.sourceType,
+			sourceRoute: entry.sourceRoute,
+			requestPayload: toJsonSafe(entry.requestPayload) ?? null,
+			appliedPayload: toJsonSafe(entry.appliedPayload) ?? null,
+			beforeState: toJsonSafe(entry.beforeState) ?? null,
+			afterState: toJsonSafe(entry.afterState) ?? null,
+			batchId: entry.batchId ?? null,
+		},
+	});
+}
+
 // GET /api/orders/list?userId=123
 export async function OPTIONS(req: NextRequest) {
 	return new NextResponse(null, { status: 200, headers: corsHeaders });
@@ -117,7 +151,7 @@ export async function PATCH(req: NextRequest) {
 			});
 			let maxOrderNum = 0;
 			if (maxOrderIdOrder.length > 0 && maxOrderIdOrder[0].orderId) {
-				const match = maxOrderIdOrder[0].orderId.match(/WPWD-(\d+)/);
+				const match = maxOrderIdOrder[0].orderId.match(/DYVO-(\d+)/);
 				if (match) maxOrderNum = parseInt(match[1], 10);
 			}
 
@@ -142,11 +176,12 @@ export async function PATCH(req: NextRequest) {
 
 				const orderIdStr = String(orderKey);
 				let order = await prisma.order.findUnique({ where: { id: orderIdStr } });
+				const beforeOrder = order ? { ...order } : null;
 				let generatedOrderId = order?.orderId;
 				if (order && !order.orderId) {
 					// Generate new orderId
 					maxOrderNum++;
-					generatedOrderId = `WPWD-${String(maxOrderNum).padStart(3, "0")}`;
+					generatedOrderId = `DYVO-${String(maxOrderNum).padStart(4, "0")}`;
 					await prisma.order.update({
 						where: { id: orderIdStr },
 						data: { orderId: generatedOrderId }
@@ -192,6 +227,17 @@ export async function PATCH(req: NextRequest) {
 							razorpayId: itemPaymentId || null,
 						}
 					});
+					await recordOrderHistory({
+						orderId: orderIdStr,
+						userId: order.userId,
+						actionType: "PATCH",
+						sourceType: "MULTI_UPDATE",
+						sourceRoute: "/api/orders/list",
+						requestPayload: item,
+						appliedPayload: updateData,
+						beforeState: beforeOrder,
+						afterState: { ...(await prisma.order.findUnique({ where: { id: orderIdStr } })) },
+					});
 					updatedOrders.push({ id: orderIdStr, orderId: generatedOrderId || "" });
 				}
 			}
@@ -219,6 +265,7 @@ export async function PATCH(req: NextRequest) {
 			for (const orderId of data.orderIds) {
 				const orderIdStr = String(orderId);
 				const order = await prisma.order.findUnique({ where: { id: orderIdStr } });
+				const beforeOrder = order ? { ...order } : null;
 				if (order) {
 					let newStatus: number | undefined;
 					if (data.hasOwnProperty('orderStatus')) {
@@ -255,6 +302,17 @@ export async function PATCH(req: NextRequest) {
 							status: "PAID",
 							razorpayId: null,
 						}
+					});
+					await recordOrderHistory({
+						orderId: orderIdStr,
+						userId: order.userId,
+						actionType: "PATCH",
+						sourceType: "MULTI_UPDATE",
+						sourceRoute: "/api/orders/list",
+						requestPayload: data,
+						appliedPayload: updateData,
+						beforeState: beforeOrder,
+						afterState: { ...(await prisma.order.findUnique({ where: { id: orderIdStr } })) },
 					});
 					updatedOrders.push(orderIdStr);
 				}
@@ -316,6 +374,7 @@ export async function PATCH(req: NextRequest) {
 				if (warrantyStatus !== null) updateData.warrantyStatus = warrantyStatus;
 				if (data.receiverName !== undefined) updateData.receiverName = data.receiverName;
 				if (data.mobileNumber !== undefined) updateData.mobileNumber = data.mobileNumber;
+				const beforeOrder = await prisma.order.findUnique({ where: { id } });
 				const updatedOrder = await prisma.order.update({ where: { id }, data: updateData });
 
 				await prisma.payment.create({
@@ -326,6 +385,17 @@ export async function PATCH(req: NextRequest) {
 						status: "PAID",
 						razorpayId: null,
 					}
+				});
+				await recordOrderHistory({
+					orderId: id,
+					userId: updatedOrder.userId,
+					actionType: "PATCH",
+					sourceType: "SINGLE_UPDATE",
+					sourceRoute: "/api/orders/list",
+					requestPayload: data,
+					appliedPayload: updateData,
+					beforeState: beforeOrder,
+					afterState: updatedOrder,
 				});
 
 				const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
@@ -370,16 +440,28 @@ export async function PATCH(req: NextRequest) {
 					});
 					let maxOrderNum = 0;
 					if (maxOrderIdOrder.length > 0 && maxOrderIdOrder[0].orderId) {
-						const match = maxOrderIdOrder[0].orderId.match(/WPWD-(\d+)/);
+						const match = maxOrderIdOrder[0].orderId.match(/DYVO-(\d+)/);
 						if (match) maxOrderNum = parseInt(match[1], 10);
 					}
 					maxOrderNum++;
-					generatedOrderId = `WPWD-${String(maxOrderNum).padStart(3, "0")}`;
+					generatedOrderId = `DYVO-${String(maxOrderNum).padStart(4, "0")}`;
 					updateData.orderId = generatedOrderId;
 				}
 			}
 
+			const beforeOrder = await prisma.order.findUnique({ where: { id } });
 			const updatedOrder = await prisma.order.update({ where: { id }, data: updateData });
+			await recordOrderHistory({
+				orderId: id,
+				userId: updatedOrder.userId,
+				actionType: "PATCH",
+				sourceType: "SINGLE_UPDATE",
+				sourceRoute: "/api/orders/list",
+				requestPayload: data,
+				appliedPayload: updateData,
+				beforeState: beforeOrder,
+				afterState: updatedOrder,
+			});
 
 			const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
 			const payload = { status: "success", order: orderWithStatus, orderId: generatedOrderId };
@@ -642,6 +724,17 @@ export async function POST(req: NextRequest) {
 						expireDate: data!.expireDate ? new Date(data!.expireDate) : undefined,
 						orderStatus: 0, // PENDING by default
 					},
+				});
+				await recordOrderHistory({
+					orderId: newOrder.id,
+					userId: newOrder.userId,
+					actionType: "POST",
+					sourceType: "BULK_UPLOAD",
+					sourceRoute: "/api/orders/list",
+					requestPayload: rows[i],
+					appliedPayload: data,
+					afterState: newOrder,
+					batchId: tempFilePath,
 				});
 
 				result.successCount++;
