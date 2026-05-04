@@ -1,3 +1,3 @@
 {
-  "/api/orders/history/route": "app/api/orders/history/route.js"
+  "/api/db-status": "app/api/db-status.js"
 }
