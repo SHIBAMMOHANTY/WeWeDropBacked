@@ -82,8 +82,19 @@ export async function GET(req: NextRequest) {
     const sourceRoute = searchParams.get("sourceRoute");
     const limit = Math.min(Number(searchParams.get("limit") ?? "100"), 500);
 
-    const isAdmin = decoded.role === "SUPER_ADMIN";
-    const userId = isAdmin ? requestedUserId : decoded.id;
+    const role = (decoded.role ?? "").toUpperCase();
+    const isAdmin = role === "SUPER_ADMIN";
+    const shouldRestrictByUser = role === "USER" || role === "DELIVERY_AGENT" || !role;
+
+    let userId: string | null = null;
+    if (isAdmin) {
+      userId = requestedUserId;
+    } else if (shouldRestrictByUser) {
+      userId = decoded.id ?? null;
+    } else {
+      // BUSINESS and other privileged roles are not forced to customer userId scope.
+      userId = requestedUserId;
+    }
 
     const where: Record<string, unknown> = {};
     if (orderId) where.orderId = orderId;

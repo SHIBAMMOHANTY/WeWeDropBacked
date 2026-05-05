@@ -138,26 +138,42 @@ export async function PATCH(req: NextRequest) {
 	try {
 		const data = await req.json();
 
+		const resolveOrderByKey = async (key: string) => {
+			let order = await prisma.order.findUnique({ where: { id: key } });
+			if (!order) {
+				order = await prisma.order.findUnique({ where: { orderId: key } });
+			}
+			return order;
+		};
+
 		// Bulk update with individual amounts
 		if (Array.isArray(data.orders) && data.orders.length > 0) {
 			const topPaymentId = data.paymentId ?? null;
+			const sharedBulkId =
+				typeof data.orderId === "string" && data.orderId.trim().length > 0
+					? data.orderId.trim()
+					: `BULK-${Date.now()}`;
 
 			const updatedOrders: { id: string, orderId: string }[] = [];
-			// Find the current max orderId number
-			const maxOrderIdOrder = await prisma.order.findMany({
+			// Find max numeric DYVO id robustly (string sort can be incorrect)
+			const allExistingOrderIds = await prisma.order.findMany({
 				where: { orderId: { not: null } },
-				orderBy: { orderId: "desc" },
-				take: 1
+				select: { orderId: true },
 			});
 			let maxOrderNum = 0;
-			if (maxOrderIdOrder.length > 0 && maxOrderIdOrder[0].orderId) {
-				const match = maxOrderIdOrder[0].orderId.match(/DYVO-(\d+)/);
-				if (match) maxOrderNum = parseInt(match[1], 10);
+			const reservedOrderIds = new Set<string>();
+			for (const item of allExistingOrderIds) {
+				if (!item.orderId) continue;
+				reservedOrderIds.add(item.orderId);
+				const match = item.orderId.match(/^DYVO-(\d+)$/);
+				if (!match) continue;
+				const n = parseInt(match[1], 10);
+				if (!Number.isNaN(n) && n > maxOrderNum) maxOrderNum = n;
 			}
 
 			for (const item of data.orders) {
-				// Accept either `orderId` or `id` from caller
-				const orderKey = item.orderId ?? item.id ?? item._id;
+				// Accept either `id`/`_id` or business `orderId` from caller
+				const orderKey = item.id ?? item._id ?? item.orderId;
 				const amount = item.amount ?? item.total ?? null;
 				const itemPaymentId = item.paymentId ?? topPaymentId;
 				const utrScreenshot = item.utrScreenshot ?? null;
@@ -175,19 +191,27 @@ export async function PATCH(req: NextRequest) {
 				}
 
 				const orderIdStr = String(orderKey);
-				let order = await prisma.order.findUnique({ where: { id: orderIdStr } });
+				let order = await resolveOrderByKey(orderIdStr);
+				if (!order) {
+					const payload = { status: "error", message: `Order not found for key: ${orderIdStr}` };
+					console.log("PATCH response payload:", payload);
+					return NextResponse.json(payload, { status: 404, headers: corsHeaders });
+				}
 				const beforeOrder = order ? { ...order } : null;
 				let generatedOrderId = order?.orderId;
 				if (order && !order.orderId) {
 					// Generate new orderId
-					maxOrderNum++;
-					generatedOrderId = `DYVO-${String(maxOrderNum).padStart(4, "0")}`;
+					do {
+						maxOrderNum++;
+						generatedOrderId = `DYVO-${String(maxOrderNum).padStart(4, "0")}`;
+					} while (reservedOrderIds.has(generatedOrderId));
+					reservedOrderIds.add(generatedOrderId);
 					await prisma.order.update({
-						where: { id: orderIdStr },
+						where: { id: order.id },
 						data: { orderId: generatedOrderId }
 					});
 					// Refresh order
-					order = await prisma.order.findUnique({ where: { id: orderIdStr } });
+					order = await prisma.order.findUnique({ where: { id: order.id } });
 				}
 				if (order) {
 					let newStatus: number | undefined;
@@ -215,20 +239,20 @@ export async function PATCH(req: NextRequest) {
 					if (item.receiverName !== undefined) updateData.receiverName = item.receiverName;
 					if (item.mobileNumber !== undefined) updateData.mobileNumber = item.mobileNumber;
 					await prisma.order.update({
-						where: { id: orderIdStr },
+						where: { id: order.id },
 						data: updateData,
 					});
 					await prisma.payment.create({
 						data: {
 							userId: order.userId,
-							orderId: orderIdStr,
+							orderId: order.id,
 							amount: parseFloat(String(amount)),
 							status: "PAID",
 							razorpayId: itemPaymentId || null,
 						}
 					});
 					await recordOrderHistory({
-						orderId: orderIdStr,
+						orderId: order.id,
 						userId: order.userId,
 						actionType: "PATCH",
 						sourceType: "MULTI_UPDATE",
@@ -236,16 +260,21 @@ export async function PATCH(req: NextRequest) {
 						requestPayload: item,
 						appliedPayload: updateData,
 						beforeState: beforeOrder,
-						afterState: { ...(await prisma.order.findUnique({ where: { id: orderIdStr } })) },
+						afterState: { ...(await prisma.order.findUnique({ where: { id: order.id } })) },
+						batchId: sharedBulkId,
 					});
-					updatedOrders.push({ id: orderIdStr, orderId: generatedOrderId || "" });
+					updatedOrders.push({ id: order.id, orderId: generatedOrderId || order.orderId || "" });
 				}
 			}
-			const payload = { status: "success", updatedOrders };
+			const payload = { status: "success", bulkOrderId: sharedBulkId, updatedOrders };
 			console.log("PATCH response payload:", payload);
 			return NextResponse.json(payload, { headers: corsHeaders });
 		} else if (data.orderIds && Array.isArray(data.orderIds)) {
 			// Bulk update for marking orders as paid (legacy)
+			const sharedBulkId =
+				typeof data.orderId === "string" && data.orderId.trim().length > 0
+					? data.orderId.trim()
+					: `BULK-${Date.now()}`;
 			const paymentId = data.paymentId;
 			const amount = data.amount;
 			const utrScreenshot = data.utrScreenshot ?? null;
@@ -264,7 +293,7 @@ export async function PATCH(req: NextRequest) {
 			const updatedOrders = [];
 			for (const orderId of data.orderIds) {
 				const orderIdStr = String(orderId);
-				const order = await prisma.order.findUnique({ where: { id: orderIdStr } });
+				const order = await resolveOrderByKey(orderIdStr);
 				const beforeOrder = order ? { ...order } : null;
 				if (order) {
 					let newStatus: number | undefined;
@@ -291,20 +320,20 @@ export async function PATCH(req: NextRequest) {
 					if (data.receiverName !== undefined) updateData.receiverName = data.receiverName;
 					if (data.mobileNumber !== undefined) updateData.mobileNumber = data.mobileNumber;
 					await prisma.order.update({
-						where: { id: orderIdStr },
+						where: { id: order.id },
 						data: updateData,
 					});
 					await prisma.payment.create({
 						data: {
 							userId: order.userId,
-							orderId: orderIdStr,
+							orderId: order.id,
 							amount: parseFloat(String(amount)),
 							status: "PAID",
 							razorpayId: null,
 						}
 					});
 					await recordOrderHistory({
-						orderId: orderIdStr,
+						orderId: order.id,
 						userId: order.userId,
 						actionType: "PATCH",
 						sourceType: "MULTI_UPDATE",
@@ -312,12 +341,13 @@ export async function PATCH(req: NextRequest) {
 						requestPayload: data,
 						appliedPayload: updateData,
 						beforeState: beforeOrder,
-						afterState: { ...(await prisma.order.findUnique({ where: { id: orderIdStr } })) },
+						afterState: { ...(await prisma.order.findUnique({ where: { id: order.id } })) },
+						batchId: sharedBulkId,
 					});
-					updatedOrders.push(orderIdStr);
+					updatedOrders.push(order.id);
 				}
 			}
-			const payload = { status: "success", updatedOrders };
+			const payload = { status: "success", bulkOrderId: sharedBulkId, updatedOrders };
 			console.log("PATCH response payload:", payload);
 			return NextResponse.json(payload, { headers: corsHeaders });
 		} else {
