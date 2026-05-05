@@ -38,13 +38,14 @@ export async function GET(req: NextRequest) {
 
 		const seenOrderIds = new Set<string>();
 		const compactHistory = history.filter((entry) => {
-			if (seenOrderIds.has(entry.orderId)) {
+			const effectiveOrderId = (entry.afterState as { orderId?: string } | null | undefined)?.orderId ?? entry.orderId;
+			if (seenOrderIds.has(effectiveOrderId)) {
 				return false;
 			}
-			seenOrderIds.add(entry.orderId);
+			seenOrderIds.add(effectiveOrderId);
 			return true;
 		}).map((entry) => ({
-			orderId: entry.orderId,
+			orderId: (entry.afterState as { orderId?: string } | null | undefined)?.orderId ?? entry.orderId,
 			afterState: entry.afterState,
 			createdAt: entry.createdAt,
 		}));
