@@ -110,8 +110,9 @@ export async function GET(req: NextRequest) {
     history.forEach((entry) => {
       const afterState = entry.afterState as any;
       const realOrderId = afterState?.orderId;
+      const isDeleted = afterState?.deleted === true;
 
-      if (!realOrderId) return;
+      if (!realOrderId || isDeleted) return;
 
       if (!groupedHistory.has(realOrderId)) {
         groupedHistory.set(realOrderId, []);
