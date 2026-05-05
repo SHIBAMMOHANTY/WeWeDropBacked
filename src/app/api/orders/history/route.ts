@@ -48,6 +48,19 @@ function addString(set: Set<string>, value: unknown) {
   if (trimmed) set.add(trimmed);
 }
 
+function formatShortOrderId(orderId: string) {
+  return orderId.replace(/^(DYVO-?)0+/, "$1");
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const entries: Array<[string, unknown]> = Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right));
+  const renderedEntries = entries.map(([key, item]) => `"${key}":${stableStringify(item)}`);
+  return `{${renderedEntries.join(",")}}`;
+}
+
 async function resolveBusinessIdentifiers(decodedId: string): Promise<string[]> {
   const identifiers = new Set<string>();
   addString(identifiers, decodedId);
@@ -240,10 +253,26 @@ export async function GET(req: NextRequest) {
       });
     });
 
-    // ⚡ OPTIMIZED: Use Map for O(1) lookup instead of object keys iteration
-    const groupedHistory = new Map<string, { orderId: string; primaryIndividualId: string; history: any[] }>();
+    const uniqueHistory = [] as typeof history;
+    const seenHistoryKeys = new Set<string>();
 
-    history.forEach((entry) => {
+    for (const entry of history) {
+      const dedupeKey = [
+        entry.orderId,
+        entry.sourceType,
+        entry.batchId ?? "",
+        stableStringify(entry.afterState),
+      ].join("|");
+
+      if (seenHistoryKeys.has(dedupeKey)) continue;
+      seenHistoryKeys.add(dedupeKey);
+      uniqueHistory.push(entry);
+    }
+
+    // ⚡ OPTIMIZED: Use Map for O(1) lookup instead of object keys iteration
+    const groupedHistory = new Map<string, { orderId: string; invoiceNumber: string; primaryIndividualId: string; history: any[] }>();
+
+    uniqueHistory.forEach((entry) => {
       const afterState = entry.afterState as any;
       const isBulkHistory =
         entry.sourceType === "MULTI_UPDATE" &&
@@ -258,7 +287,8 @@ export async function GET(req: NextRequest) {
 
       if (!groupedHistory.has(groupKey)) {
         groupedHistory.set(groupKey, {
-          orderId: isBulkHistory ? `BULK-${fallbackOrderKey}` : String(fallbackOrderKey),
+          orderId: formatShortOrderId(String(fallbackOrderKey)),
+          invoiceNumber: String(fallbackOrderKey),
           primaryIndividualId: isBulkHistory ? String(fallbackOrderKey) : "",
           history: [],
         });
@@ -279,6 +309,7 @@ export async function GET(req: NextRequest) {
     const finalHistory = Array.from(groupedHistory.entries())
       .map(([, group]) => ({
         orderId: group.orderId,
+        invoiceNumber: group.invoiceNumber,
         history: group.history.sort(
           (a, b) =>
             new Date(b.createdAt).getTime() -
@@ -296,10 +327,8 @@ export async function GET(req: NextRequest) {
     const objectIdPattern = /^[a-fA-F0-9]{24}$/;
 
     finalHistory.forEach((item) => {
-      // Extract real order ID from BULK-{id} or use as-is
-      const realOrderId = item.orderId.startsWith("BULK-")
-        ? item.orderId.substring(5) // Remove "BULK-" prefix
-        : item.orderId;
+      // Use the full invoice/order number for history filtering.
+      const realOrderId = item.invoiceNumber || item.orderId;
       actualOrderIds.add(realOrderId);
 
       // Also add any additional order IDs from history snapshots
@@ -351,10 +380,8 @@ export async function GET(req: NextRequest) {
     }
 
     const visibleHistory = finalHistory.filter((item) => {
-      // Extract real order ID from BULK-{id} prefix for comparison
-      const realOrderId = item.orderId.startsWith("BULK-")
-        ? item.orderId.substring(5)
-        : item.orderId;
+      // Compare against the full invoice/order number so bulk labels do not leak into the API response.
+      const realOrderId = item.invoiceNumber || item.orderId;
 
       // Exclude if deleted in Order table
       return !deletedOrderIds.has(realOrderId) && !deletedOrderDocIds.has(realOrderId);
