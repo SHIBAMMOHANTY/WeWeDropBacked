@@ -139,10 +139,36 @@ export async function GET(req: NextRequest) {
         new Date(a.history[0]?.createdAt).getTime()
       );
 
+    // Hide history for orders that are currently soft-deleted in Order table.
+    const orderIds = finalHistory.map((item) => item.orderId);
+    let deletedOrderIds = new Set<string>();
+
+    if (orderIds.length > 0) {
+      const deletedOrders = await executeWithRetry(async () => {
+        return await prisma.order.findMany({
+          where: {
+            orderId: { in: orderIds },
+            deleted: true,
+          },
+          select: { orderId: true },
+        });
+      });
+
+      deletedOrderIds = new Set(
+        deletedOrders
+          .map((order) => order.orderId)
+          .filter((id): id is string => Boolean(id))
+      );
+    }
+
+    const visibleHistory = finalHistory.filter(
+      (item) => !deletedOrderIds.has(item.orderId)
+    );
+
     return NextResponse.json(
       {
-        count: finalHistory.length,
-        history: finalHistory,
+        count: visibleHistory.length,
+        history: visibleHistory,
       },
       { headers: corsHeaders }
     );
