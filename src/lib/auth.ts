@@ -1,11 +1,17 @@
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { isRevoked } from "./tokenBlacklist";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  return secret;
+}
 
 // ✅ Sign token with expiration
 export function signToken(payload: object) {
-  return jwt.sign(payload, JWT_SECRET, {
+  return jwt.sign(payload, getJwtSecret(), {
     expiresIn: "7d", // ⏰ token valid for 7 days
   });
 }
@@ -18,7 +24,7 @@ export function verifyToken(token: string): JwtPayload {
   }
 
   // 2️⃣ Verify token (will throw if invalid or expired)
-  const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+  const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
 
   return decoded;
 }

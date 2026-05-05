@@ -2,7 +2,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
+import { verifyToken } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,11 +50,40 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
 
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    const token = authHeader.split(" ")[1];
+    let decoded: { id?: string; role?: string };
+    try {
+      decoded = verifyToken(token) as { id?: string; role?: string };
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid or expired token" },
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    if (!decoded?.id) {
+      return NextResponse.json(
+        { error: "Invalid token payload" },
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
     const orderId = searchParams.get("orderId");
-    const userId = searchParams.get("userId");
+    const requestedUserId = searchParams.get("userId");
     const sourceType = searchParams.get("sourceType");
     const sourceRoute = searchParams.get("sourceRoute");
     const limit = Math.min(Number(searchParams.get("limit") ?? "100"), 500);
+
+    const isAdmin = decoded.role === "SUPER_ADMIN";
+    const userId = isAdmin ? requestedUserId : decoded.id;
 
     const where: Record<string, unknown> = {};
     if (orderId) where.orderId = orderId;
@@ -116,6 +147,13 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     console.error("GET /api/orders/history error:", error);
+
+    if (error instanceof JsonWebTokenError || error instanceof TokenExpiredError) {
+      return NextResponse.json(
+        { error: "Invalid or expired token" },
+        { status: 401, headers: corsHeaders }
+      );
+    }
 
     return NextResponse.json(
       { error: "Failed to fetch order history" },
