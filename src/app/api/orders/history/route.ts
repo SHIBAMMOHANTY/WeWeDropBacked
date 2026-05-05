@@ -147,6 +147,8 @@ export async function GET(req: NextRequest) {
         take: limit,
         select: {
           orderId: true,
+          sourceType: true,
+          batchId: true,
           afterState: true,
           createdAt: true,
         },
@@ -154,25 +156,36 @@ export async function GET(req: NextRequest) {
     });
 
     // ⚡ OPTIMIZED: Use Map for O(1) lookup instead of object keys iteration
-    const groupedHistory = new Map<string, { orderId: string; history: any[] }>();
+    const groupedHistory = new Map<string, { orderId: string; primaryIndividualId: string; history: any[] }>();
 
     history.forEach((entry) => {
       const afterState = entry.afterState as any;
-      const groupKey = afterState?.orderId ?? afterState?.id ?? entry.orderId;
-      const displayOrderId = afterState?.orderId ?? groupKey;
+      const isBulkHistory =
+        entry.sourceType === "MULTI_UPDATE" &&
+        typeof entry.batchId === "string" &&
+        entry.batchId.trim().length > 0;
+
+      const fallbackOrderKey = afterState?.orderId ?? afterState?.id ?? entry.orderId;
+      const groupKey = isBulkHistory ? entry.batchId! : fallbackOrderKey;
       const isDeleted = afterState?.deleted === true;
 
       if (!groupKey || isDeleted) return;
 
       if (!groupedHistory.has(groupKey)) {
         groupedHistory.set(groupKey, {
-          orderId: String(displayOrderId),
+          orderId: isBulkHistory ? `BULK-${fallbackOrderKey}` : String(fallbackOrderKey),
+          primaryIndividualId: isBulkHistory ? String(fallbackOrderKey) : "",
           history: [],
         });
       }
 
-      groupedHistory.get(groupKey)!.history.push({
-        afterState: entry.afterState,
+      const group = groupedHistory.get(groupKey)!;
+      const normalizedAfterState = isBulkHistory
+        ? { ...afterState, orderId: group.primaryIndividualId }
+        : afterState;
+
+      group.history.push({
+        afterState: normalizedAfterState,
         createdAt: entry.createdAt,
       });
     });
