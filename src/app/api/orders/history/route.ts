@@ -36,10 +36,20 @@ export async function GET(req: NextRequest) {
 			take: limit,
 		});
 
+		const compactHistory = history.map((entry) => ({
+			id: entry.id,
+			orderId: entry.orderId,
+			actionType: entry.actionType,
+			sourceType: entry.sourceType,
+			sourceRoute: entry.sourceRoute,
+			afterState: entry.afterState,
+			createdAt: entry.createdAt,
+		}));
+
 		return NextResponse.json(
 			{
-				count: history.length,
-				history,
+				count: compactHistory.length,
+				history: compactHistory,
 			},
 			{ headers: corsHeaders }
 		);
