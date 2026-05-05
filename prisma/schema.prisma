@@ -187,6 +187,15 @@ model OrderHistory {
   afterState      Json?
   batchId         String?
   createdAt       DateTime @default(now())
+
+  // ⚡ PERFORMANCE: Indexes for common queries
+  @@index([orderId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([sourceType])
+  @@index([sourceRoute])
+  @@index([orderId, createdAt])
+  @@index([userId, createdAt])
 }
 
 //////////////////////
