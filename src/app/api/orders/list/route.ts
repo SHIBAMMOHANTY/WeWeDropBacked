@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
 			return NextResponse.json({ error: "Missing userId" }, { status: 400 });
 		}
 		const orders = await prisma.order.findMany({
-			where: { userId: userId },
+			where: { userId: userId, deleted: false },
 			orderBy: { id: "desc" },
 		});
 
@@ -155,19 +155,22 @@ export async function PATCH(req: NextRequest) {
 					: typeof data.orderId === "string" && data.orderId.trim().length > 0
 						? data.orderId.trim()
 						: null;
-			const sharedBulkId =
+			let sharedBulkId =
 				clientBulkId
-					? clientBulkId
-					: `BULK-${Date.now()}`;
+					? clientBulkId.startsWith("BULK-")
+						? clientBulkId
+						: /^DYVO-\d+$/.test(clientBulkId)
+							? `BULK-${clientBulkId}`
+							: clientBulkId
+					: null;
 
-			const updatedOrders: { id: string, orderId: string, individualOrderId?: string }[] = [];
-			// Find max numeric DYVO id robustly (string sort can be incorrect)
 			const allExistingOrderIds = await prisma.order.findMany({
 				where: { orderId: { not: null } },
 				select: { orderId: true },
 			});
 			let maxOrderNum = 0;
 			const reservedOrderIds = new Set<string>();
+			const updatedOrders: { id: string, orderId: string, individualOrderId?: string }[] = [];
 			for (const item of allExistingOrderIds) {
 				if (!item.orderId) continue;
 				reservedOrderIds.add(item.orderId);
@@ -220,6 +223,10 @@ export async function PATCH(req: NextRequest) {
 					order = await prisma.order.findUnique({ where: { id: order.id } });
 				}
 				if (order) {
+					if (!sharedBulkId) {
+						const baseId = generatedOrderId || order.orderId;
+						sharedBulkId = baseId ? `BULK-${baseId}` : `BULK-${Date.now()}`;
+					}
 					let newStatus: number | undefined;
 					if (item.hasOwnProperty('orderStatus')) {
 						const s = Number(item.orderStatus);
@@ -289,7 +296,11 @@ export async function PATCH(req: NextRequest) {
 						: null;
 			const sharedBulkId =
 				clientBulkId
-					? clientBulkId
+					? clientBulkId.startsWith("BULK-")
+						? clientBulkId
+						: /^DYVO-\d+$/.test(clientBulkId)
+							? `BULK-${clientBulkId}`
+							: clientBulkId
 					: `BULK-${Date.now()}`;
 			const paymentId = data.paymentId;
 			const amount = data.amount;

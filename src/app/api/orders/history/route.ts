@@ -84,25 +84,47 @@ export async function GET(req: NextRequest) {
 
     const role = (decoded.role ?? "").toUpperCase();
     const isAdmin = role === "SUPER_ADMIN";
-    const shouldRestrictByUser = role === "USER" || role === "DELIVERY_AGENT" || !role;
+    const isUserOrDelivery = role === "USER" || role === "DELIVERY_AGENT";
+    const isBusiness = role === "BUSINESS";
 
     let targetUserId: string | null = null;
+    let targetBusinessId: string | null = null;
+
     if (isAdmin) {
       targetUserId = requestedUserId;
-    } else if (shouldRestrictByUser) {
+    } else if (isUserOrDelivery) {
+      if (requestedUserId && requestedUserId !== decoded.id) {
+        return NextResponse.json(
+          { error: "Unauthorized" },
+          { status: 403, headers: corsHeaders }
+        );
+      }
       targetUserId = decoded.id ?? null;
+    } else if (isBusiness) {
+      if (requestedUserId) {
+        return NextResponse.json(
+          { error: "Unauthorized" },
+          { status: 403, headers: corsHeaders }
+        );
+      }
+      targetBusinessId = decoded.id ?? null;
     } else {
-      // BUSINESS and other privileged roles are not forced to customer userId scope.
-      targetUserId = requestedUserId;
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 403, headers: corsHeaders }
+      );
     }
 
     const where: Record<string, unknown> = {};
 
     // Scope by owned order keys instead of OrderHistory.userId (which may be null/mismatched).
-    if (targetUserId) {
+    if (targetUserId || targetBusinessId) {
       const ownedOrders = await executeWithRetry(async () => {
         return await prisma.order.findMany({
-          where: { userId: targetUserId },
+          where: {
+            deleted: false,
+            ...(targetUserId ? { userId: targetUserId } : { businessId: targetBusinessId }),
+          },
           select: { id: true, orderId: true },
         });
       });
@@ -136,6 +158,24 @@ export async function GET(req: NextRequest) {
       where.orderId = orderId;
     }
 
+    // If the requested order is soft-deleted, do not return history.
+    if (orderId) {
+      const explicitOrder = await executeWithRetry(async () => {
+        return await prisma.order.findFirst({
+          where: {
+            OR: [{ id: orderId }, { orderId: orderId }],
+          },
+          select: { deleted: true },
+        });
+      });
+
+      if (explicitOrder?.deleted) {
+        return NextResponse.json(
+          { count: 0, history: [] },
+          { headers: corsHeaders }
+        );
+      }
+    }
     if (sourceType) where.sourceType = sourceType;
     if (sourceRoute) where.sourceRoute = sourceRoute;
 
