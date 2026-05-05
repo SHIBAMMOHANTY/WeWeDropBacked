@@ -11,6 +11,35 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+// ⚡ RETRY HELPER WITH EXPONENTIAL BACKOFF
+async function executeWithRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  delayMs = 1000
+): Promise<T> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      const isLastAttempt = attempt === maxRetries - 1;
+      const isConnectionError = 
+        error?.code === 'P2010' || 
+        error?.message?.includes('connection') ||
+        error?.message?.includes('I/O error');
+      
+      if (isConnectionError && !isLastAttempt) {
+        const delay = delayMs * Math.pow(2, attempt); // exponential backoff
+        console.warn(`Connection error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      throw error;
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: corsHeaders });
 }
@@ -31,15 +60,17 @@ export async function GET(req: NextRequest) {
     if (sourceType) where.sourceType = sourceType;
     if (sourceRoute) where.sourceRoute = sourceRoute;
 
-    // ⚡ OPTIMIZED: Use rawQueryGrouping for better performance
-    const history = await prisma.orderHistory.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      select: {
-        afterState: true,
-        createdAt: true,
-      },
+    // ⚡ FETCH WITH RETRY LOGIC
+    const history = await executeWithRetry(async () => {
+      return await prisma.orderHistory.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        select: {
+          afterState: true,
+          createdAt: true,
+        },
+      });
     });
 
     // ⚡ OPTIMIZED: Use Map for O(1) lookup instead of object keys iteration
