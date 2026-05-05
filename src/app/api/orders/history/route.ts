@@ -206,19 +206,38 @@ export async function GET(req: NextRequest) {
       );
 
     // Hide history for orders that are currently soft-deleted in Order table.
-    const orderIds = finalHistory.map((item) => item.orderId).filter(Boolean);
+    // Extract actual order IDs from history (handle BULK-* prefix)
+    const actualOrderIds = new Set<string>();
     const objectIdPattern = /^[a-fA-F0-9]{24}$/;
-    const orderDocIds = orderIds.filter((id) => objectIdPattern.test(id));
+
+    finalHistory.forEach((item) => {
+      // Extract real order ID from BULK-{id} or use as-is
+      const realOrderId = item.orderId.startsWith("BULK-")
+        ? item.orderId.substring(5) // Remove "BULK-" prefix
+        : item.orderId;
+      actualOrderIds.add(realOrderId);
+
+      // Also add any additional order IDs from history snapshots
+      item.history.forEach((snapshot: any) => {
+        const afterStateOrderId = snapshot.afterState?.orderId;
+        if (afterStateOrderId) actualOrderIds.add(afterStateOrderId);
+        const afterStateId = snapshot.afterState?.id;
+        if (afterStateId) actualOrderIds.add(afterStateId);
+      });
+    });
+
+    const orderIdArray = Array.from(actualOrderIds).filter(Boolean);
+    const orderDocIds = orderIdArray.filter((id) => objectIdPattern.test(id));
     let deletedOrderIds = new Set<string>();
     let deletedOrderDocIds = new Set<string>();
 
-    if (orderIds.length > 0) {
+    if (orderIdArray.length > 0) {
       const deletedOrders = await executeWithRetry(async () => {
         return await prisma.order.findMany({
           where: {
             deleted: true,
             OR: [
-              { orderId: { in: orderIds } },
+              { orderId: { in: orderIdArray } },
               ...(orderDocIds.length > 0 ? [{ id: { in: orderDocIds } }] : []),
             ],
           },
@@ -239,9 +258,15 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const visibleHistory = finalHistory.filter(
-      (item) => !deletedOrderIds.has(item.orderId) && !deletedOrderDocIds.has(item.orderId)
-    );
+    const visibleHistory = finalHistory.filter((item) => {
+      // Extract real order ID from BULK-{id} prefix for comparison
+      const realOrderId = item.orderId.startsWith("BULK-")
+        ? item.orderId.substring(5)
+        : item.orderId;
+
+      // Exclude if deleted in Order table
+      return !deletedOrderIds.has(realOrderId) && !deletedOrderDocIds.has(realOrderId);
+    });
 
     return NextResponse.json(
       {
