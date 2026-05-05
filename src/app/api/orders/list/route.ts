@@ -42,6 +42,14 @@ function toJsonSafe(value: any) {
 	return JSON.parse(JSON.stringify(value));
 }
 
+function formatInvoiceNumber(bulkOrderId: string) {
+	return bulkOrderId.startsWith("BULK-") ? bulkOrderId.slice(5) : bulkOrderId;
+}
+
+function formatShortOrderId(orderId: string) {
+	return orderId.replace(/^(DYVO-?)0+/, "$1");
+}
+
 async function recordOrderHistory(entry: {
 	orderId: string;
 	userId?: string | null;
@@ -170,7 +178,7 @@ export async function PATCH(req: NextRequest) {
 			});
 			let maxOrderNum = 0;
 			const reservedOrderIds = new Set<string>();
-			const updatedOrders: { id: string, orderId: string, individualOrderId?: string }[] = [];
+			const updatedOrders: { id: string, orderId: string, invoiceNumber: string, individualOrderId?: string }[] = [];
 			for (const item of allExistingOrderIds) {
 				if (!item.orderId) continue;
 				reservedOrderIds.add(item.orderId);
@@ -278,7 +286,8 @@ export async function PATCH(req: NextRequest) {
 					});
 					updatedOrders.push({
 						id: order.id,
-						orderId: sharedBulkId,
+						orderId: formatShortOrderId(generatedOrderId || order.orderId || order.id),
+						invoiceNumber: formatInvoiceNumber(sharedBulkId),
 						individualOrderId: generatedOrderId || order.orderId || "",
 					});
 				}
@@ -317,7 +326,7 @@ export async function PATCH(req: NextRequest) {
 				return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 			}
 
-			const updatedOrders: { id: string, orderId: string, individualOrderId?: string }[] = [];
+			const updatedOrders: { id: string, orderId: string, invoiceNumber: string, individualOrderId?: string }[] = [];
 			for (const orderId of data.orderIds) {
 				const orderIdStr = String(orderId);
 				const order = await resolveOrderByKey(orderIdStr);
@@ -373,7 +382,8 @@ export async function PATCH(req: NextRequest) {
 					});
 					updatedOrders.push({
 						id: order.id,
-						orderId: sharedBulkId,
+						orderId: formatShortOrderId(order.orderId || order.id),
+						invoiceNumber: formatInvoiceNumber(sharedBulkId),
 						individualOrderId: order.orderId || "",
 					});
 				}

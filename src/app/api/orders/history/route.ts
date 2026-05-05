@@ -24,22 +24,58 @@ async function executeWithRetry<T>(
       return await fn();
     } catch (error: any) {
       const isLastAttempt = attempt === maxRetries - 1;
-      const isConnectionError = 
-        error?.code === 'P2010' || 
+      const isConnectionError =
+        error?.code === 'P2010' ||
         error?.message?.includes('connection') ||
         error?.message?.includes('I/O error');
-      
+
       if (isConnectionError && !isLastAttempt) {
         const delay = delayMs * Math.pow(2, attempt); // exponential backoff
         console.warn(`Connection error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
-      
+
       throw error;
     }
   }
   throw new Error('Max retries exceeded');
+}
+
+function addString(set: Set<string>, value: unknown) {
+  if (typeof value !== "string") return;
+  const trimmed = value.trim();
+  if (trimmed) set.add(trimmed);
+}
+
+async function resolveBusinessIdentifiers(decodedId: string): Promise<string[]> {
+  const identifiers = new Set<string>();
+  addString(identifiers, decodedId);
+
+  const [businessRecord, userRecord] = await executeWithRetry(async () => {
+    return await Promise.all([
+      prisma.business.findUnique({ where: { id: decodedId } }).catch(() => null),
+      prisma.user.findUnique({ where: { id: decodedId } }).catch(() => null),
+    ]);
+  });
+
+  if (businessRecord) {
+    addString(identifiers, businessRecord.id);
+    addString(identifiers, businessRecord.dealerName);
+    addString(identifiers, businessRecord.contactNumber);
+    addString(identifiers, businessRecord.email);
+    addString(identifiers, businessRecord.referralCode);
+  }
+
+  if (userRecord && userRecord.role === "BUSINESS") {
+    addString(identifiers, userRecord.id);
+    addString(identifiers, userRecord.username);
+    addString(identifiers, userRecord.phone);
+    addString(identifiers, userRecord.email);
+    addString(identifiers, userRecord.gstName);
+  }
+
+  return Array.from(identifiers);
 }
 
 export async function OPTIONS() {
@@ -88,7 +124,7 @@ export async function GET(req: NextRequest) {
     const isBusiness = role === "BUSINESS";
 
     let targetUserId: string | null = null;
-    let targetBusinessId: string | null = null;
+    let targetBusinessIdentifiers: string[] | null = null;
 
     if (isAdmin) {
       targetUserId = requestedUserId;
@@ -107,7 +143,7 @@ export async function GET(req: NextRequest) {
           { status: 403, headers: corsHeaders }
         );
       }
-      targetBusinessId = decoded.id ?? null;
+      targetBusinessIdentifiers = await resolveBusinessIdentifiers(decoded.id);
     } else {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -118,12 +154,20 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = {};
 
     // Scope by owned order keys instead of OrderHistory.userId (which may be null/mismatched).
-    if (targetUserId || targetBusinessId) {
+    if (targetUserId || targetBusinessIdentifiers) {
       const ownedOrders = await executeWithRetry(async () => {
         return await prisma.order.findMany({
           where: {
             deleted: false,
-            ...(targetUserId ? { userId: targetUserId } : { businessId: targetBusinessId }),
+            ...(targetUserId
+              ? { userId: targetUserId }
+              : {
+                  OR: targetBusinessIdentifiers && targetBusinessIdentifiers.length > 0
+                    ? [
+                        { businessId: { in: targetBusinessIdentifiers } },
+                      ]
+                    : [{ businessId: decoded.id }],
+                }),
           },
           select: { id: true, orderId: true },
         });
@@ -160,8 +204,8 @@ export async function GET(req: NextRequest) {
 
     // If the requested order is soft-deleted, do not return history.
     if (orderId) {
-      const explicitOrder = await executeWithRetry(async () => {
-        return await prisma.order.findFirst({
+      const explicitOrders = await executeWithRetry(async () => {
+        return await prisma.order.findMany({
           where: {
             OR: [{ id: orderId }, { orderId: orderId }],
           },
@@ -169,7 +213,8 @@ export async function GET(req: NextRequest) {
         });
       });
 
-      if (explicitOrder?.deleted) {
+      // If records exist and ALL of them are soft-deleted, do not return history
+      if (explicitOrders.length > 0 && explicitOrders.every(o => o.deleted)) {
         return NextResponse.json(
           { count: 0, history: [] },
           { headers: corsHeaders }
@@ -240,7 +285,7 @@ export async function GET(req: NextRequest) {
             new Date(a.createdAt).getTime()
         ),
       }))
-      .sort((a, b) => 
+      .sort((a, b) =>
         new Date(b.history[0]?.createdAt).getTime() -
         new Date(a.history[0]?.createdAt).getTime()
       );
@@ -272,30 +317,37 @@ export async function GET(req: NextRequest) {
     let deletedOrderDocIds = new Set<string>();
 
     if (orderIdArray.length > 0) {
-      const deletedOrders = await executeWithRetry(async () => {
+      const allOrders = await executeWithRetry(async () => {
         return await prisma.order.findMany({
           where: {
-            deleted: true,
             OR: [
               { orderId: { in: orderIdArray } },
               ...(orderDocIds.length > 0 ? [{ id: { in: orderDocIds } }] : []),
             ],
           },
-          select: { id: true, orderId: true },
+          select: { id: true, orderId: true, deleted: true },
         });
       });
 
-      deletedOrderIds = new Set(
-        deletedOrders
-          .map((order) => order.orderId)
-          .filter((id): id is string => Boolean(id))
-      );
+      const orderStatusMap = new Map<string, boolean>(); // true if active (deleted: false)
+      
+      for (const order of allOrders) {
+        if (order.orderId) {
+          if (!order.deleted) orderStatusMap.set(order.orderId, true);
+          else if (!orderStatusMap.has(order.orderId)) orderStatusMap.set(order.orderId, false);
+        }
+        if (order.id) {
+          if (!order.deleted) orderStatusMap.set(order.id, true);
+          else if (!orderStatusMap.has(order.id)) orderStatusMap.set(order.id, false);
+        }
+      }
 
-      deletedOrderDocIds = new Set(
-        deletedOrders
-          .map((order) => order.id)
-          .filter((id): id is string => Boolean(id))
-      );
+      for (const [id, isActive] of orderStatusMap.entries()) {
+        if (!isActive) {
+           deletedOrderIds.add(id);
+           deletedOrderDocIds.add(id);
+        }
+      }
     }
 
     const visibleHistory = finalHistory.filter((item) => {
