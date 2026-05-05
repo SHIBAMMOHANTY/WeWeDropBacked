@@ -149,12 +149,18 @@ export async function PATCH(req: NextRequest) {
 		// Bulk update with individual amounts
 		if (Array.isArray(data.orders) && data.orders.length > 0) {
 			const topPaymentId = data.paymentId ?? null;
+			const clientBulkId =
+				typeof data.bulkOrderId === "string" && data.bulkOrderId.trim().length > 0
+					? data.bulkOrderId.trim()
+					: typeof data.orderId === "string" && data.orderId.trim().length > 0
+						? data.orderId.trim()
+						: null;
 			const sharedBulkId =
-				typeof data.orderId === "string" && data.orderId.trim().length > 0
-					? data.orderId.trim()
+				clientBulkId
+					? clientBulkId
 					: `BULK-${Date.now()}`;
 
-			const updatedOrders: { id: string, orderId: string }[] = [];
+			const updatedOrders: { id: string, orderId: string, individualOrderId?: string }[] = [];
 			// Find max numeric DYVO id robustly (string sort can be incorrect)
 			const allExistingOrderIds = await prisma.order.findMany({
 				where: { orderId: { not: null } },
@@ -263,7 +269,11 @@ export async function PATCH(req: NextRequest) {
 						afterState: { ...(await prisma.order.findUnique({ where: { id: order.id } })) },
 						batchId: sharedBulkId,
 					});
-					updatedOrders.push({ id: order.id, orderId: generatedOrderId || order.orderId || "" });
+					updatedOrders.push({
+						id: order.id,
+						orderId: sharedBulkId,
+						individualOrderId: generatedOrderId || order.orderId || "",
+					});
 				}
 			}
 			const payload = { status: "success", bulkOrderId: sharedBulkId, updatedOrders };
@@ -271,9 +281,15 @@ export async function PATCH(req: NextRequest) {
 			return NextResponse.json(payload, { headers: corsHeaders });
 		} else if (data.orderIds && Array.isArray(data.orderIds)) {
 			// Bulk update for marking orders as paid (legacy)
+			const clientBulkId =
+				typeof data.bulkOrderId === "string" && data.bulkOrderId.trim().length > 0
+					? data.bulkOrderId.trim()
+					: typeof data.orderId === "string" && data.orderId.trim().length > 0
+						? data.orderId.trim()
+						: null;
 			const sharedBulkId =
-				typeof data.orderId === "string" && data.orderId.trim().length > 0
-					? data.orderId.trim()
+				clientBulkId
+					? clientBulkId
 					: `BULK-${Date.now()}`;
 			const paymentId = data.paymentId;
 			const amount = data.amount;
@@ -290,7 +306,7 @@ export async function PATCH(req: NextRequest) {
 				return NextResponse.json(payload, { status: 400, headers: corsHeaders });
 			}
 
-			const updatedOrders = [];
+			const updatedOrders: { id: string, orderId: string, individualOrderId?: string }[] = [];
 			for (const orderId of data.orderIds) {
 				const orderIdStr = String(orderId);
 				const order = await resolveOrderByKey(orderIdStr);
@@ -344,7 +360,11 @@ export async function PATCH(req: NextRequest) {
 						afterState: { ...(await prisma.order.findUnique({ where: { id: order.id } })) },
 						batchId: sharedBulkId,
 					});
-					updatedOrders.push(order.id);
+					updatedOrders.push({
+						id: order.id,
+						orderId: sharedBulkId,
+						individualOrderId: order.orderId || "",
+					});
 				}
 			}
 			const payload = { status: "success", bulkOrderId: sharedBulkId, updatedOrders };
