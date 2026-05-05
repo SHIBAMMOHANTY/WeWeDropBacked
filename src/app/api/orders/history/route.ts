@@ -86,19 +86,56 @@ export async function GET(req: NextRequest) {
     const isAdmin = role === "SUPER_ADMIN";
     const shouldRestrictByUser = role === "USER" || role === "DELIVERY_AGENT" || !role;
 
-    let userId: string | null = null;
+    let targetUserId: string | null = null;
     if (isAdmin) {
-      userId = requestedUserId;
+      targetUserId = requestedUserId;
     } else if (shouldRestrictByUser) {
-      userId = decoded.id ?? null;
+      targetUserId = decoded.id ?? null;
     } else {
       // BUSINESS and other privileged roles are not forced to customer userId scope.
-      userId = requestedUserId;
+      targetUserId = requestedUserId;
     }
 
     const where: Record<string, unknown> = {};
-    if (orderId) where.orderId = orderId;
-    if (userId) where.userId = userId;
+
+    // Scope by owned order keys instead of OrderHistory.userId (which may be null/mismatched).
+    if (targetUserId) {
+      const ownedOrders = await executeWithRetry(async () => {
+        return await prisma.order.findMany({
+          where: { userId: targetUserId },
+          select: { id: true, orderId: true },
+        });
+      });
+
+      const ownedOrderKeys = new Set<string>();
+      for (const order of ownedOrders) {
+        ownedOrderKeys.add(order.id);
+        if (order.orderId) ownedOrderKeys.add(order.orderId);
+      }
+
+      if (ownedOrderKeys.size === 0) {
+        return NextResponse.json(
+          { count: 0, history: [] },
+          { headers: corsHeaders }
+        );
+      }
+
+      let keysToUse = Array.from(ownedOrderKeys);
+      if (orderId) {
+        if (!ownedOrderKeys.has(orderId)) {
+          return NextResponse.json(
+            { count: 0, history: [] },
+            { headers: corsHeaders }
+          );
+        }
+        keysToUse = [orderId];
+      }
+
+      where.orderId = { in: keysToUse };
+    } else if (orderId) {
+      where.orderId = orderId;
+    }
+
     if (sourceType) where.sourceType = sourceType;
     if (sourceRoute) where.sourceRoute = sourceRoute;
 
@@ -109,6 +146,7 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "desc" },
         take: limit,
         select: {
+          orderId: true,
           afterState: true,
           createdAt: true,
         },
@@ -116,20 +154,24 @@ export async function GET(req: NextRequest) {
     });
 
     // ⚡ OPTIMIZED: Use Map for O(1) lookup instead of object keys iteration
-    const groupedHistory = new Map<string, any[]>();
+    const groupedHistory = new Map<string, { orderId: string; history: any[] }>();
 
     history.forEach((entry) => {
       const afterState = entry.afterState as any;
-      const realOrderId = afterState?.orderId;
+      const groupKey = afterState?.orderId ?? afterState?.id ?? entry.orderId;
+      const displayOrderId = afterState?.orderId ?? groupKey;
       const isDeleted = afterState?.deleted === true;
 
-      if (!realOrderId || isDeleted) return;
+      if (!groupKey || isDeleted) return;
 
-      if (!groupedHistory.has(realOrderId)) {
-        groupedHistory.set(realOrderId, []);
+      if (!groupedHistory.has(groupKey)) {
+        groupedHistory.set(groupKey, {
+          orderId: String(displayOrderId),
+          history: [],
+        });
       }
 
-      groupedHistory.get(realOrderId)!.push({
+      groupedHistory.get(groupKey)!.history.push({
         afterState: entry.afterState,
         createdAt: entry.createdAt,
       });
@@ -137,9 +179,9 @@ export async function GET(req: NextRequest) {
 
     // ⚡ OPTIMIZED: Single sort before mapping + Array.from() for faster iteration
     const finalHistory = Array.from(groupedHistory.entries())
-      .map(([orderId, entries]) => ({
-        orderId,
-        history: entries.sort(
+      .map(([, group]) => ({
+        orderId: group.orderId,
+        history: group.history.sort(
           (a, b) =>
             new Date(b.createdAt).getTime() -
             new Date(a.createdAt).getTime()
@@ -151,17 +193,23 @@ export async function GET(req: NextRequest) {
       );
 
     // Hide history for orders that are currently soft-deleted in Order table.
-    const orderIds = finalHistory.map((item) => item.orderId);
+    const orderIds = finalHistory.map((item) => item.orderId).filter(Boolean);
+    const objectIdPattern = /^[a-fA-F0-9]{24}$/;
+    const orderDocIds = orderIds.filter((id) => objectIdPattern.test(id));
     let deletedOrderIds = new Set<string>();
+    let deletedOrderDocIds = new Set<string>();
 
     if (orderIds.length > 0) {
       const deletedOrders = await executeWithRetry(async () => {
         return await prisma.order.findMany({
           where: {
-            orderId: { in: orderIds },
             deleted: true,
+            OR: [
+              { orderId: { in: orderIds } },
+              ...(orderDocIds.length > 0 ? [{ id: { in: orderDocIds } }] : []),
+            ],
           },
-          select: { orderId: true },
+          select: { id: true, orderId: true },
         });
       });
 
@@ -170,10 +218,16 @@ export async function GET(req: NextRequest) {
           .map((order) => order.orderId)
           .filter((id): id is string => Boolean(id))
       );
+
+      deletedOrderDocIds = new Set(
+        deletedOrders
+          .map((order) => order.id)
+          .filter((id): id is string => Boolean(id))
+      );
     }
 
     const visibleHistory = finalHistory.filter(
-      (item) => !deletedOrderIds.has(item.orderId)
+      (item) => !deletedOrderIds.has(item.orderId) && !deletedOrderDocIds.has(item.orderId)
     );
 
     return NextResponse.json(
