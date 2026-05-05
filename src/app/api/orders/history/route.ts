@@ -36,12 +36,15 @@ export async function GET(req: NextRequest) {
 			take: limit,
 		});
 
-		const compactHistory = history.map((entry) => ({
-			id: entry.id,
+		const seenOrderIds = new Set<string>();
+		const compactHistory = history.filter((entry) => {
+			if (seenOrderIds.has(entry.orderId)) {
+				return false;
+			}
+			seenOrderIds.add(entry.orderId);
+			return true;
+		}).map((entry) => ({
 			orderId: entry.orderId,
-			actionType: entry.actionType,
-			sourceType: entry.sourceType,
-			sourceRoute: entry.sourceRoute,
 			afterState: entry.afterState,
 			createdAt: entry.createdAt,
 		}));
