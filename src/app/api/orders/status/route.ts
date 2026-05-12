@@ -11,6 +11,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
+// Helper to resolve business identifiers (ID, dealerName, contactNumber, email, referralCode)
+async function resolveBusinessIdentifiers(decodedId: string): Promise<string[]> {
+  const identifiers = new Set<string>();
+  identifiers.add(decodedId);
+
+  try {
+    const [businessRecord, userRecord] = await Promise.all([
+      prisma.business.findUnique({ where: { id: decodedId } }).catch(() => null),
+      prisma.user.findUnique({ where: { id: decodedId } }).catch(() => null),
+    ]);
+
+    if (businessRecord) {
+      if (businessRecord.id) identifiers.add(businessRecord.id);
+      if (businessRecord.dealerName) identifiers.add(businessRecord.dealerName);
+      if (businessRecord.contactNumber) identifiers.add(businessRecord.contactNumber);
+      if (businessRecord.email) identifiers.add(businessRecord.email);
+      if (businessRecord.referralCode) identifiers.add(businessRecord.referralCode);
+    }
+
+    if (userRecord && userRecord.role === "BUSINESS") {
+      if (userRecord.id) identifiers.add(userRecord.id);
+      if (userRecord.username) identifiers.add(userRecord.username);
+      if (userRecord.phone) identifiers.add(userRecord.phone);
+      if (userRecord.email) identifiers.add(userRecord.email);
+    }
+  } catch (error) {
+    console.error("Error resolving business identifiers:", error);
+  }
+
+  return Array.from(identifiers);
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
@@ -33,13 +65,26 @@ export async function GET(req: NextRequest) {
 
     console.log("User:", user);
 
+    const role = (user.role ?? "").toUpperCase();
     let orders;
-    if (user.role === "SUPER_ADMIN") {
+
+    if (role === "SUPER_ADMIN") {
       // Admin: return all orders
       console.log("Fetching all orders for admin");
       orders = await prisma.order.findMany({ orderBy: { createdAt: "desc" } });
+    } else if (role === "BUSINESS") {
+      // Business: return only their orders (matched by businessId)
+      console.log("Fetching orders for business:", user.id);
+      const businessIdentifiers = await resolveBusinessIdentifiers(user.id);
+      console.log("Business identifiers:", businessIdentifiers);
+      orders = await prisma.order.findMany({
+        where: {
+          businessId: { in: businessIdentifiers },
+        },
+        orderBy: { createdAt: "desc" },
+      });
     } else {
-      // User: return only their orders
+      // User/DeliveryAgent: return only their orders
       console.log("Fetching orders for user:", user.id);
       orders = await prisma.order.findMany({
         where: { userId: user.id },
