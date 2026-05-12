@@ -4,40 +4,9 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
-import multer from "multer";
 import { parse as csvParse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
-import fs from "fs";
 import path from "path";
-
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const uploadDir = path.join(process.cwd(), "public/uploads");
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
-    },
-  }),
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = ["text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "application/json"];
-    const allowedExtensions = [".csv", ".xlsx", ".xls", ".json"];
-    const fileExtension = path.extname(file.originalname).toLowerCase();
-
-    if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Invalid file type. Only CSV, Excel, and JSON files are allowed."));
-    }
-  },
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
-});
 
 // CORS headers
 const corsHeaders = {
@@ -168,20 +137,20 @@ function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors
 }
 
 // Helper function to parse file based on extension
-async function parseFile(filePath: string, fileExtension: string): Promise<any[]> {
+async function parseFile(fileBuffer: Buffer, fileExtension: string): Promise<any[]> {
   if (fileExtension === ".csv") {
-    const fileContent = fs.readFileSync(filePath, "utf-8");
+    const fileContent = fileBuffer.toString("utf-8");
     return csvParse(fileContent, {
       columns: true,
       skip_empty_lines: true,
     });
   } else if (fileExtension === ".xlsx" || fileExtension === ".xls") {
-    const workbook = XLSX.readFile(filePath);
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     return XLSX.utils.sheet_to_json(worksheet);
   } else if (fileExtension === ".json") {
-    const fileContent = fs.readFileSync(filePath, "utf-8");
+    const fileContent = fileBuffer.toString("utf-8");
     return JSON.parse(fileContent);
   }
   throw new Error("Unsupported file format");
@@ -247,29 +216,19 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // Save file temporarily
-    const uploadDir = path.join(process.cwd(), "public/uploads");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
-    const tempFilePath = path.join(uploadDir, `${Date.now()}-${file.name}`);
     const buffer = await file.arrayBuffer();
-    fs.writeFileSync(tempFilePath, Buffer.from(buffer));
 
     // Parse file
     let rows: any[] = [];
     try {
-      rows = await parseFile(tempFilePath, fileExtension);
+      rows = await parseFile(Buffer.from(buffer), fileExtension);
     } catch (parseError: any) {
-      fs.unlinkSync(tempFilePath);
       const response = NextResponse.json({ error: `File parsing error: ${parseError.message}` }, { status: 400 });
       response.headers.set("Access-Control-Allow-Origin", "*");
       return response;
     }
 
     if (!Array.isArray(rows) || rows.length === 0) {
-      fs.unlinkSync(tempFilePath);
       const response = NextResponse.json({ error: "File is empty or contains no valid data" }, { status: 400 });
       response.headers.set("Access-Control-Allow-Origin", "*");
       return response;
@@ -371,9 +330,6 @@ export async function POST(req: NextRequest) {
         });
       }
     }
-
-    // Clean up temp file
-    fs.unlinkSync(tempFilePath);
 
     result.summary = `Successfully created ${result.successCount} orders. ${result.failureCount} orders failed to create.`;
 

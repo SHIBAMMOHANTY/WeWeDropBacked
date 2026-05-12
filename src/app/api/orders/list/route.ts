@@ -691,20 +691,20 @@ function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors
 }
 
 // Helper function to parse file based on extension
-async function parseFile(filePath: string, fileExtension: string): Promise<any[]> {
+async function parseFile(fileBuffer: Buffer, fileExtension: string): Promise<any[]> {
 	if (fileExtension === ".csv") {
-		const fileContent = fs.readFileSync(filePath, "utf-8");
+		const fileContent = fileBuffer.toString("utf-8");
 		return csvParse(fileContent, {
 			columns: true,
 			skip_empty_lines: true,
 		});
 	} else if (fileExtension === ".xlsx" || fileExtension === ".xls") {
-		const workbook = XLSX.readFile(filePath);
+		const workbook = XLSX.read(fileBuffer, { type: "buffer" });
 		const sheetName = workbook.SheetNames[0];
 		const worksheet = workbook.Sheets[sheetName];
 		return XLSX.utils.sheet_to_json(worksheet);
 	} else if (fileExtension === ".json") {
-		const fileContent = fs.readFileSync(filePath, "utf-8");
+		const fileContent = fileBuffer.toString("utf-8");
 		return JSON.parse(fileContent);
 	}
 	throw new Error("Unsupported file format");
@@ -755,27 +755,18 @@ export async function POST(req: NextRequest) {
 			);
 		}
 
-		// Save file temporarily
-		const uploadDir = path.join(process.cwd(), "public/uploads");
-		if (!fs.existsSync(uploadDir)) {
-			fs.mkdirSync(uploadDir, { recursive: true });
-		}
-
-		const tempFilePath = path.join(uploadDir, `${Date.now()}-${file.name}`);
 		const buffer = await file.arrayBuffer();
-		fs.writeFileSync(tempFilePath, Buffer.from(buffer));
+		const batchId = `${Date.now()}-${file.name}`;
 
 		// Parse file
 		let rows: any[] = [];
 		try {
-			rows = await parseFile(tempFilePath, fileExtension);
+			rows = await parseFile(Buffer.from(buffer), fileExtension);
 		} catch (parseError: any) {
-			fs.unlinkSync(tempFilePath);
 			return NextResponse.json({ error: `File parsing error: ${parseError.message}` }, { status: 400, headers: corsHeaders });
 		}
 
 		if (!Array.isArray(rows) || rows.length === 0) {
-			fs.unlinkSync(tempFilePath);
 			return NextResponse.json({ error: "File is empty or contains no valid data" }, { status: 400, headers: corsHeaders });
 		}
 
@@ -872,7 +863,7 @@ export async function POST(req: NextRequest) {
 					requestPayload: rows[i],
 					appliedPayload: data,
 					afterState: newOrder,
-					batchId: tempFilePath,
+					batchId,
 				});
 
 				result.successCount++;
@@ -886,9 +877,6 @@ export async function POST(req: NextRequest) {
 				});
 			}
 		}
-
-		// Clean up temp file
-		fs.unlinkSync(tempFilePath);
 
 		result.summary = `Successfully created ${result.successCount} orders. ${result.failureCount} orders failed to create.`;
 
