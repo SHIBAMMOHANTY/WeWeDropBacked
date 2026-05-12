@@ -79,6 +79,32 @@ async function recordOrderHistory(entry: {
 	});
 }
 
+async function getLatestPaymentMeta(orderId: string) {
+	const payment = await prisma.payment.findFirst({
+		where: { orderId },
+		select: { createdAt: true, paymentDate: true, paymentStatus: true },
+		orderBy: { createdAt: "desc" },
+	});
+
+	return {
+		paymentDate: payment?.paymentDate ?? payment?.createdAt ?? null,
+		paymentStatus: payment?.paymentStatus ?? null,
+	};
+}
+
+function mapPaymentStatus(status: unknown) {
+	switch (Number(status)) {
+		case -1:
+			return 'REJECTED';
+		case 0:
+			return 'PENDING';
+		case 1:
+			return 'VERIFY';
+		default:
+			return 'UNKNOWN';
+	}
+}
+
 // GET /api/orders/list?userId=123
 export async function OPTIONS(req: NextRequest) {
 	return new NextResponse(null, { status: 200, headers: corsHeaders });
@@ -95,6 +121,30 @@ export async function GET(req: NextRequest) {
 			where: { userId: userId, deleted: false },
 			orderBy: { id: "desc" },
 		});
+
+		const orderIds = orders.map(order => order.id);
+		const payments = orderIds.length > 0
+			? await prisma.payment.findMany({
+				where: { orderId: { in: orderIds } },
+				select: {
+					orderId: true,
+					createdAt: true,
+					paymentDate: true,
+					paymentStatus: true,
+				},
+				orderBy: { createdAt: "desc" },
+			})
+			: [];
+
+		const paymentMetaMap = new Map<string, { paymentDate: Date | null; paymentStatus: number | null }>();
+		for (const payment of payments) {
+			if (!paymentMetaMap.has(payment.orderId)) {
+				paymentMetaMap.set(payment.orderId, {
+					paymentDate: payment.paymentDate ?? payment.createdAt,
+					paymentStatus: payment.paymentStatus ?? null,
+				});
+			}
+		}
 
 		const ordersWithStatus = orders.map(order => ({
 			id: order.id,
@@ -128,6 +178,9 @@ export async function GET(req: NextRequest) {
 			amount: order.amount,
 			orderStatus: order.orderStatus,
 			paymentId: order.paymentId,
+			paymentDate: paymentMetaMap.get(order.id)?.paymentDate ?? null,
+			paymentStatus: paymentMetaMap.get(order.id)?.paymentStatus ?? null,
+			paymentStatusLabel: mapPaymentStatus(paymentMetaMap.get(order.id)?.paymentStatus ?? null),
 			expireDate: order.expireDate,
 			createdAt: order.createdAt,
 			deleted: order.deleted,
@@ -268,7 +321,9 @@ export async function PATCH(req: NextRequest) {
 							userId: order.userId,
 							orderId: order.id,
 							amount: parseFloat(String(amount)),
-							status: "PAID",
+							status: "PENDING",
+							paymentStatus: 0,
+							paymentDate: new Date(),
 							razorpayId: itemPaymentId || null,
 						}
 					});
@@ -364,7 +419,9 @@ export async function PATCH(req: NextRequest) {
 							userId: order.userId,
 							orderId: order.id,
 							amount: parseFloat(String(amount)),
-							status: "PAID",
+							status: "PENDING",
+							paymentStatus: 0,
+							paymentDate: new Date(),
 							razorpayId: null,
 						}
 					});
@@ -453,7 +510,9 @@ export async function PATCH(req: NextRequest) {
 						userId: updatedOrder.userId,
 						orderId: updatedOrder.id,
 						amount: parseFloat(String(amount)),
-						status: "PAID",
+						status: "PENDING",
+						paymentStatus: 0,
+						paymentDate: new Date(),
 						razorpayId: null,
 					}
 				});
@@ -469,7 +528,11 @@ export async function PATCH(req: NextRequest) {
 					afterState: updatedOrder,
 				});
 
-				const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
+				const orderWithStatus = {
+					...updatedOrder,
+					status: mapOrderStatus(updatedOrder.orderStatus),
+					...(await getLatestPaymentMeta(updatedOrder.id)),
+				};
 				const payload = { status: "success", order: orderWithStatus };
 				console.log("PATCH response payload:", payload);
 				return NextResponse.json(payload, { headers: corsHeaders });
@@ -534,7 +597,11 @@ export async function PATCH(req: NextRequest) {
 				afterState: updatedOrder,
 			});
 
-			const orderWithStatus = { ...updatedOrder, status: mapOrderStatus(updatedOrder.orderStatus) };
+			const orderWithStatus = {
+				...updatedOrder,
+				status: mapOrderStatus(updatedOrder.orderStatus),
+				...(await getLatestPaymentMeta(updatedOrder.id)),
+			};
 			const payload = { status: "success", order: orderWithStatus, orderId: generatedOrderId };
 			console.log("PATCH response payload:", payload);
 			return NextResponse.json(payload, { headers: corsHeaders });

@@ -22,6 +22,30 @@ export async function GET(req: NextRequest) {
       where: { deleted: false },
       orderBy: { id: "desc" }
     });
+
+    const orderIds = orders.map(order => order.id);
+    const payments = orderIds.length > 0
+      ? await prisma.payment.findMany({
+          where: { orderId: { in: orderIds } },
+          select: {
+            orderId: true,
+            createdAt: true,
+            paymentDate: true,
+            paymentStatus: true,
+          },
+          orderBy: { createdAt: "desc" }
+        })
+      : [];
+
+    const paymentMetaMap = new Map<string, { paymentDate: Date | null; paymentStatus: number | null }>();
+    for (const payment of payments) {
+      if (!paymentMetaMap.has(payment.orderId)) {
+        paymentMetaMap.set(payment.orderId, {
+          paymentDate: payment.paymentDate ?? payment.createdAt,
+          paymentStatus: payment.paymentStatus ?? null,
+        });
+      }
+    }
     
     // Fetch all businesses and users
     const businesses = await prisma.business.findMany();
@@ -90,6 +114,8 @@ export async function GET(req: NextRequest) {
         amount: order.amount,
         orderStatus: order.orderStatus,
         paymentId: order.paymentId,
+        paymentDate: paymentMetaMap.get(order.id)?.paymentDate ?? null,
+        paymentStatus: paymentMetaMap.get(order.id)?.paymentStatus ?? null,
         expireDate: order.expireDate,
         createdAt: order.createdAt,
         deleted: order.deleted,
