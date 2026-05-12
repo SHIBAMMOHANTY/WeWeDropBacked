@@ -7,22 +7,32 @@ import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { Role } from '@prisma/client';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { phone, username, password, confirmPassword, role, email, gstName, gstNumber, gstAddress, gstCertificate } = body;
     if (!phone || !username || !password || !confirmPassword) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: corsHeaders });
     }
     if (password !== confirmPassword) {
-      return NextResponse.json({ error: 'Passwords do not match' }, { status: 400 });
+      return NextResponse.json({ error: 'Passwords do not match' }, { status: 400, headers: corsHeaders });
     }
     // Check uniqueness
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ phone }, { username }] },
     });
     if (existingUser) {
-      return NextResponse.json({ error: 'Phone or username already exists' }, { status: 409 });
+      return NextResponse.json({ error: 'Phone or username already exists' }, { status: 409, headers: corsHeaders });
     }
     // Hash password
     const hashed = await bcrypt.hash(password, 10);
@@ -62,8 +72,9 @@ export async function POST(req: Request) {
     const token = signToken({ id: user.id, role: user.role });
     // Don't return password
     const { password: _, ...userSafe } = user;
-    return NextResponse.json({ user: userSafe, token }, { status: 201 });
+    return NextResponse.json({ user: userSafe, token }, { status: 201, headers: corsHeaders });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to register' }, { status: 500 });
+    console.error('User registration error:', error);
+    return NextResponse.json({ error: error.message || 'Failed to register' }, { status: 500, headers: corsHeaders });
   }
 }

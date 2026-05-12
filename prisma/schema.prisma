@@ -214,7 +214,7 @@ model Payment {
   amount      Float
   status      String   // PENDING | VERIFY | REJECTED | PAID | FAILED
   paymentStatus Int     @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
-  paymentDate DateTime  @default(now())
+  paymentDate DateTime?  @default(now())
   razorpayId  String?
 
   createdAt   DateTime @default(now())

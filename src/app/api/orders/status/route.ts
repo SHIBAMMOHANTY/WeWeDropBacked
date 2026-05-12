@@ -5,20 +5,30 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
 // GET /api/orders/status
 export async function GET(req: NextRequest) {
   console.log("DATABASE_URL:", process.env.DATABASE_URL);
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Missing or invalid token" }, { status: 401 });
+      return NextResponse.json({ error: "Missing or invalid token" }, { status: 401, headers: corsHeaders });
     }
     const token = authHeader.replace("Bearer ", "");
     let user;
     try {
       user = verifyToken(token); // Should return { id, role, ... }
     } catch (e) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      return NextResponse.json({ error: "Invalid token" }, { status: 401, headers: corsHeaders });
     }
 
     console.log("User:", user);
@@ -56,10 +66,10 @@ export async function GET(req: NextRequest) {
       status: statusMap[order.orderStatus] || 'UNKNOWN'
     }));
 
-    return NextResponse.json(ordersWithStatus);
+    return NextResponse.json(ordersWithStatus, { headers: corsHeaders });
   } catch (error) {
     console.error("Error fetching orders:", error);
-    return NextResponse.json({ error: "Failed to fetch orders", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch orders", details: error instanceof Error ? error.message : String(error) }, { status: 500, headers: corsHeaders });
   }
 }
 
@@ -69,14 +79,14 @@ export async function PATCH(req: NextRequest) {
   const orderId = searchParams.get("orderId");
 
   if (!orderId) {
-    return NextResponse.json({ error: "Missing orderId" }, { status: 400 });
+    return NextResponse.json({ error: "Missing orderId" }, { status: 400, headers: corsHeaders });
   }
 
   try {
     const { status } = await req.json();
 
     if (status === undefined || status === null) {
-      return NextResponse.json({ error: "Missing status" }, { status: 400 });
+      return NextResponse.json({ error: "Missing status" }, { status: 400, headers: corsHeaders });
     }
 
     const statusMap: Record<string, number> = {
@@ -92,12 +102,12 @@ export async function PATCH(req: NextRequest) {
     if (typeof status === 'string') {
       numericStatus = statusMap[status];
       if (numericStatus === undefined) {
-        return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+        return NextResponse.json({ error: "Invalid status" }, { status: 400, headers: corsHeaders });
       }
     } else if (typeof status === 'number') {
       numericStatus = status;
     } else {
-      return NextResponse.json({ error: "Status must be string or number" }, { status: 400 });
+      return NextResponse.json({ error: "Status must be string or number" }, { status: 400, headers: corsHeaders });
     }
 
     const updatedOrder = await prisma.order.update({
@@ -123,9 +133,9 @@ export async function PATCH(req: NextRequest) {
       status: statusMapReverse[updatedOrder.orderStatus] || 'UNKNOWN'
     };
 
-    return NextResponse.json(orderWithStatus);
+    return NextResponse.json(orderWithStatus, { headers: corsHeaders });
   } catch (error) {
     console.error("Error updating order status:", error);
-    return NextResponse.json({ error: "Failed to update order status", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update order status", details: error instanceof Error ? error.message : String(error) }, { status: 500, headers: corsHeaders });
   }
 }

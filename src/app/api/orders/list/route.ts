@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
 		const { searchParams } = new URL(req.url);
 		const userId = searchParams.get("userId");
 		if (!userId) {
-			return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+			return NextResponse.json({ error: "Missing userId" }, { status: 400, headers: corsHeaders });
 		}
 		const orders = await prisma.order.findMany({
 			where: { userId: userId, deleted: false },
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
 		return NextResponse.json(ordersWithStatus, { headers: corsHeaders });
 	} catch (error) {
 		console.error("GET /api/orders/list error:", error);
-		return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500, headers: corsHeaders });
+		return NextResponse.json({ error: "Failed to fetch all orders" }, { status: 500, headers: corsHeaders });
 	}
 }
 
