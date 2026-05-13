@@ -68,6 +68,8 @@ interface ValidatedRow {
 
 const DB_LOOKUP_CHUNK_SIZE = 500;
 const ORDER_INSERT_BATCH_SIZE = 100;
+const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+const MAX_BULK_ROWS = 5000;
 
 function chunkArray<T>(items: T[], chunkSize: number): T[][] {
   const chunks: T[][] = [];
@@ -75,6 +77,15 @@ function chunkArray<T>(items: T[], chunkSize: number): T[][] {
     chunks.push(items.slice(i, i + chunkSize));
   }
   return chunks;
+}
+
+function parseOptionalDate(value?: string): Date | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 // Helper function to validate order data
@@ -109,11 +120,17 @@ function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors
   if (!row.contactNumber) {
     errors.push({ row: rowIndex, field: "contactNumber", message: "contactNumber is required" });
   }
-  if (!row.amount) {
+  if (row.amount === undefined || row.amount === null || row.amount === "") {
     errors.push({ row: rowIndex, field: "amount", message: "amount is required" });
   }
 
   if (errors.length > 0) {
+    return { valid: false, errors };
+  }
+
+  const amount = Number.parseFloat(String(row.amount));
+  if (Number.isNaN(amount)) {
+    errors.push({ row: rowIndex, field: "amount", message: "amount must be a valid number" });
     return { valid: false, errors };
   }
 
@@ -127,7 +144,7 @@ function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors
     serviceDate: row.serviceDate,
     customerName: row.customerName,
     contactNumber: row.contactNumber,
-    amount: parseFloat(row.amount),
+    amount,
     businessId: row.businessId || undefined,
     deliveryAgentId: row.deliveryAgentId || undefined,
     utrScreenshot: row.utrScreenshot || undefined,
@@ -219,6 +236,15 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const response = NextResponse.json(
+        { error: "File is too large. Maximum allowed size is 20MB." },
+        { status: 413 }
+      );
+      response.headers.set("Access-Control-Allow-Origin", "*");
+      return response;
+    }
+
     // Get file extension
     const fileExtension = path.extname(file.name).toLowerCase();
     const allowedExtensions = [".csv", ".xlsx", ".xls", ".json"];
@@ -246,6 +272,15 @@ export async function POST(req: NextRequest) {
 
     if (!Array.isArray(rows) || rows.length === 0) {
       const response = NextResponse.json({ error: "File is empty or contains no valid data" }, { status: 400 });
+      response.headers.set("Access-Control-Allow-Origin", "*");
+      return response;
+    }
+
+    if (rows.length > MAX_BULK_ROWS) {
+      const response = NextResponse.json(
+        { error: `Too many rows. Maximum allowed rows per upload is ${MAX_BULK_ROWS}.` },
+        { status: 413 }
+      );
       response.headers.set("Access-Control-Allow-Origin", "*");
       return response;
     }
@@ -304,6 +339,7 @@ export async function POST(req: NextRequest) {
 
     const seenImeisInFile = new Set<string>();
     const rowsToInsert: ValidatedRow[] = [];
+    const insertedImeis: string[] = [];
 
     for (const row of validatedRows) {
       if (!validUserIds.has(row.data.userId)) {
@@ -356,11 +392,11 @@ export async function POST(req: NextRequest) {
         deliveryAgentId: data.deliveryAgentId,
         utrScreenshot: data.utrScreenshot,
         invoicePdf: data.invoicePdf,
-        billingDate: data.billingDate ? new Date(data.billingDate) : undefined,
+        billingDate: parseOptionalDate(data.billingDate),
         state: data.state,
         pincode: data.pincode,
         fullAddress: data.fullAddress,
-        preferredDate: data.preferredDate ? new Date(data.preferredDate) : undefined,
+        preferredDate: parseOptionalDate(data.preferredDate),
         warrantyStatus: data.warrantyStatus,
         issueType: data.issueType,
         area: data.area,
@@ -370,7 +406,7 @@ export async function POST(req: NextRequest) {
         receiverName: data.receiverName,
         mobileNumber: data.mobileNumber,
         paymentId: data.paymentId,
-        expireDate: data.expireDate ? new Date(data.expireDate) : undefined,
+        expireDate: parseOptionalDate(data.expireDate),
         orderStatus: 0,
       }));
 
@@ -380,17 +416,7 @@ export async function POST(req: NextRequest) {
         });
 
         result.successCount += createManyResult.count;
-
-        const createdOrders = await prisma.order.findMany({
-          where: {
-            imeiNumber: {
-              in: batch.map((item) => item.data.imeiNumber),
-            },
-          },
-          select: { id: true },
-        });
-
-        result.successfulOrders.push(...createdOrders.map((order) => order.id));
+        insertedImeis.push(...batch.map((item) => item.data.imeiNumber));
       } catch (dbError: any) {
         // Fallback to per-row inserts when batch insert fails to keep row-level error reporting.
         for (const row of batch) {
@@ -411,11 +437,11 @@ export async function POST(req: NextRequest) {
                 deliveryAgentId: row.data.deliveryAgentId,
                 utrScreenshot: row.data.utrScreenshot,
                 invoicePdf: row.data.invoicePdf,
-                billingDate: row.data.billingDate ? new Date(row.data.billingDate) : undefined,
+                billingDate: parseOptionalDate(row.data.billingDate),
                 state: row.data.state,
                 pincode: row.data.pincode,
                 fullAddress: row.data.fullAddress,
-                preferredDate: row.data.preferredDate ? new Date(row.data.preferredDate) : undefined,
+                preferredDate: parseOptionalDate(row.data.preferredDate),
                 warrantyStatus: row.data.warrantyStatus,
                 issueType: row.data.issueType,
                 area: row.data.area,
@@ -425,7 +451,7 @@ export async function POST(req: NextRequest) {
                 receiverName: row.data.receiverName,
                 mobileNumber: row.data.mobileNumber,
                 paymentId: row.data.paymentId,
-                expireDate: row.data.expireDate ? new Date(row.data.expireDate) : undefined,
+                expireDate: parseOptionalDate(row.data.expireDate),
                 orderStatus: 0,
               },
             });
@@ -441,6 +467,21 @@ export async function POST(req: NextRequest) {
             });
           }
         }
+      }
+    }
+
+    if (insertedImeis.length > 0) {
+      for (const imeiChunk of chunkArray(insertedImeis, DB_LOOKUP_CHUNK_SIZE)) {
+        const createdOrders = await prisma.order.findMany({
+          where: {
+            imeiNumber: {
+              in: imeiChunk,
+            },
+          },
+          select: { id: true },
+        });
+
+        result.successfulOrders.push(...createdOrders.map((order) => order.id));
       }
     }
 
