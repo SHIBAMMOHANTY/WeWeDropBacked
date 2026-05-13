@@ -61,6 +61,22 @@ interface UploadResult {
   summary: string;
 }
 
+interface ValidatedRow {
+  rowNumber: number;
+  data: OrderData;
+}
+
+const DB_LOOKUP_CHUNK_SIZE = 500;
+const ORDER_INSERT_BATCH_SIZE = 100;
+
+function chunkArray<T>(items: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
 // Helper function to validate order data
 function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors: ValidationError[]; data?: OrderData } {
   const errors: ValidationError[] = [];
@@ -234,7 +250,6 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // Validate and process orders
     const result: UploadResult = {
       successCount: 0,
       failureCount: 0,
@@ -242,6 +257,8 @@ export async function POST(req: NextRequest) {
       successfulOrders: [],
       summary: "",
     };
+
+    const validatedRows: ValidatedRow[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const { valid, errors, data } = validateOrderData(rows[i], i + 2); // i+2 because row 1 is header
@@ -252,82 +269,178 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      try {
-        // Check if user exists
-        const orderUser = await prisma.user.findUnique({
-          where: { id: data!.userId },
-        });
+      validatedRows.push({ rowNumber: i + 2, data: data! });
+    }
 
-        if (!orderUser) {
-          result.failureCount++;
-          result.errors.push({
-            row: i + 2,
-            field: "userId",
-            message: `User with ID ${data!.userId} not found`,
-          });
-          continue;
-        }
+    // Batch user lookups for all valid rows to avoid per-row queries.
+    const uniqueUserIds = [...new Set(validatedRows.map((row) => row.data.userId))];
+    const validUserIds = new Set<string>();
 
-        // Check for duplicate IMEI
-        const existingOrder = await prisma.order.findFirst({
-          where: { imeiNumber: data!.imeiNumber },
-        });
+    for (const userIdChunk of chunkArray(uniqueUserIds, DB_LOOKUP_CHUNK_SIZE)) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: userIdChunk } },
+        select: { id: true },
+      });
 
-        if (existingOrder) {
-          result.failureCount++;
-          result.errors.push({
-            row: i + 2,
-            field: "imeiNumber",
-            message: `Order with IMEI ${data!.imeiNumber} already exists`,
-          });
-          continue;
-        }
+      for (const foundUser of users) {
+        validUserIds.add(foundUser.id);
+      }
+    }
 
-        // Create order
-        const newOrder = await prisma.order.create({
-          data: {
-            userId: data!.userId,
-            membershipType: data!.membershipType as any,
-            brandName: data!.brandName,
-            productName: data!.productName,
-            imeiNumber: data!.imeiNumber,
-            billImage: data!.billImage,
-            serviceDate: new Date(data!.serviceDate),
-            customerName: data!.customerName,
-            contactNumber: data!.contactNumber,
-            amount: data!.amount,
-            businessId: data!.businessId,
-            deliveryAgentId: data!.deliveryAgentId,
-            utrScreenshot: data!.utrScreenshot,
-            invoicePdf: data!.invoicePdf,
-            billingDate: data!.billingDate ? new Date(data!.billingDate) : undefined,
-            state: data!.state,
-            pincode: data!.pincode,
-            fullAddress: data!.fullAddress,
-            preferredDate: data!.preferredDate ? new Date(data!.preferredDate) : undefined,
-            warrantyStatus: data!.warrantyStatus,
-            issueType: data!.issueType,
-            area: data!.area,
-            pickupAddress: data!.pickupAddress,
-            fix: data!.fix,
-            remark: data!.remark,
-            receiverName: data!.receiverName,
-            mobileNumber: data!.mobileNumber,
-            paymentId: data!.paymentId,
-            expireDate: data!.expireDate ? new Date(data!.expireDate) : undefined,
-            orderStatus: 0, // PENDING by default
-          },
-        });
+    // Batch IMEI lookups to detect existing duplicates up front.
+    const uniqueImeis = [...new Set(validatedRows.map((row) => row.data.imeiNumber))];
+    const existingImeis = new Set<string>();
 
-        result.successCount++;
-        result.successfulOrders.push(newOrder.id);
-      } catch (dbError: any) {
+    for (const imeiChunk of chunkArray(uniqueImeis, DB_LOOKUP_CHUNK_SIZE)) {
+      const existingOrders = await prisma.order.findMany({
+        where: { imeiNumber: { in: imeiChunk } },
+        select: { imeiNumber: true },
+      });
+
+      for (const existingOrder of existingOrders) {
+        existingImeis.add(existingOrder.imeiNumber);
+      }
+    }
+
+    const seenImeisInFile = new Set<string>();
+    const rowsToInsert: ValidatedRow[] = [];
+
+    for (const row of validatedRows) {
+      if (!validUserIds.has(row.data.userId)) {
         result.failureCount++;
         result.errors.push({
-          row: i + 2,
-          field: "general",
-          message: `Database error: ${dbError.message}`,
+          row: row.rowNumber,
+          field: "userId",
+          message: `User with ID ${row.data.userId} not found`,
         });
+        continue;
+      }
+
+      if (existingImeis.has(row.data.imeiNumber)) {
+        result.failureCount++;
+        result.errors.push({
+          row: row.rowNumber,
+          field: "imeiNumber",
+          message: `Order with IMEI ${row.data.imeiNumber} already exists`,
+        });
+        continue;
+      }
+
+      if (seenImeisInFile.has(row.data.imeiNumber)) {
+        result.failureCount++;
+        result.errors.push({
+          row: row.rowNumber,
+          field: "imeiNumber",
+          message: `Duplicate IMEI ${row.data.imeiNumber} in uploaded file`,
+        });
+        continue;
+      }
+
+      seenImeisInFile.add(row.data.imeiNumber);
+      rowsToInsert.push(row);
+    }
+
+    for (const batch of chunkArray(rowsToInsert, ORDER_INSERT_BATCH_SIZE)) {
+      const createPayload = batch.map(({ data }) => ({
+        userId: data.userId,
+        membershipType: data.membershipType as any,
+        brandName: data.brandName,
+        productName: data.productName,
+        imeiNumber: data.imeiNumber,
+        billImage: data.billImage,
+        serviceDate: new Date(data.serviceDate),
+        customerName: data.customerName,
+        contactNumber: data.contactNumber,
+        amount: data.amount,
+        businessId: data.businessId,
+        deliveryAgentId: data.deliveryAgentId,
+        utrScreenshot: data.utrScreenshot,
+        invoicePdf: data.invoicePdf,
+        billingDate: data.billingDate ? new Date(data.billingDate) : undefined,
+        state: data.state,
+        pincode: data.pincode,
+        fullAddress: data.fullAddress,
+        preferredDate: data.preferredDate ? new Date(data.preferredDate) : undefined,
+        warrantyStatus: data.warrantyStatus,
+        issueType: data.issueType,
+        area: data.area,
+        pickupAddress: data.pickupAddress,
+        fix: data.fix,
+        remark: data.remark,
+        receiverName: data.receiverName,
+        mobileNumber: data.mobileNumber,
+        paymentId: data.paymentId,
+        expireDate: data.expireDate ? new Date(data.expireDate) : undefined,
+        orderStatus: 0,
+      }));
+
+      try {
+        const createManyResult = await prisma.order.createMany({
+          data: createPayload,
+        });
+
+        result.successCount += createManyResult.count;
+
+        const createdOrders = await prisma.order.findMany({
+          where: {
+            imeiNumber: {
+              in: batch.map((item) => item.data.imeiNumber),
+            },
+          },
+          select: { id: true },
+        });
+
+        result.successfulOrders.push(...createdOrders.map((order) => order.id));
+      } catch (dbError: any) {
+        // Fallback to per-row inserts when batch insert fails to keep row-level error reporting.
+        for (const row of batch) {
+          try {
+            const createdOrder = await prisma.order.create({
+              data: {
+                userId: row.data.userId,
+                membershipType: row.data.membershipType as any,
+                brandName: row.data.brandName,
+                productName: row.data.productName,
+                imeiNumber: row.data.imeiNumber,
+                billImage: row.data.billImage,
+                serviceDate: new Date(row.data.serviceDate),
+                customerName: row.data.customerName,
+                contactNumber: row.data.contactNumber,
+                amount: row.data.amount,
+                businessId: row.data.businessId,
+                deliveryAgentId: row.data.deliveryAgentId,
+                utrScreenshot: row.data.utrScreenshot,
+                invoicePdf: row.data.invoicePdf,
+                billingDate: row.data.billingDate ? new Date(row.data.billingDate) : undefined,
+                state: row.data.state,
+                pincode: row.data.pincode,
+                fullAddress: row.data.fullAddress,
+                preferredDate: row.data.preferredDate ? new Date(row.data.preferredDate) : undefined,
+                warrantyStatus: row.data.warrantyStatus,
+                issueType: row.data.issueType,
+                area: row.data.area,
+                pickupAddress: row.data.pickupAddress,
+                fix: row.data.fix,
+                remark: row.data.remark,
+                receiverName: row.data.receiverName,
+                mobileNumber: row.data.mobileNumber,
+                paymentId: row.data.paymentId,
+                expireDate: row.data.expireDate ? new Date(row.data.expireDate) : undefined,
+                orderStatus: 0,
+              },
+            });
+
+            result.successCount++;
+            result.successfulOrders.push(createdOrder.id);
+          } catch (rowError: any) {
+            result.failureCount++;
+            result.errors.push({
+              row: row.rowNumber,
+              field: "general",
+              message: `Database error: ${rowError.message}`,
+            });
+          }
+        }
       }
     }
 
