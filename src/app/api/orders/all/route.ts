@@ -20,7 +20,10 @@ export async function GET(req: NextRequest) {
     // Fetch orders without the business include (to avoid invalid ObjectID errors)
     const orders = await prisma.order.findMany({
       where: { deleted: false },
-      orderBy: { id: "desc" }
+      orderBy: [
+        { serviceDate: "desc" },
+        { id: "desc" }
+      ]
     });
 
     const orderIds = orders.map(order => order.id);
