@@ -104,11 +104,29 @@ export async function GET(req: NextRequest) {
 
     // Filter out orders where deleted is true
     const filteredOrders = orders.filter(order => !order.deleted);
+    
+    const orderIds = filteredOrders.map(order => order.id);
+    const payments = orderIds.length > 0 
+      ? await prisma.payment.findMany({
+          where: { orderId: { in: orderIds } },
+          select: { orderId: true, paymentStatus: true, createdAt: true },
+          orderBy: { createdAt: "desc" }
+        })
+      : [];
+
+    const paymentMetaMap = new Map<string, number | null>();
+    for (const payment of payments) {
+      if (!paymentMetaMap.has(payment.orderId)) {
+        paymentMetaMap.set(payment.orderId, payment.paymentStatus ?? null);
+      }
+    }
+
     const ordersWithStatus = filteredOrders.map(order => ({
       ...order,
       invoicePdf: order.invoicePdf || null,
       billingDate: order.billingDate || null,
-      status: statusMap[order.orderStatus] || 'UNKNOWN'
+      status: statusMap[order.orderStatus] || 'UNKNOWN',
+      paymentStatus: paymentMetaMap.get(order.id) ?? null
     }));
 
     return NextResponse.json(ordersWithStatus, { headers: corsHeaders });

@@ -387,10 +387,43 @@ export async function GET(req: NextRequest) {
       return !deletedOrderIds.has(realOrderId) && !deletedOrderDocIds.has(realOrderId);
     });
 
+    const visibleOrderDocIds = Array.from(orderDocIds).filter(id => !deletedOrderDocIds.has(id));
+    const payments = visibleOrderDocIds.length > 0 
+      ? await executeWithRetry(async () => {
+          return await prisma.payment.findMany({
+            where: { orderId: { in: visibleOrderDocIds } },
+            select: { orderId: true, paymentStatus: true, createdAt: true },
+            orderBy: { createdAt: "desc" }
+          });
+        })
+      : [];
+
+    const paymentMetaMap = new Map<string, number | null>();
+    for (const payment of payments) {
+      if (!paymentMetaMap.has(payment.orderId)) {
+        paymentMetaMap.set(payment.orderId, payment.paymentStatus ?? null);
+      }
+    }
+
+    const historyWithPaymentStatus = visibleHistory.map(item => {
+      // Find the document ID for this history item if we can
+      let docId: string | null = null;
+      for (const snapshot of item.history) {
+        if (snapshot.afterState?.id) {
+          docId = snapshot.afterState.id;
+          break;
+        }
+      }
+      return {
+        ...item,
+        paymentStatus: docId ? (paymentMetaMap.get(docId) ?? null) : null
+      };
+    });
+
     return NextResponse.json(
       {
-        count: visibleHistory.length,
-        history: visibleHistory,
+        count: historyWithPaymentStatus.length,
+        history: historyWithPaymentStatus,
       },
       { headers: corsHeaders }
     );
