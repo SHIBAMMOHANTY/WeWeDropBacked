@@ -136,6 +136,8 @@ model Order {
   invoicePdf      String?
   serviceDate     DateTime
   billingDate     DateTime?
+  deliveryDate    DateTime?
+  serviceCenterDate DateTime?
 
   customerName    String
   contactNumber   String

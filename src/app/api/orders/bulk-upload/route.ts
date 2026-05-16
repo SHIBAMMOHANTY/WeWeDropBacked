@@ -27,6 +27,8 @@ interface OrderData {
   utrScreenshot?: string;
   invoicePdf?: string;
   serviceDate: string;
+  deliveryDate?: string;
+  serviceCenterDate?: string;
   billingDate?: string;
   customerName: string;
   contactNumber: string;
@@ -142,6 +144,8 @@ function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors
     imeiNumber: row.imeiNumber,
     billImage: row.billImage,
     serviceDate: row.serviceDate,
+    deliveryDate: row.deliveryDate || undefined,
+    serviceCenterDate: row.serviceCenterDate || undefined,
     customerName: row.customerName,
     contactNumber: row.contactNumber,
     amount,
@@ -385,6 +389,8 @@ export async function POST(req: NextRequest) {
         imeiNumber: data.imeiNumber,
         billImage: data.billImage,
         serviceDate: new Date(data.serviceDate),
+        deliveryDate: parseOptionalDate(data.deliveryDate),
+        serviceCenterDate: parseOptionalDate(data.serviceCenterDate),
         customerName: data.customerName,
         contactNumber: data.contactNumber,
         amount: data.amount,
@@ -430,6 +436,8 @@ export async function POST(req: NextRequest) {
                 imeiNumber: row.data.imeiNumber,
                 billImage: row.data.billImage,
                 serviceDate: new Date(row.data.serviceDate),
+                deliveryDate: parseOptionalDate(row.data.deliveryDate),
+                serviceCenterDate: parseOptionalDate(row.data.serviceCenterDate),
                 customerName: row.data.customerName,
                 contactNumber: row.data.contactNumber,
                 amount: row.data.amount,

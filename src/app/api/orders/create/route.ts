@@ -96,6 +96,8 @@ export async function POST(req: Request) {
         orderStatus: newStatus,
         ...(data.membershipType === "ELITE" ? { expireDate } : {}),
       };
+      if (data.deliveryDate !== undefined) updateData.deliveryDate = data.deliveryDate ? new Date(data.deliveryDate) : null;
+      if (data.serviceCenterDate !== undefined) updateData.serviceCenterDate = data.serviceCenterDate ? new Date(data.serviceCenterDate) : null;
       // If pickupAddress is in payload, set fullAddress to pickupAddress value
       if (data.pickupAddress !== undefined) {
         updateData.fullAddress = data.pickupAddress;
@@ -143,6 +145,8 @@ export async function POST(req: Request) {
         invoicePdf: data.invoicePdf ?? null,
         serviceDate: new Date(),
         billingDate: data.billingDate ? new Date(data.billingDate) : null,
+        deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
+        serviceCenterDate: data.serviceCenterDate ? new Date(data.serviceCenterDate) : null,
         customerName: data.customerName ?? "",
         contactNumber: data.contactNumber ?? "",
         state: data.state ?? null,
@@ -170,6 +174,9 @@ export async function POST(req: Request) {
 
     const orderWithStatus = {
       ...order,
+      deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : null,
+      serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0,10) : null,
+      serviceDate: order.serviceDate ? new Date(order.serviceDate).toISOString().slice(0,10) : null,
       status: statusMap[order.orderStatus] || 'UNKNOWN',
       ...(data.membershipType === "ELITE" ? { expireDate, expired } : {}),
     };

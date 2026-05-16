@@ -50,6 +50,28 @@ function formatShortOrderId(orderId: string) {
 	return orderId.replace(/^(DYVO-?)0+/, "$1");
 }
 
+function normalizeDateOnlyInput(value: unknown) {
+	if (value == null || value === "") return value;
+	if (value instanceof Date) {
+		return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+	}
+
+	const stringValue = String(value);
+	if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) {
+		const [year, month, day] = stringValue.split("-").map(Number);
+		return new Date(Date.UTC(year, month - 1, day));
+	}
+
+	const parsedDate = new Date(stringValue);
+	return Number.isNaN(parsedDate.getTime()) ? value : parsedDate;
+}
+
+function formatDateOnly(value: Date | string | null | undefined) {
+	if (!value) return null;
+	const date = value instanceof Date ? value : new Date(value);
+	return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
 async function recordOrderHistory(entry: {
 	orderId: string;
 	userId?: string | null;
@@ -159,7 +181,9 @@ export async function GET(req: NextRequest) {
 			billImage: order.billImage,
 			utrScreenshot: order.utrScreenshot ?? null,
 			invoicePdf: order.invoicePdf ?? null,
-			serviceDate: order.serviceDate,
+			serviceDate: formatDateOnly(order.serviceDate),
+			deliveryDate: formatDateOnly(order.deliveryDate),
+			serviceCenterDate: formatDateOnly(order.serviceCenterDate),
 			billingDate: order.billingDate ?? null,
 			customerName: order.customerName,
 			contactNumber: order.contactNumber,
@@ -493,6 +517,15 @@ export async function PATCH(req: NextRequest) {
 				}
 
 				const updateData: any = { paymentId: data.paymentId, amount: parseFloat(String(amount)) };
+				if (data.serviceDate !== undefined) {
+					updateData.serviceDate = normalizeDateOnlyInput(data.serviceDate);
+				}
+				if (data.deliveryDate !== undefined) {
+					updateData.deliveryDate = normalizeDateOnlyInput(data.deliveryDate);
+				}
+				if (data.serviceCenterDate !== undefined) {
+					updateData.serviceCenterDate = normalizeDateOnlyInput(data.serviceCenterDate);
+				}
 				// If pickupAddress is in payload, set fullAddress to pickupAddress value
 				if (data.pickupAddress !== undefined) {
 					updateData.fullAddress = data.pickupAddress;
@@ -530,6 +563,9 @@ export async function PATCH(req: NextRequest) {
 
 				const orderWithStatus = {
 					...updatedOrder,
+					serviceDate: formatDateOnly(updatedOrder.serviceDate),
+					deliveryDate: formatDateOnly(updatedOrder.deliveryDate),
+					serviceCenterDate: formatDateOnly(updatedOrder.serviceCenterDate),
 					status: mapOrderStatus(updatedOrder.orderStatus),
 					...(await getLatestPaymentMeta(updatedOrder.id)),
 				};
@@ -542,6 +578,15 @@ export async function PATCH(req: NextRequest) {
 				// remove payment fields if present
 				delete updateData.paymentId;
 				delete updateData.amount;
+				if (updateData.serviceDate !== undefined) {
+					updateData.serviceDate = normalizeDateOnlyInput(updateData.serviceDate);
+				}
+				if (updateData.deliveryDate !== undefined) {
+					updateData.deliveryDate = normalizeDateOnlyInput(updateData.deliveryDate);
+				}
+				if (updateData.serviceCenterDate !== undefined) {
+					updateData.serviceCenterDate = normalizeDateOnlyInput(updateData.serviceCenterDate);
+				}
 			// If pickupAddress is in payload, set fullAddress to pickupAddress value
 			if (updateData.pickupAddress !== undefined) {
 				updateData.fullAddress = updateData.pickupAddress;
@@ -599,6 +644,9 @@ export async function PATCH(req: NextRequest) {
 
 			const orderWithStatus = {
 				...updatedOrder,
+				serviceDate: formatDateOnly(updatedOrder.serviceDate),
+				deliveryDate: formatDateOnly(updatedOrder.deliveryDate),
+				serviceCenterDate: formatDateOnly(updatedOrder.serviceCenterDate),
 				status: mapOrderStatus(updatedOrder.orderStatus),
 				...(await getLatestPaymentMeta(updatedOrder.id)),
 			};
