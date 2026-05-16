@@ -6,6 +6,12 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
+function formatDateOnly(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
 export async function POST(req: Request) {
   try {
     const data = await req.json();
@@ -53,11 +59,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate billDate
-    const serviceDate = new Date(data.billDate);
+    const serviceDateInput = data.serviceDate ?? data.billDate;
+    const serviceDate = new Date(serviceDateInput);
     if (isNaN(serviceDate.getTime())) {
       return NextResponse.json(
-        { error: "Invalid billDate format" },
+        { error: "Invalid serviceDate format" },
         { status: 400 }
       );
     }
@@ -84,7 +90,7 @@ export async function POST(req: Request) {
     billImage: data.billImage,
     utrScreenshot: data.utrScreenshot || null,
     invoicePdf: data.invoicePdf || null,
-    serviceDate: new Date(data.billDate),
+    serviceDate,
     billingDate: data.billingDate ? new Date(data.billingDate) : null,
     customerName: data.name.trim(),
     contactNumber: data.phone,
@@ -99,7 +105,11 @@ export async function POST(req: Request) {
   },
 });
 
-    return NextResponse.json(order, { status: 201 });
+    return NextResponse.json({
+      ...order,
+      serviceDate: formatDateOnly(order.serviceDate),
+      billingDate: formatDateOnly(order.billingDate),
+    }, { status: 201 });
   } catch (error) {
     console.error("ORDER CREATE ERROR:", error);
     return NextResponse.json(

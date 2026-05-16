@@ -6,6 +6,12 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
+function formatDateOnly(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
 
 type MembershipType = "BASIC" | "PREMIUM" | "ELITE";
 // Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
@@ -143,8 +149,10 @@ export async function POST(req: Request) {
         billImage: data.billImage ?? "",
         utrScreenshot: data.utrScreenshot ?? null,
         invoicePdf: data.invoicePdf ?? null,
-        serviceDate: new Date(),
+        serviceDate: data.serviceDate ? new Date(data.serviceDate) : new Date(),
         billingDate: data.billingDate ? new Date(data.billingDate) : null,
+        deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
+        serviceCenterDate: data.serviceCenterDate ? new Date(data.serviceCenterDate) : null,
         deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
         serviceCenterDate: data.serviceCenterDate ? new Date(data.serviceCenterDate) : null,
         customerName: data.customerName ?? "",
@@ -181,7 +189,13 @@ export async function POST(req: Request) {
       ...(data.membershipType === "ELITE" ? { expireDate, expired } : {}),
     };
 
-    return NextResponse.json(orderWithStatus, { status: 201 });
+    return NextResponse.json({
+      ...orderWithStatus,
+      serviceDate: formatDateOnly(orderWithStatus.serviceDate),
+      billingDate: formatDateOnly(orderWithStatus.billingDate),
+      deliveryDate: formatDateOnly((orderWithStatus as any).deliveryDate),
+      serviceCenterDate: formatDateOnly((orderWithStatus as any).serviceCenterDate),
+    }, { status: 201 });
   } catch (error) {
     console.error("ORDER CREATE ERROR:", error);
     return NextResponse.json(
