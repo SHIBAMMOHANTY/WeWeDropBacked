@@ -17,13 +17,42 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   console.log("GET /api/orders/all called");
   try {
+    const isLowPriorityServiceDate = (value: Date | string | null | undefined) => {
+      if (!value) return false;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return false;
+
+      const year = date.getUTCFullYear();
+      const day = date.getUTCDate();
+
+      return year >= 2023 && year <= 2025 && day < 10;
+    };
+
     // Fetch orders without the business include (to avoid invalid ObjectID errors)
     const orders = await prisma.order.findMany({
       where: { deleted: false },
       orderBy: [
-        { serviceDate: "desc" },
+        { createdAt: "desc" },
         { id: "desc" }
       ]
+    });
+
+    orders.sort((left, right) => {
+      const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
+      const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
+
+      if (leftLowPriority !== rightLowPriority) {
+        return leftLowPriority ? 1 : -1;
+      }
+
+      const leftCreatedAt = new Date(left.createdAt).getTime();
+      const rightCreatedAt = new Date(right.createdAt).getTime();
+
+      if (rightCreatedAt !== leftCreatedAt) {
+        return rightCreatedAt - leftCreatedAt;
+      }
+
+      return right.id.localeCompare(left.id);
     });
 
     const orderIds = orders.map(order => order.id);
@@ -102,6 +131,7 @@ export async function GET(req: NextRequest) {
         deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : null,
         serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0,10) : null,
         billingDate: order.billingDate,
+        orderDate: order.createdAt,
         customerName: order.customerName,
         contactNumber: order.contactNumber ?? null,
         state: order.state,
