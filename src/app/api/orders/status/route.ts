@@ -115,6 +115,23 @@ export async function GET(req: NextRequest) {
     const filteredOrders = orders.filter(order => !order.deleted);
 
     filteredOrders.sort((left, right) => {
+      // Helper function to extract year from serviceDate
+      const getServiceDateYear = (date: Date | string | null | undefined): number => {
+        if (!date) return 0;
+        const d = new Date(date);
+        if (Number.isNaN(d.getTime())) return 0;
+        return d.getUTCFullYear();
+      };
+
+      // Sort by serviceDate year in DESCENDING order (2025, 2024, 2023, ...)
+      const leftYear = getServiceDateYear(left.serviceDate);
+      const rightYear = getServiceDateYear(right.serviceDate);
+
+      if (rightYear !== leftYear) {
+        return rightYear - leftYear; // Descending order
+      }
+
+      // If same year, apply low priority logic
       const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
       const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
 
@@ -122,6 +139,7 @@ export async function GET(req: NextRequest) {
         return leftLowPriority ? 1 : -1;
       }
 
+      // Then sort by createdAt descending
       const leftCreatedAt = new Date(left.createdAt).getTime();
       const rightCreatedAt = new Date(right.createdAt).getTime();
 
