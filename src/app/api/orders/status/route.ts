@@ -80,7 +80,13 @@ export async function GET(req: NextRequest) {
       console.log("Fetching orders for business:", user.id);
       const businessIdentifiers = await resolveBusinessIdentifiers(user.id);
       console.log("Business identifiers:", businessIdentifiers);
-      whereClause.businessId = { in: businessIdentifiers };
+      whereClause = {
+        deleted: false,
+        OR: [
+          { businessId: { in: businessIdentifiers } },
+          { userId: user.id }
+        ]
+      };
     } else {
       console.log("Fetching orders for user:", user.id);
       whereClause.userId = user.id;
