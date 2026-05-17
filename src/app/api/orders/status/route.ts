@@ -98,8 +98,7 @@ export async function GET(req: NextRequest) {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return false;
       const year = date.getUTCFullYear();
-      const day = date.getUTCDate();
-      return year >= 2023 && year <= 2025 && day < 10;
+      return year <= 2025;
     };
 
     const statusMap: { [key: number]: string } = {
