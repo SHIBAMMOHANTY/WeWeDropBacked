@@ -93,6 +93,15 @@ export async function GET(req: NextRequest) {
     }
     console.log("Orders fetched:", orders.length);
 
+    const isLowPriorityServiceDate = (value: Date | string | null | undefined) => {
+      if (!value) return false;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return false;
+      const year = date.getUTCFullYear();
+      const day = date.getUTCDate();
+      return year >= 2023 && year <= 2025 && day < 10;
+    };
+
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
@@ -104,6 +113,24 @@ export async function GET(req: NextRequest) {
 
     // Filter out orders where deleted is true
     const filteredOrders = orders.filter(order => !order.deleted);
+
+    filteredOrders.sort((left, right) => {
+      const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
+      const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
+
+      if (leftLowPriority !== rightLowPriority) {
+        return leftLowPriority ? 1 : -1;
+      }
+
+      const leftCreatedAt = new Date(left.createdAt).getTime();
+      const rightCreatedAt = new Date(right.createdAt).getTime();
+
+      if (rightCreatedAt !== leftCreatedAt) {
+        return rightCreatedAt - leftCreatedAt;
+      }
+
+      return right.id.localeCompare(left.id);
+    });
     
     const orderIds = filteredOrders.map(order => order.id);
     const payments = orderIds.length > 0 

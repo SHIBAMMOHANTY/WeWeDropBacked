@@ -139,9 +139,30 @@ export async function GET(req: NextRequest) {
 		if (!userId) {
 			return NextResponse.json({ error: "Missing userId" }, { status: 400, headers: corsHeaders });
 		}
+
+		const isLowPriorityServiceDate = (value: Date | string | null | undefined) => {
+			if (!value) return false;
+			const date = new Date(value);
+			if (Number.isNaN(date.getTime())) return false;
+			const year = date.getUTCFullYear();
+			const day = date.getUTCDate();
+			return year >= 2023 && year <= 2025 && day < 10;
+		};
+
 		const orders = await prisma.order.findMany({
 			where: { userId: userId, deleted: false },
 			orderBy: { id: "desc" },
+		});
+
+		orders.sort((left, right) => {
+			const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
+			const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
+
+			if (leftLowPriority !== rightLowPriority) {
+				return leftLowPriority ? 1 : -1;
+			}
+
+			return right.id.localeCompare(left.id);
 		});
 
 		const orderIds = orders.map(order => order.id);
