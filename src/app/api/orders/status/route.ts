@@ -58,51 +58,39 @@ export async function GET(req: NextRequest) {
     const token = authHeader.replace("Bearer ", "");
     let user;
     try {
-      user = verifyToken(token);
+      user = verifyToken(token); // Should return { id, role, ... }
     } catch (e) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401, headers: corsHeaders });
     }
 
     console.log("User:", user);
 
-    const { searchParams } = new URL(req.url);
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.min(100, Math.max(10, parseInt(searchParams.get("limit") || "50", 10)));
-    const skip = (page - 1) * limit;
-
     const role = (user.role ?? "").toUpperCase();
-    let whereClause: any = { deleted: false };
-    let totalCount: number;
+    let orders;
 
     if (role === "SUPER_ADMIN") {
+      // Admin: return all orders
       console.log("Fetching all orders for admin");
+      orders = await prisma.order.findMany({ orderBy: { createdAt: "desc" } });
     } else if (role === "BUSINESS") {
+      // Business: return only their orders (matched by businessId)
       console.log("Fetching orders for business:", user.id);
       const businessIdentifiers = await resolveBusinessIdentifiers(user.id);
       console.log("Business identifiers:", businessIdentifiers);
-      whereClause = {
-        deleted: false,
-        OR: [
-          { businessId: { in: businessIdentifiers } },
-          { userId: user.id }
-        ]
-      };
-    } else {
-      console.log("Fetching orders for user:", user.id);
-      whereClause.userId = user.id;
-    }
-
-    const [orders, totalCount_] = await Promise.all([
-      prisma.order.findMany({
-        where: whereClause,
+      orders = await prisma.order.findMany({
+        where: {
+          businessId: { in: businessIdentifiers },
+        },
         orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-      }),
-      prisma.order.count({ where: whereClause }),
-    ]);
-
-    totalCount = totalCount_;
+      });
+    } else {
+      // User/DeliveryAgent: return only their orders
+      console.log("Fetching orders for user:", user.id);
+      orders = await prisma.order.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "desc" },
+      });
+    }
     console.log("Orders fetched:", orders.length);
 
     const isLowPriorityServiceDate = (value: Date | string | null | undefined) => {
@@ -110,20 +98,9 @@ export async function GET(req: NextRequest) {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return false;
       const year = date.getUTCFullYear();
-      return year <= 2025;
+      const day = date.getUTCDate();
+      return year >= 2023 && year <= 2025 && day < 10;
     };
-
-    // Sort low-priority serviceDate orders to bottom (within this page)
-    orders.sort((left, right) => {
-      const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
-      const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
-
-      if (leftLowPriority !== rightLowPriority) {
-        return leftLowPriority ? 1 : -1;
-      }
-
-      return 0;
-    });
 
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
@@ -134,7 +111,28 @@ export async function GET(req: NextRequest) {
       4: 'DELIVERED'
     };
 
-    const orderIds = orders.map(order => order.id);
+    // Filter out orders where deleted is true
+    const filteredOrders = orders.filter(order => !order.deleted);
+
+    filteredOrders.sort((left, right) => {
+      const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
+      const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
+
+      if (leftLowPriority !== rightLowPriority) {
+        return leftLowPriority ? 1 : -1;
+      }
+
+      const leftCreatedAt = new Date(left.createdAt).getTime();
+      const rightCreatedAt = new Date(right.createdAt).getTime();
+
+      if (rightCreatedAt !== leftCreatedAt) {
+        return rightCreatedAt - leftCreatedAt;
+      }
+
+      return right.id.localeCompare(left.id);
+    });
+    
+    const orderIds = filteredOrders.map(order => order.id);
     const payments = orderIds.length > 0 
       ? await prisma.payment.findMany({
           where: { orderId: { in: orderIds } },
@@ -150,26 +148,15 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const ordersWithStatus = orders.map(order => ({
+    const ordersWithStatus = filteredOrders.map(order => ({
       ...order,
-      serviceDate: order.serviceDate ? new Date(order.serviceDate).toISOString().slice(0, 10) : null,
-      deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0, 10) : null,
-      serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0, 10) : null,
-      orderDate: order.createdAt,
       invoicePdf: order.invoicePdf || null,
       billingDate: order.billingDate || null,
       status: statusMap[order.orderStatus] || 'UNKNOWN',
       paymentStatus: paymentMetaMap.get(order.id) ?? null
     }));
 
-    const response = NextResponse.json({
-      orders: ordersWithStatus,
-      totalCount,
-      page,
-      limit,
-      totalPages: Math.ceil(totalCount / limit)
-    }, { headers: corsHeaders });
-    return response;
+    return NextResponse.json(ordersWithStatus, { headers: corsHeaders });
   } catch (error) {
     console.error("Error fetching orders:", error);
     return NextResponse.json({ error: "Failed to fetch orders", details: error instanceof Error ? error.message : String(error) }, { status: 500, headers: corsHeaders });
