@@ -58,49 +58,46 @@ export async function GET(req: NextRequest) {
     const token = authHeader.replace("Bearer ", "");
     let user;
     try {
-      user = verifyToken(token); // Should return { id, role, ... }
+      user = verifyToken(token);
     } catch (e) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401, headers: corsHeaders });
     }
 
     console.log("User:", user);
 
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const limit = Math.min(100, Math.max(10, parseInt(searchParams.get("limit") || "50", 10)));
+    const skip = (page - 1) * limit;
+
     const role = (user.role ?? "").toUpperCase();
-    let orders;
+    let whereClause: any = { deleted: false };
+    let totalCount: number;
 
     if (role === "SUPER_ADMIN") {
-      // Admin: return all orders
       console.log("Fetching all orders for admin");
-      orders = await prisma.order.findMany({ orderBy: { createdAt: "desc" } });
     } else if (role === "BUSINESS") {
-      // Business: return only their orders (matched by businessId)
       console.log("Fetching orders for business:", user.id);
       const businessIdentifiers = await resolveBusinessIdentifiers(user.id);
       console.log("Business identifiers:", businessIdentifiers);
-      orders = await prisma.order.findMany({
-        where: {
-          businessId: { in: businessIdentifiers },
-        },
-        orderBy: { createdAt: "desc" },
-      });
+      whereClause.businessId = { in: businessIdentifiers };
     } else {
-      // User/DeliveryAgent: return only their orders
       console.log("Fetching orders for user:", user.id);
-      orders = await prisma.order.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: "desc" },
-      });
+      whereClause.userId = user.id;
     }
-    console.log("Orders fetched:", orders.length);
 
-    const isLowPriorityServiceDate = (value: Date | string | null | undefined) => {
-      if (!value) return false;
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return false;
-      const year = date.getUTCFullYear();
-      const day = date.getUTCDate();
-      return year >= 2023 && year <= 2025 && day < 10;
-    };
+    const [orders, totalCount_] = await Promise.all([
+      prisma.order.findMany({
+        where: whereClause,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      prisma.order.count({ where: whereClause }),
+    ]);
+
+    totalCount = totalCount_;
+    console.log("Orders fetched:", orders.length);
 
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
@@ -111,28 +108,7 @@ export async function GET(req: NextRequest) {
       4: 'DELIVERED'
     };
 
-    // Filter out orders where deleted is true
-    const filteredOrders = orders.filter(order => !order.deleted);
-
-    filteredOrders.sort((left, right) => {
-      const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
-      const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
-
-      if (leftLowPriority !== rightLowPriority) {
-        return leftLowPriority ? 1 : -1;
-      }
-
-      const leftCreatedAt = new Date(left.createdAt).getTime();
-      const rightCreatedAt = new Date(right.createdAt).getTime();
-
-      if (rightCreatedAt !== leftCreatedAt) {
-        return rightCreatedAt - leftCreatedAt;
-      }
-
-      return right.id.localeCompare(left.id);
-    });
-    
-    const orderIds = filteredOrders.map(order => order.id);
+    const orderIds = orders.map(order => order.id);
     const payments = orderIds.length > 0 
       ? await prisma.payment.findMany({
           where: { orderId: { in: orderIds } },
@@ -148,7 +124,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const ordersWithStatus = filteredOrders.map(order => ({
+    const ordersWithStatus = orders.map(order => ({
       ...order,
       invoicePdf: order.invoicePdf || null,
       billingDate: order.billingDate || null,
@@ -156,7 +132,14 @@ export async function GET(req: NextRequest) {
       paymentStatus: paymentMetaMap.get(order.id) ?? null
     }));
 
-    return NextResponse.json(ordersWithStatus, { headers: corsHeaders });
+    const response = NextResponse.json({
+      orders: ordersWithStatus,
+      totalCount,
+      page,
+      limit,
+      totalPages: Math.ceil(totalCount / limit)
+    }, { headers: corsHeaders });
+    return response;
   } catch (error) {
     console.error("Error fetching orders:", error);
     return NextResponse.json({ error: "Failed to fetch orders", details: error instanceof Error ? error.message : String(error) }, { status: 500, headers: corsHeaders });
