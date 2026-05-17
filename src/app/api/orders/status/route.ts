@@ -146,6 +146,10 @@ export async function GET(req: NextRequest) {
 
     const ordersWithStatus = orders.map(order => ({
       ...order,
+      serviceDate: order.serviceDate ? new Date(order.serviceDate).toISOString().slice(0, 10) : null,
+      deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0, 10) : null,
+      serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0, 10) : null,
+      orderDate: order.createdAt,
       invoicePdf: order.invoicePdf || null,
       billingDate: order.billingDate || null,
       status: statusMap[order.orderStatus] || 'UNKNOWN',
