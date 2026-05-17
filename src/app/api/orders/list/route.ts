@@ -136,6 +136,10 @@ export async function GET(req: NextRequest) {
 	try {
 		const { searchParams } = new URL(req.url);
 		const userId = searchParams.get("userId");
+		const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+		const limit = Math.min(100, Math.max(10, parseInt(searchParams.get("limit") || "50", 10)));
+		const skip = (page - 1) * limit;
+
 		if (!userId) {
 			return NextResponse.json({ error: "Missing userId" }, { status: 400, headers: corsHeaders });
 		}
@@ -148,11 +152,19 @@ export async function GET(req: NextRequest) {
 			return year <= 2025;
 		};
 
-		const orders = await prisma.order.findMany({
-			where: { userId: userId, deleted: false },
-			orderBy: { id: "desc" },
-		});
+		const [orders, totalCount] = await Promise.all([
+			prisma.order.findMany({
+				where: { userId: userId, deleted: false },
+				orderBy: { createdAt: "desc" },
+				skip,
+				take: limit,
+			}),
+			prisma.order.count({
+				where: { userId: userId, deleted: false },
+			}),
+		]);
 
+		// Sort low-priority serviceDate orders to bottom (within this page)
 		orders.sort((left, right) => {
 			const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
 			const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
@@ -161,7 +173,7 @@ export async function GET(req: NextRequest) {
 				return leftLowPriority ? 1 : -1;
 			}
 
-			return right.id.localeCompare(left.id);
+			return 0;
 		});
 
 		const orderIds = orders.map(order => order.id);
@@ -205,6 +217,7 @@ export async function GET(req: NextRequest) {
 			deliveryDate: formatDateOnly(order.deliveryDate),
 			serviceCenterDate: formatDateOnly(order.serviceCenterDate),
 			billingDate: order.billingDate ?? null,
+			orderDate: order.createdAt,
 			customerName: order.customerName,
 			contactNumber: order.contactNumber,
 			state: order.state,
@@ -231,7 +244,13 @@ export async function GET(req: NextRequest) {
 			status: mapOrderStatus(order.orderStatus),
 		}));
 
-		return NextResponse.json(ordersWithStatus, { headers: corsHeaders });
+		return NextResponse.json({
+			orders: ordersWithStatus,
+			totalCount,
+			page,
+			limit,
+			totalPages: Math.ceil(totalCount / limit)
+		}, { headers: corsHeaders });
 	} catch (error) {
 		console.error("GET /api/orders/list error:", error);
 		return NextResponse.json({ error: "Failed to fetch all orders" }, { status: 500, headers: corsHeaders });

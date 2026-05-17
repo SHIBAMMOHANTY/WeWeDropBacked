@@ -99,6 +99,26 @@ export async function GET(req: NextRequest) {
     totalCount = totalCount_;
     console.log("Orders fetched:", orders.length);
 
+    const isLowPriorityServiceDate = (value: Date | string | null | undefined) => {
+      if (!value) return false;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return false;
+      const year = date.getUTCFullYear();
+      return year <= 2025;
+    };
+
+    // Sort low-priority serviceDate orders to bottom (within this page)
+    orders.sort((left, right) => {
+      const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
+      const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
+
+      if (leftLowPriority !== rightLowPriority) {
+        return leftLowPriority ? 1 : -1;
+      }
+
+      return 0;
+    });
+
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
