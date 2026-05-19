@@ -17,6 +17,10 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   console.log("GET /api/orders/all called");
   try {
+    // Get year filter from query parameters (optional)
+    const { searchParams } = new URL(req.url);
+    const yearFilter = searchParams.get("year");
+    
     const isLowPriorityServiceDate = (value: Date | string | null | undefined) => {
       if (!value) return false;
       const date = new Date(value);
@@ -36,13 +40,35 @@ export async function GET(req: NextRequest) {
         { id: "desc" }
       ]
     });
+    
+    // Filter by year if provided
+    let filteredOrders = orders;
+    if (yearFilter) {
+      const targetYear = parseInt(yearFilter, 10);
+      if (!Number.isNaN(targetYear)) {
+        filteredOrders = orders.filter(order => {
+          if (!order.serviceDate) return false;
+          const date = new Date(order.serviceDate);
+          return date.getUTCFullYear() === targetYear;
+        });
+        console.log(`Filtered orders by year ${targetYear}: ${filteredOrders.length} orders`);
+      }
+    }
 
-    orders.sort((left, right) => {
+    filteredOrders.sort((left, right) => {
       const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
       const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
 
       if (leftLowPriority !== rightLowPriority) {
         return leftLowPriority ? 1 : -1;
+      }
+
+      // Sort by serviceDate year (descending - newest year first)
+      const leftServiceYear = left.serviceDate ? new Date(left.serviceDate).getUTCFullYear() : 0;
+      const rightServiceYear = right.serviceDate ? new Date(right.serviceDate).getUTCFullYear() : 0;
+
+      if (rightServiceYear !== leftServiceYear) {
+        return rightServiceYear - leftServiceYear;
       }
 
       const leftCreatedAt = new Date(left.createdAt).getTime();
@@ -55,7 +81,7 @@ export async function GET(req: NextRequest) {
       return right.id.localeCompare(left.id);
     });
 
-    const orderIds = orders.map(order => order.id);
+    const orderIds = filteredOrders.map(order => order.id);
     const payments = orderIds.length > 0
       ? await prisma.payment.findMany({
           where: { orderId: { in: orderIds } },
@@ -89,9 +115,11 @@ export async function GET(req: NextRequest) {
     // Create a map by dealerName as fallback for invalid IDs
     const businessByNameMap = new Map(businesses.map(b => [b.dealerName.toLowerCase(), b]));
     
-    const totalCount = await prisma.order.count({ where: { deleted: false } });
-    console.log(`Fetched ${orders.length} orders from /all, totalCount: ${totalCount}`);
-    console.log('First order status:', orders[0]?.orderStatus);
+    const totalCount = yearFilter 
+      ? filteredOrders.length 
+      : await prisma.order.count({ where: { deleted: false } });
+    console.log(`Fetched ${filteredOrders.length} filtered orders from /all, totalCount: ${totalCount}`);
+    console.log('First order status:', filteredOrders[0]?.orderStatus);
 
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
@@ -102,7 +130,7 @@ export async function GET(req: NextRequest) {
       4: 'DELIVERED'
     };
 
-    const ordersWithStatus = orders.map(order => {
+    const ordersWithStatus = filteredOrders.map(order => {
       // Try to find business by ID first
       let business = order.businessId ? businessMap.get(order.businessId) : null;
       
