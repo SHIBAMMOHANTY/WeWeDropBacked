@@ -189,6 +189,7 @@ model OrderHistory {
   beforeState     Json?
   afterState      Json?
   batchId         String?
+  paymentStatus   Int      @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
   createdAt       DateTime @default(now())
 
   // ⚡ PERFORMANCE: Indexes for common queries

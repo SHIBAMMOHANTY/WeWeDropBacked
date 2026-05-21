@@ -65,6 +65,15 @@ function mapPaymentStatus(status: unknown) {
   }
 }
 
+function derivePaymentStatus(orderStatus: number): number {
+  if (orderStatus === -1) return -1; // REJECTED
+  if (orderStatus === 4) return 1;  // DELIVERED -> VERIFY
+  if (orderStatus === 3) return 1;  // REPAIRING -> VERIFY
+  if (orderStatus === 2) return 1;  // READY_FOR_PICKUP -> VERIFY
+  return 0; // PENDING
+}
+
+
 async function recordOrderHistory(entry: {
   orderId: string;
   userId?: string | null;
@@ -101,6 +110,7 @@ async function recordOrderHistory(entry: {
       beforeState: toJsonSafe(beforeState) ?? null,
       afterState: toJsonSafe(afterState) ?? null,
       batchId: entry.batchId ?? null,
+      paymentStatus: afterState?.paymentStatus ?? beforeState?.paymentStatus ?? 0,
     },
   });
 }
@@ -328,6 +338,8 @@ export async function PATCH(req: NextRequest) {
     let numericPaymentStatus: number | undefined = undefined;
     if (paymentStatus !== undefined && paymentStatus !== null) {
       numericPaymentStatus = Number(paymentStatus);
+    } else if (numericStatus !== undefined) {
+      numericPaymentStatus = derivePaymentStatus(numericStatus);
     }
 
     if (numericStatus === undefined && numericPaymentStatus === undefined) {

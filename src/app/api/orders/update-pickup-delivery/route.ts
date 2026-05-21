@@ -52,7 +52,10 @@ export async function PATCH(req: NextRequest) {
   const { pickupServiceCenter, delivered } = await req.json();
   const updateData: any = {};
   if (pickupServiceCenter) updateData.pickupAddress = pickupServiceCenter;
-  if (delivered === true) updateData.orderStatus = 4; // DELIVERED
+  if (delivered === true) {
+    updateData.orderStatus = 4; // DELIVERED
+    updateData.paymentStatus = 1; // VERIFY
+  }
 
   if (Object.keys(updateData).length === 0) {
     return NextResponse.json({ error: "No update fields provided" }, { status: 400, headers: corsHeaders });
@@ -65,6 +68,7 @@ export async function PATCH(req: NextRequest) {
       id: true,
       pickupAddress: true,
       orderStatus: true,
+      paymentStatus: true,
     },
   });
 

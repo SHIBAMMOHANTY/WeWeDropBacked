@@ -255,6 +255,7 @@ export async function GET(req: NextRequest) {
           beforeState: true,
           afterState: true,
           batchId: true,
+          paymentStatus: true,
           createdAt: true,
         },
       });
@@ -320,6 +321,8 @@ export async function GET(req: NextRequest) {
         appliedPayload: entry.appliedPayload,
         beforeState: normalizedBeforeState,
         afterState: normalizedAfterState,
+        paymentStatus: entry.paymentStatus,
+        paymentStatusLabel: mapPaymentStatus(entry.paymentStatus),
         createdAt: entry.createdAt,
       });
     });
@@ -476,7 +479,9 @@ export async function GET(req: NextRequest) {
         };
       });
 
-      const topPaymentStatus = docId ? (paymentMetaMap.get(docId) ?? null) : null;
+      const topPaymentStatus = item.history[0]?.paymentStatus !== undefined && item.history[0]?.paymentStatus !== null
+        ? item.history[0].paymentStatus
+        : (docId ? (paymentMetaMap.get(docId) ?? null) : null) ?? 0;
       return {
         ...item,
         history: mappedHistorySnapshots,

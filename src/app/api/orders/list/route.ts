@@ -108,6 +108,7 @@ async function recordOrderHistory(entry: {
 			beforeState: toJsonSafe(beforeState) ?? null,
 			afterState: toJsonSafe(afterState) ?? null,
 			batchId: entry.batchId ?? null,
+			paymentStatus: afterState?.paymentStatus ?? beforeState?.paymentStatus ?? 0,
 		},
 	});
 }
@@ -186,6 +187,15 @@ function mapPaymentStatus(status: unknown) {
 			return 'UNKNOWN';
 	}
 }
+
+function derivePaymentStatus(orderStatus: number): number {
+	if (orderStatus === -1) return -1; // REJECTED
+	if (orderStatus === 4) return 1;  // DELIVERED -> VERIFY
+	if (orderStatus === 3) return 1;  // REPAIRING -> VERIFY
+	if (orderStatus === 2) return 1;  // READY_FOR_PICKUP -> VERIFY
+	return 0; // PENDING
+}
+
 
 // GET /api/orders/list?userId=123
 export async function OPTIONS(req: NextRequest) {
@@ -431,6 +441,9 @@ export async function PATCH(req: NextRequest) {
 					if (item.hasOwnProperty('paymentStatus')) {
 						newPaymentStatus = Number(item.paymentStatus);
 						updateData.paymentStatus = newPaymentStatus;
+					} else if (newStatus !== undefined) {
+						newPaymentStatus = derivePaymentStatus(newStatus);
+						updateData.paymentStatus = newPaymentStatus;
 					}
 
 				// If pickupAddress is in payload, set fullAddress to pickupAddress value
@@ -545,6 +558,9 @@ export async function PATCH(req: NextRequest) {
 					if (data.hasOwnProperty('paymentStatus')) {
 						newPaymentStatus = Number(data.paymentStatus);
 						updateData.paymentStatus = newPaymentStatus;
+					} else if (newStatus !== undefined) {
+						newPaymentStatus = derivePaymentStatus(newStatus);
+						updateData.paymentStatus = newPaymentStatus;
 					}
 
 				// If pickupAddress is in payload, set fullAddress to pickupAddress value
@@ -653,6 +669,9 @@ export async function PATCH(req: NextRequest) {
 				if (data.hasOwnProperty('paymentStatus')) {
 					newPaymentStatus = Number(data.paymentStatus);
 					updateData.paymentStatus = newPaymentStatus;
+				} else if (newStatus !== undefined) {
+					newPaymentStatus = derivePaymentStatus(newStatus);
+					updateData.paymentStatus = newPaymentStatus;
 				}
 
 				if (data.serviceDate !== undefined) {
@@ -755,6 +774,8 @@ export async function PATCH(req: NextRequest) {
 
 			if (updateData.hasOwnProperty('paymentStatus')) {
 				updateData.paymentStatus = Number(updateData.paymentStatus);
+			} else if (updateData.hasOwnProperty('orderStatus')) {
+				updateData.paymentStatus = derivePaymentStatus(updateData.orderStatus);
 			}
 
 			// Generate orderId if status is 1 and orderId does not exist
