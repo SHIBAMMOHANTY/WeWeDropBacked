@@ -84,3 +84,19 @@ npx prisma migrate dev --name add-delivery-agent
 ---
 
 For any further customization or persistence, update the relevant API route to use your database.
+
+---
+
+## 6. Order History & Payment Status Automation
+
+### Schema Changes
+- **Order model:**
+  - Added `paymentStatus` (`Int`, default `0`) to store order-level payment status directly on the model, ensuring historical state snapshots record the payment status without external joins.
+
+### Functionality & Features
+* **Added `paymentStatus` and `paymentStatusLabel` in all history details data** (`GET /api/orders/history`).
+* **Existing records checked and corrected**: Built and ran an optimized in-memory batched migration script to backfill `paymentStatus` for all `3,792` existing orders based on their payment records.
+* **New data entries automatically include `paymentStatus`**.
+* **Fixed missing `paymentStatus` issue** for available existing records.
+* **Automated Propagation**: Changing status (`orderStatus` or `paymentStatus`) on any order automatically propagates that update to all other orders belonging to the same invoice (sharing the same `paymentId`), recording individual history logs for each sibling order.
+

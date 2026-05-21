@@ -405,6 +405,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const mapPaymentStatus = (status: unknown) => {
+      switch (Number(status)) {
+        case -1:
+          return 'REJECTED';
+        case 0:
+          return 'PENDING';
+        case 1:
+          return 'VERIFY';
+        default:
+          return 'UNKNOWN';
+      }
+    };
+
     const historyWithPaymentStatus = visibleHistory.map(item => {
       // Find the document ID for this history item if we can
       let docId: string | null = null;
@@ -414,8 +427,26 @@ export async function GET(req: NextRequest) {
           break;
         }
       }
+
+      const mappedHistorySnapshots = item.history.map(snapshot => {
+        const afterState = snapshot.afterState ? { ...snapshot.afterState } : null;
+        if (afterState) {
+          const snapshotDocId = afterState.id ?? docId;
+          const currentStatus = (afterState.paymentStatus !== undefined && afterState.paymentStatus !== null)
+            ? afterState.paymentStatus
+            : (snapshotDocId ? paymentMetaMap.get(snapshotDocId) : null) ?? 0;
+          afterState.paymentStatus = currentStatus;
+          afterState.paymentStatusLabel = mapPaymentStatus(currentStatus);
+        }
+        return {
+          ...snapshot,
+          afterState
+        };
+      });
+
       return {
         ...item,
+        history: mappedHistorySnapshots,
         paymentStatus: docId ? (paymentMetaMap.get(docId) ?? null) : null
       };
     });

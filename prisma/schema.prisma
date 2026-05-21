@@ -161,6 +161,7 @@ model Order {
 
   amount          Float
   orderStatus     Int   @default(0)
+  paymentStatus   Int   @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
   paymentId       String?
 
   payments        Payment[]

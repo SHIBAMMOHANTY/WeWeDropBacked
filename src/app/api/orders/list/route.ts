@@ -101,6 +101,55 @@ async function recordOrderHistory(entry: {
 	});
 }
 
+async function propagateInvoiceStatusChanges(
+	orderId: string,
+	newOrderStatus?: number,
+	newPaymentStatus?: number,
+	paymentId?: string | null,
+	sourceRoute = "/api/orders/list"
+) {
+	if (!paymentId) return;
+
+	const siblingOrders = await prisma.order.findMany({
+		where: {
+			paymentId: paymentId,
+			id: { not: orderId },
+			deleted: false,
+		},
+	});
+
+	for (const sibling of siblingOrders) {
+		const beforeSibling = { ...sibling };
+		const siblingUpdateData: any = {};
+
+		if (newOrderStatus !== undefined && sibling.orderStatus !== newOrderStatus) {
+			siblingUpdateData.orderStatus = newOrderStatus;
+		}
+		if (newPaymentStatus !== undefined && sibling.paymentStatus !== newPaymentStatus) {
+			siblingUpdateData.paymentStatus = newPaymentStatus;
+		}
+
+		if (Object.keys(siblingUpdateData).length > 0) {
+			const updatedSibling = await prisma.order.update({
+				where: { id: sibling.id },
+				data: siblingUpdateData,
+			});
+
+			await recordOrderHistory({
+				orderId: sibling.id,
+				userId: sibling.userId,
+				actionType: "PATCH",
+				sourceType: "INVOICE_PROPAGATE",
+				sourceRoute: sourceRoute,
+				requestPayload: { triggerOrderId: orderId, triggerPayload: siblingUpdateData },
+				appliedPayload: siblingUpdateData,
+				beforeState: beforeSibling,
+				afterState: updatedSibling,
+			});
+		}
+	}
+}
+
 async function getLatestPaymentMeta(orderId: string) {
 	const payment = await prisma.payment.findFirst({
 		where: { orderId },
@@ -236,8 +285,8 @@ export async function GET(req: NextRequest) {
 			orderStatus: order.orderStatus,
 			paymentId: order.paymentId,
 			paymentDate: paymentMetaMap.get(order.id)?.paymentDate ?? null,
-			paymentStatus: paymentMetaMap.get(order.id)?.paymentStatus ?? null,
-			paymentStatusLabel: mapPaymentStatus(paymentMetaMap.get(order.id)?.paymentStatus ?? null),
+			paymentStatus: order.paymentStatus ?? paymentMetaMap.get(order.id)?.paymentStatus ?? null,
+			paymentStatusLabel: mapPaymentStatus(order.paymentStatus ?? paymentMetaMap.get(order.id)?.paymentStatus ?? null),
 			expireDate: order.expireDate,
 			createdAt: order.createdAt,
 			deleted: order.deleted,
@@ -366,6 +415,13 @@ export async function PATCH(req: NextRequest) {
 						newStatus = undefined; // do not change when not provided
 					}
 					const updateData: any = { paymentId: itemPaymentId, amount: parseFloat(String(amount)) };
+
+					let newPaymentStatus: number | undefined;
+					if (item.hasOwnProperty('paymentStatus')) {
+						newPaymentStatus = Number(item.paymentStatus);
+						updateData.paymentStatus = newPaymentStatus;
+					}
+
 				// If pickupAddress is in payload, set fullAddress to pickupAddress value
 				if (item.pickupAddress !== undefined) {
 					updateData.fullAddress = item.pickupAddress;
@@ -385,11 +441,20 @@ export async function PATCH(req: NextRequest) {
 							orderId: order.id,
 							amount: parseFloat(String(amount)),
 							status: "PENDING",
-							paymentStatus: 0,
+							paymentStatus: newPaymentStatus ?? 0,
 							paymentDate: new Date(),
 							razorpayId: itemPaymentId || null,
 						}
 					});
+					if (itemPaymentId) {
+						await propagateInvoiceStatusChanges(
+							order.id,
+							newStatus,
+							newPaymentStatus,
+							itemPaymentId,
+							"/api/orders/list"
+						);
+					}
 					await recordOrderHistory({
 						orderId: order.id,
 						userId: order.userId,
@@ -464,6 +529,13 @@ export async function PATCH(req: NextRequest) {
 						newStatus = undefined;
 					}
 					const updateData: any = { paymentId, amount: parseFloat(String(amount)) };
+
+					let newPaymentStatus: number | undefined;
+					if (data.hasOwnProperty('paymentStatus')) {
+						newPaymentStatus = Number(data.paymentStatus);
+						updateData.paymentStatus = newPaymentStatus;
+					}
+
 				// If pickupAddress is in payload, set fullAddress to pickupAddress value
 				if (data.pickupAddress !== undefined) {
 					updateData.fullAddress = data.pickupAddress;
@@ -483,11 +555,20 @@ export async function PATCH(req: NextRequest) {
 							orderId: order.id,
 							amount: parseFloat(String(amount)),
 							status: "PENDING",
-							paymentStatus: 0,
+							paymentStatus: newPaymentStatus ?? 0,
 							paymentDate: new Date(),
 							razorpayId: null,
 						}
 					});
+					if (paymentId) {
+						await propagateInvoiceStatusChanges(
+							order.id,
+							newStatus,
+							newPaymentStatus,
+							paymentId,
+							"/api/orders/list"
+						);
+					}
 					await recordOrderHistory({
 						orderId: order.id,
 						userId: order.userId,
@@ -556,6 +637,13 @@ export async function PATCH(req: NextRequest) {
 				}
 
 				const updateData: any = { paymentId: data.paymentId, amount: parseFloat(String(amount)) };
+
+				let newPaymentStatus: number | undefined;
+				if (data.hasOwnProperty('paymentStatus')) {
+					newPaymentStatus = Number(data.paymentStatus);
+					updateData.paymentStatus = newPaymentStatus;
+				}
+
 				if (data.serviceDate !== undefined) {
 					updateData.serviceDate = normalizeDateOnlyInput(data.serviceDate);
 				}
@@ -583,11 +671,20 @@ export async function PATCH(req: NextRequest) {
 						orderId: updatedOrder.id,
 						amount: parseFloat(String(amount)),
 						status: "PENDING",
-						paymentStatus: 0,
+						paymentStatus: newPaymentStatus ?? 0,
 						paymentDate: new Date(),
 						razorpayId: null,
 					}
 				});
+				if (paymentId) {
+					await propagateInvoiceStatusChanges(
+						id,
+						newStatus,
+						newPaymentStatus,
+						paymentId,
+						"/api/orders/list"
+					);
+				}
 				await recordOrderHistory({
 					orderId: id,
 					userId: updatedOrder.userId,
@@ -645,6 +742,10 @@ export async function PATCH(req: NextRequest) {
 				}
 			}
 
+			if (updateData.hasOwnProperty('paymentStatus')) {
+				updateData.paymentStatus = Number(updateData.paymentStatus);
+			}
+
 			// Generate orderId if status is 1 and orderId does not exist
 			let generatedOrderId = null;
 			if (shouldGenerateOrderId) {
@@ -669,6 +770,17 @@ export async function PATCH(req: NextRequest) {
 
 			const beforeOrder = await prisma.order.findUnique({ where: { id } });
 			const updatedOrder = await prisma.order.update({ where: { id }, data: updateData });
+
+			if (updatedOrder.paymentId) {
+				await propagateInvoiceStatusChanges(
+					id,
+					updateData.orderStatus,
+					updateData.paymentStatus,
+					updatedOrder.paymentId,
+					"/api/orders/list"
+				);
+			}
+
 			await recordOrderHistory({
 				orderId: id,
 				userId: updatedOrder.userId,
@@ -678,7 +790,7 @@ export async function PATCH(req: NextRequest) {
 				requestPayload: data,
 				appliedPayload: updateData,
 				beforeState: beforeOrder,
-				afterState: updatedOrder,
+				afterState: { ...(await prisma.order.findUnique({ where: { id } })) },
 			});
 
 			const orderWithStatus = {

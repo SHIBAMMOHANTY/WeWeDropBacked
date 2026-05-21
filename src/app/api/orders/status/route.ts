@@ -47,6 +47,102 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
+function toJsonSafe(value: any) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function mapPaymentStatus(status: unknown) {
+  switch (Number(status)) {
+    case -1:
+      return 'REJECTED';
+    case 0:
+      return 'PENDING';
+    case 1:
+      return 'VERIFY';
+    default:
+      return 'UNKNOWN';
+  }
+}
+
+async function recordOrderHistory(entry: {
+  orderId: string;
+  userId?: string | null;
+  actionType: string;
+  sourceType: string;
+  sourceRoute: string;
+  requestPayload?: any;
+  appliedPayload?: any;
+  beforeState?: any;
+  afterState?: any;
+  batchId?: string | null;
+}) {
+  const db: any = prisma;
+  await db.orderHistory.create({
+    data: {
+      orderId: entry.orderId,
+      userId: entry.userId ?? null,
+      actionType: entry.actionType,
+      sourceType: entry.sourceType,
+      sourceRoute: entry.sourceRoute,
+      requestPayload: toJsonSafe(entry.requestPayload) ?? null,
+      appliedPayload: toJsonSafe(entry.appliedPayload) ?? null,
+      beforeState: toJsonSafe(entry.beforeState) ?? null,
+      afterState: toJsonSafe(entry.afterState) ?? null,
+      batchId: entry.batchId ?? null,
+    },
+  });
+}
+
+async function propagateInvoiceStatusChanges(
+  orderId: string,
+  newOrderStatus?: number,
+  newPaymentStatus?: number,
+  paymentId?: string | null,
+  sourceRoute = "/api/orders/status"
+) {
+  if (!paymentId) return;
+
+  const siblingOrders = await prisma.order.findMany({
+    where: {
+      paymentId: paymentId,
+      id: { not: orderId },
+      deleted: false,
+    },
+  });
+
+  for (const sibling of siblingOrders) {
+    const beforeSibling = { ...sibling };
+    const siblingUpdateData: any = {};
+
+    if (newOrderStatus !== undefined && sibling.orderStatus !== newOrderStatus) {
+      siblingUpdateData.orderStatus = newOrderStatus;
+    }
+    if (newPaymentStatus !== undefined && sibling.paymentStatus !== newPaymentStatus) {
+      siblingUpdateData.paymentStatus = newPaymentStatus;
+    }
+
+    if (Object.keys(siblingUpdateData).length > 0) {
+      const updatedSibling = await prisma.order.update({
+        where: { id: sibling.id },
+        data: siblingUpdateData,
+      });
+
+      await recordOrderHistory({
+        orderId: sibling.id,
+        userId: sibling.userId,
+        actionType: "PATCH",
+        sourceType: "INVOICE_PROPAGATE",
+        sourceRoute: sourceRoute,
+        requestPayload: { triggerOrderId: orderId, triggerPayload: siblingUpdateData },
+        appliedPayload: siblingUpdateData,
+        beforeState: beforeSibling,
+        afterState: updatedSibling,
+      });
+    }
+  }
+}
+
 // GET /api/orders/status
 export async function GET(req: NextRequest) {
   console.log("DATABASE_URL:", process.env.DATABASE_URL);
@@ -171,7 +267,8 @@ export async function GET(req: NextRequest) {
       invoicePdf: order.invoicePdf || null,
       billingDate: order.billingDate || null,
       status: statusMap[order.orderStatus] || 'UNKNOWN',
-      paymentStatus: paymentMetaMap.get(order.id) ?? null
+      paymentStatus: order.paymentStatus ?? paymentMetaMap.get(order.id) ?? null,
+      paymentStatusLabel: mapPaymentStatus(order.paymentStatus ?? paymentMetaMap.get(order.id) ?? null)
     }));
 
     return NextResponse.json(ordersWithStatus, { headers: corsHeaders });
@@ -191,40 +288,75 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const { status } = await req.json();
+    const body = await req.json();
+    const { status, paymentStatus } = body;
 
-    if (status === undefined || status === null) {
-      return NextResponse.json({ error: "Missing status" }, { status: 400, headers: corsHeaders });
-    }
+    let numericStatus: number | undefined = undefined;
+    if (status !== undefined && status !== null) {
+      const statusMap: Record<string, number> = {
+        "PENDING": 0,
+        "PICKUP_REQUESTED": 1,
+        "REJECTED": -1,
+        "READY_FOR_PICKUP": 2,
+        "REPAIRING": 3,
+        "DELIVERED": 4
+      };
 
-    const statusMap: Record<string, number> = {
-      "PENDING": 0,
-      "PICKUP_REQUESTED": 1,
-      "REJECTED": -1,
-      "READY_FOR_PICKUP": 2,
-      "REPAIRING": 3,
-      "DELIVERED": 4
-    };
-
-    let numericStatus: number;
-    if (typeof status === 'string') {
-      numericStatus = statusMap[status];
-      if (numericStatus === undefined) {
-        return NextResponse.json({ error: "Invalid status" }, { status: 400, headers: corsHeaders });
+      if (typeof status === 'string') {
+        numericStatus = statusMap[status];
+        if (numericStatus === undefined) {
+          return NextResponse.json({ error: "Invalid status" }, { status: 400, headers: corsHeaders });
+        }
+      } else if (typeof status === 'number') {
+        numericStatus = status;
+      } else {
+        return NextResponse.json({ error: "Status must be string or number" }, { status: 400, headers: corsHeaders });
       }
-    } else if (typeof status === 'number') {
-      numericStatus = status;
-    } else {
-      return NextResponse.json({ error: "Status must be string or number" }, { status: 400, headers: corsHeaders });
     }
+
+    let numericPaymentStatus: number | undefined = undefined;
+    if (paymentStatus !== undefined && paymentStatus !== null) {
+      numericPaymentStatus = Number(paymentStatus);
+    }
+
+    if (numericStatus === undefined && numericPaymentStatus === undefined) {
+      return NextResponse.json({ error: "Missing status or paymentStatus in request body" }, { status: 400, headers: corsHeaders });
+    }
+
+    const beforeOrder = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!beforeOrder) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404, headers: corsHeaders });
+    }
+
+    const updateData: any = {};
+    if (numericStatus !== undefined) updateData.orderStatus = numericStatus;
+    if (numericPaymentStatus !== undefined) updateData.paymentStatus = numericPaymentStatus;
 
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
-      data: { orderStatus: numericStatus },
-      select: {
-        id: true,
-        orderStatus: true,
-      },
+      data: updateData,
+    });
+
+    if (updatedOrder.paymentId) {
+      await propagateInvoiceStatusChanges(
+        orderId,
+        numericStatus,
+        numericPaymentStatus,
+        updatedOrder.paymentId,
+        "/api/orders/status"
+      );
+    }
+
+    await recordOrderHistory({
+      orderId: orderId,
+      userId: updatedOrder.userId,
+      actionType: "PATCH",
+      sourceType: "STATUS_UPDATE",
+      sourceRoute: "/api/orders/status",
+      requestPayload: body,
+      appliedPayload: updateData,
+      beforeState: beforeOrder,
+      afterState: { ...(await prisma.order.findUnique({ where: { id: orderId } })) },
     });
 
     const statusMapReverse: { [key: number]: string } = {
@@ -238,7 +370,9 @@ export async function PATCH(req: NextRequest) {
 
     const orderWithStatus = {
       ...updatedOrder,
-      status: statusMapReverse[updatedOrder.orderStatus] || 'UNKNOWN'
+      status: statusMapReverse[updatedOrder.orderStatus] || 'UNKNOWN',
+      paymentStatus: updatedOrder.paymentStatus,
+      paymentStatusLabel: mapPaymentStatus(updatedOrder.paymentStatus),
     };
 
     return NextResponse.json(orderWithStatus, { headers: corsHeaders });
