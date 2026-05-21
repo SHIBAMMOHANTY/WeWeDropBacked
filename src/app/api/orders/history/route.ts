@@ -6,6 +6,19 @@ import { verifyToken } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 
+const mapPaymentStatus = (status: unknown) => {
+  switch (Number(status)) {
+    case -1:
+      return 'REJECTED';
+    case 0:
+      return 'PENDING';
+    case 1:
+      return 'VERIFY';
+    default:
+      return 'UNKNOWN';
+  }
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -410,35 +423,19 @@ export async function GET(req: NextRequest) {
     });
 
     const visibleOrderDocIds = Array.from(orderDocIds).filter(id => !deletedOrderDocIds.has(id));
-    const payments = visibleOrderDocIds.length > 0 
+    const orders = visibleOrderDocIds.length > 0 
       ? await executeWithRetry(async () => {
-          return await prisma.payment.findMany({
-            where: { orderId: { in: visibleOrderDocIds } },
-            select: { orderId: true, paymentStatus: true, createdAt: true },
-            orderBy: { createdAt: "desc" }
+          return await prisma.order.findMany({
+            where: { id: { in: visibleOrderDocIds } },
+            select: { id: true, paymentStatus: true }
           });
         })
       : [];
 
-    const paymentMetaMap = new Map<string, number | null>();
-    for (const payment of payments) {
-      if (!paymentMetaMap.has(payment.orderId)) {
-        paymentMetaMap.set(payment.orderId, payment.paymentStatus ?? null);
-      }
+    const orderPaymentMap = new Map<string, number | null>();
+    for (const order of orders) {
+      orderPaymentMap.set(order.id, order.paymentStatus ?? null);
     }
-
-    const mapPaymentStatus = (status: unknown) => {
-      switch (Number(status)) {
-        case -1:
-          return 'REJECTED';
-        case 0:
-          return 'PENDING';
-        case 1:
-          return 'VERIFY';
-        default:
-          return 'UNKNOWN';
-      }
-    };
 
     const historyWithPaymentStatus = visibleHistory.map(item => {
       // Find the document ID for this history item if we can
@@ -456,18 +453,31 @@ export async function GET(req: NextRequest) {
         
         if (afterState) {
           const snapshotDocId = afterState.id ?? docId;
-          const currentStatus = (afterState.paymentStatus !== undefined && afterState.paymentStatus !== null)
-            ? afterState.paymentStatus
-            : (snapshotDocId ? paymentMetaMap.get(snapshotDocId) : null) ?? 0;
+          const rootStatus = snapshot.paymentStatus;
+          const liveStatus = snapshotDocId ? orderPaymentMap.get(snapshotDocId) : null;
+          
+          const currentStatus = (rootStatus !== undefined && rootStatus !== null)
+            ? rootStatus
+            : (liveStatus !== undefined && liveStatus !== null)
+              ? liveStatus
+              : (afterState.paymentStatus !== undefined && afterState.paymentStatus !== null)
+                ? afterState.paymentStatus
+                : 0;
+          
           afterState.paymentStatus = currentStatus;
           afterState.paymentStatusLabel = mapPaymentStatus(currentStatus);
         }
         
         if (beforeState) {
           const snapshotDocId = beforeState.id ?? docId;
+          const liveStatus = snapshotDocId ? orderPaymentMap.get(snapshotDocId) : null;
+          
           const currentStatus = (beforeState.paymentStatus !== undefined && beforeState.paymentStatus !== null)
             ? beforeState.paymentStatus
-            : (snapshotDocId ? paymentMetaMap.get(snapshotDocId) : null) ?? 0;
+            : (liveStatus !== undefined && liveStatus !== null)
+              ? liveStatus
+              : 0;
+          
           beforeState.paymentStatus = currentStatus;
           beforeState.paymentStatusLabel = mapPaymentStatus(currentStatus);
         }
@@ -479,9 +489,12 @@ export async function GET(req: NextRequest) {
         };
       });
 
-      const topPaymentStatus = item.history[0]?.paymentStatus !== undefined && item.history[0]?.paymentStatus !== null
-        ? item.history[0].paymentStatus
-        : (docId ? (paymentMetaMap.get(docId) ?? null) : null) ?? 0;
+      const liveStatus = docId ? orderPaymentMap.get(docId) : null;
+      const topPaymentStatus = (liveStatus !== undefined && liveStatus !== null)
+        ? liveStatus
+        : (item.history[0]?.paymentStatus !== undefined && item.history[0]?.paymentStatus !== null)
+          ? item.history[0].paymentStatus
+          : 0;
       return {
         ...item,
         history: mappedHistorySnapshots,
