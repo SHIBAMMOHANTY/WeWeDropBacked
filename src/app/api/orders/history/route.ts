@@ -244,10 +244,17 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "desc" },
         take: limit,
         select: {
+          id: true,
           orderId: true,
+          userId: true,
+          actionType: true,
           sourceType: true,
-          batchId: true,
+          sourceRoute: true,
+          requestPayload: true,
+          appliedPayload: true,
+          beforeState: true,
           afterState: true,
+          batchId: true,
           createdAt: true,
         },
       });
@@ -298,8 +305,20 @@ export async function GET(req: NextRequest) {
       const normalizedAfterState = isBulkHistory
         ? { ...afterState, orderId: group.primaryIndividualId }
         : afterState;
+      const normalizedBeforeState = isBulkHistory && entry.beforeState
+        ? { ...(entry.beforeState as any), orderId: group.primaryIndividualId }
+        : entry.beforeState;
 
       group.history.push({
+        id: entry.id,
+        orderId: entry.orderId,
+        userId: entry.userId,
+        actionType: entry.actionType,
+        sourceType: entry.sourceType,
+        sourceRoute: entry.sourceRoute,
+        requestPayload: entry.requestPayload,
+        appliedPayload: entry.appliedPayload,
+        beforeState: normalizedBeforeState,
         afterState: normalizedAfterState,
         createdAt: entry.createdAt,
       });
@@ -430,6 +449,8 @@ export async function GET(req: NextRequest) {
 
       const mappedHistorySnapshots = item.history.map(snapshot => {
         const afterState = snapshot.afterState ? { ...snapshot.afterState } : null;
+        const beforeState = snapshot.beforeState ? { ...snapshot.beforeState } : null;
+        
         if (afterState) {
           const snapshotDocId = afterState.id ?? docId;
           const currentStatus = (afterState.paymentStatus !== undefined && afterState.paymentStatus !== null)
@@ -438,16 +459,29 @@ export async function GET(req: NextRequest) {
           afterState.paymentStatus = currentStatus;
           afterState.paymentStatusLabel = mapPaymentStatus(currentStatus);
         }
+        
+        if (beforeState) {
+          const snapshotDocId = beforeState.id ?? docId;
+          const currentStatus = (beforeState.paymentStatus !== undefined && beforeState.paymentStatus !== null)
+            ? beforeState.paymentStatus
+            : (snapshotDocId ? paymentMetaMap.get(snapshotDocId) : null) ?? 0;
+          beforeState.paymentStatus = currentStatus;
+          beforeState.paymentStatusLabel = mapPaymentStatus(currentStatus);
+        }
+        
         return {
           ...snapshot,
+          beforeState,
           afterState
         };
       });
 
+      const topPaymentStatus = docId ? (paymentMetaMap.get(docId) ?? null) : null;
       return {
         ...item,
         history: mappedHistorySnapshots,
-        paymentStatus: docId ? (paymentMetaMap.get(docId) ?? null) : null
+        paymentStatus: topPaymentStatus,
+        paymentStatusLabel: mapPaymentStatus(topPaymentStatus)
       };
     });
 

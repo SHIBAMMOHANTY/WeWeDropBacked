@@ -13,6 +13,19 @@ export async function OPTIONS() {
   return response;
 }
 
+function mapPaymentStatus(status: unknown) {
+  switch (Number(status)) {
+    case -1:
+      return 'REJECTED';
+    case 0:
+      return 'PENDING';
+    case 1:
+      return 'VERIFY';
+    default:
+      return 'UNKNOWN';
+  }
+}
+
 // GET /api/orders/all
 export async function GET(req: NextRequest) {
   console.log("GET /api/orders/all called");
@@ -178,7 +191,8 @@ export async function GET(req: NextRequest) {
         orderStatus: order.orderStatus,
         paymentId: order.paymentId,
         paymentDate: paymentMetaMap.get(order.id)?.paymentDate ?? null,
-        paymentStatus: paymentMetaMap.get(order.id)?.paymentStatus ?? null,
+        paymentStatus: order.paymentStatus ?? paymentMetaMap.get(order.id)?.paymentStatus ?? null,
+        paymentStatusLabel: mapPaymentStatus(order.paymentStatus ?? paymentMetaMap.get(order.id)?.paymentStatus ?? null),
         expireDate: order.expireDate,
         createdAt: order.createdAt,
         deleted: order.deleted,

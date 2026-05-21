@@ -78,6 +78,17 @@ async function recordOrderHistory(entry: {
   batchId?: string | null;
 }) {
   const db: any = prisma;
+
+  const beforeState = entry.beforeState ? { ...entry.beforeState } : null;
+  if (beforeState && beforeState.paymentStatus !== undefined && beforeState.paymentStatus !== null) {
+    beforeState.paymentStatusLabel = mapPaymentStatus(beforeState.paymentStatus);
+  }
+
+  const afterState = entry.afterState ? { ...entry.afterState } : null;
+  if (afterState && afterState.paymentStatus !== undefined && afterState.paymentStatus !== null) {
+    afterState.paymentStatusLabel = mapPaymentStatus(afterState.paymentStatus);
+  }
+
   await db.orderHistory.create({
     data: {
       orderId: entry.orderId,
@@ -87,8 +98,8 @@ async function recordOrderHistory(entry: {
       sourceRoute: entry.sourceRoute,
       requestPayload: toJsonSafe(entry.requestPayload) ?? null,
       appliedPayload: toJsonSafe(entry.appliedPayload) ?? null,
-      beforeState: toJsonSafe(entry.beforeState) ?? null,
-      afterState: toJsonSafe(entry.afterState) ?? null,
+      beforeState: toJsonSafe(beforeState) ?? null,
+      afterState: toJsonSafe(afterState) ?? null,
       batchId: entry.batchId ?? null,
     },
   });
