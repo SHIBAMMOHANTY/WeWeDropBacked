@@ -37,21 +37,21 @@ enum MembershipType {
 }
 
 enum OrderStatus {
-  PENDING           //0
-  PICKUP_REQUESTED  //1
-  REJECTED          //-1
-  READY_FOR_PICKUP  //2
-  REPAIRING         //3
-  DELIVERED         //4
+  PENDING //0
+  PICKUP_REQUESTED //1
+  REJECTED //-1
+  READY_FOR_PICKUP //2
+  REPAIRING //3
+  DELIVERED //4
 }
 
 enum DeliveryStatus {
-  PENDING           //0 - Initial state when order created
-  REQUEST_ACCEPTED  //1 - Seller accepted the request
-  IN_TRANSIT        //2 - Order is in transit
-  OUT_FOR_DELIVERY  //3 - Out for delivery
-  DELIVERED         //4 - Successfully delivered
-  REJECTED          //5 - Seller rejected the request
+  PENDING //0 - Initial state when order created
+  REQUEST_ACCEPTED //1 - Seller accepted the request
+  IN_TRANSIT //2 - Order is in transit
+  OUT_FOR_DELIVERY //3 - Out for delivery
+  DELIVERED //4 - Successfully delivered
+  REJECTED //5 - Seller rejected the request
 }
 
 enum PhoneCondition {
@@ -65,32 +65,33 @@ enum PhoneCondition {
 //////////////////////
 
 model User {
-  id          String           @id @default(auto()) @map("_id") @db.ObjectId
-  phone       String           @unique
-  username    String?          @unique
-  password    String?
-  email       String?          @unique
-  role        Role             @default(USER)
-  membership  MembershipType?
-  isActive    Boolean          @default(true)
-  createdAt   DateTime         @default(now())
+  id         String          @id @default(auto()) @map("_id") @db.ObjectId
+  phone      String          @unique
+  username   String?         @unique
+  password   String?
+  email      String?         @unique
+  role       Role            @default(USER)
+  membership MembershipType?
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
 
   // GST (Optional)
-  gstName         String?
-  gstNumber       String?
-  gstAddress      String?
-  gstCertificate  String?   // uploaded file URL
+  gstName        String?
+  gstNumber      String?
+  gstAddress     String?
+  gstCertificate String? // uploaded file URL
 
-  orders              Order[] @relation("OrderUser")
-  deliveryAssignments Order[] @relation("OrderDeliveryAgent")
-  payments    Payment[]
+  orders              Order[]           @relation("OrderUser")
+  deliveryAssignments Order[]           @relation("OrderDeliveryAgent")
+  payments            Payment[]
   oldPhoneListings    OldPhoneListing[]
   oldPhoneOrders      OldPhoneOrder[]
+  notifications       Notification[]
 
   // Avatar image URL with default empty string
-  avatar      String   @default("")
+  avatar String @default("")
 
-  numericId   Int?             @unique
+  numericId Int? @unique
 }
 
 //////////////////////
@@ -98,31 +99,32 @@ model User {
 //////////////////////
 
 model Business {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  id String @id @default(auto()) @map("_id") @db.ObjectId
 
   // Login
-  email           String   @unique
-  password        String
+  email    String @unique
+  password String
 
   // Dealer Info
-  dealerName      String
-  contactNumber   String   @unique
-  referralCode    String?
+  dealerName    String
+  contactNumber String  @unique
+  referralCode  String?
 
   // GST (Optional)
-  gstName         String?
-  gstNumber       String?
-  gstAddress      String?
-  gstCertificate  String?   // uploaded file URL
+  gstName        String?
+  gstNumber      String?
+  gstAddress     String?
+  gstCertificate String? // uploaded file URL
 
   // Status
-  approved        Boolean  @default(false)
-  isActive        Boolean  @default(true)
+  approved Boolean @default(false)
+  isActive Boolean @default(true)
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  orders          Order[]
+  orders           Order[]
   oldPhoneListings OldPhoneListing[]
+  notifications    Notification[]
 }
 
 //////////////////////
@@ -130,63 +132,63 @@ model Business {
 //////////////////////
 
 model Order {
-  id              String        @id @default(auto()) @map("_id") @db.ObjectId
-  orderId         String?       @unique
+  id      String  @id @default(auto()) @map("_id") @db.ObjectId
+  orderId String? @unique
 
   // Relations
   userId          String
   businessId      String?
   deliveryAgentId String?
 
-  user            User?         @relation("OrderUser", fields: [userId], references: [id])
-  deliveryAgent   User?         @relation("OrderDeliveryAgent", fields: [deliveryAgentId], references: [id])
-  business        Business?     @relation(fields: [businessId], references: [id])
+  user          User?     @relation("OrderUser", fields: [userId], references: [id])
+  deliveryAgent User?     @relation("OrderDeliveryAgent", fields: [deliveryAgentId], references: [id])
+  business      Business? @relation(fields: [businessId], references: [id])
 
   // Service Details
-  membershipType  MembershipType
-  brandName       String
-  productName     String
-  imeiNumber      String
-  billImage       String
-  utrScreenshot   String?
-  invoicePdf      String?
-  serviceDate     DateTime
-  billingDate     DateTime?
-  deliveryDate    DateTime?
+  membershipType    MembershipType
+  brandName         String
+  productName       String
+  imeiNumber        String
+  billImage         String
+  utrScreenshot     String?
+  invoicePdf        String?
+  serviceDate       DateTime
+  billingDate       DateTime?
+  deliveryDate      DateTime?
   serviceCenterDate DateTime?
 
-  customerName    String
-  contactNumber   String
+  customerName  String
+  contactNumber String
 
   // Address (BASIC only, validated in API)
-  state           String?
-  pincode         String?
-  fullAddress     String?
+  state       String?
+  pincode     String?
+  fullAddress String?
 
   // Additional fields for order update
-  preferredDate   DateTime?
-  warrantyStatus  String?
-  issueType       String?
-  area            String?
-  pickupAddress   String?
-  fix             String?
-  remark          String?
+  preferredDate  DateTime?
+  warrantyStatus String?
+  issueType      String?
+  area           String?
+  pickupAddress  String?
+  fix            String?
+  remark         String?
 
-  receiverName    String?
-  mobileNumber    String?
+  receiverName String?
+  mobileNumber String?
 
-  amount          Float
-  orderStatus     Int   @default(0)
-  paymentStatus   Int   @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
-  paymentId       String?
+  amount        Float
+  orderStatus   Int     @default(0)
+  paymentStatus Int     @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
+  paymentId     String?
 
-  payments        Payment[]
+  payments Payment[]
 
   // Expiry date for ELITE membership
-  expireDate      DateTime?
+  expireDate DateTime?
 
-  createdAt       DateTime      @default(now())
-  deleted         Boolean       @default(false)
+  createdAt DateTime @default(now())
+  deleted   Boolean  @default(false)
 }
 
 //////////////////////
@@ -194,55 +196,55 @@ model Order {
 //////////////////////
 
 model OldPhoneListing {
-  id          String        @id @default(auto()) @map("_id") @db.ObjectId
-  listingId   String?       @unique
-  
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  listingId String? @unique
+
   // Relations
-  userId      String
-  businessId  String?
-  
-  user        User?         @relation(fields: [userId], references: [id])
-  business    Business?     @relation(fields: [businessId], references: [id])
-  
+  userId     String
+  businessId String?
+
+  user     User?     @relation(fields: [userId], references: [id])
+  business Business? @relation(fields: [businessId], references: [id])
+
   // Phone Details
-  phoneName       String
-  phoneModel      String
-  phoneStorage    String
-  phoneColor      String
-  phonePrice      Float
-  imeiNumber      String?
-  description     String?
-  
+  phoneName    String
+  phoneModel   String
+  phoneStorage String
+  phoneColor   String
+  phonePrice   Float
+  imeiNumber   String?
+  description  String?
+
   // Condition Details
-  phoneOn             Boolean?
-  displayWorking      Boolean?
-  displayGlassDamage  Boolean?
-  bodyCondition       PhoneCondition @default(GOOD)
-  simSlotsWorking     Boolean?
+  phoneOn              Boolean?
+  displayWorking       Boolean?
+  displayGlassDamage   Boolean?
+  bodyCondition        PhoneCondition @default(GOOD)
+  simSlotsWorking      Boolean?
   volumeButtonsWorking Boolean?
-  fingerprintWorking  Boolean?
-  cameraWorking       Boolean?
-  speakerWorking      Boolean?
-  
+  fingerprintWorking   Boolean?
+  cameraWorking        Boolean?
+  speakerWorking       Boolean?
+
   // Additional Details
   financeKitAvailable Boolean?
-  accessories         String[]      // Box, Charger, Bill, Headphones, Cable
-  warranty           Boolean?
-  
+  accessories         String[] // Box, Charger, Bill, Headphones, Cable
+  warranty            Boolean?
+
   // Images
-  images              String[]      // Array of image URLs
-  billImage           String?       // Purchase bill image URL
-  purchaseDate        String?
-  
+  images       String[] // Array of image URLs
+  billImage    String? // Purchase bill image URL
+  purchaseDate String?
+
   // Status
-  isActive            Boolean       @default(true)
-  isSold              Boolean       @default(false)
-  
-  orders              OldPhoneOrder[]
-  
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  
+  isActive Boolean @default(true)
+  isSold   Boolean @default(false)
+
+  orders OldPhoneOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@index([businessId])
   @@index([isActive])
@@ -254,33 +256,33 @@ model OldPhoneListing {
 //////////////////////
 
 model OldPhoneOrder {
-  id              String        @id @default(auto()) @map("_id") @db.ObjectId
-  orderId         String?       @unique
-  
+  id      String  @id @default(auto()) @map("_id") @db.ObjectId
+  orderId String? @unique
+
   // Relations
-  listingId       String
-  userId          String        // Customer who placed the order
-  sellerId        String        // Business/User who listed the phone
-  
-  listing         OldPhoneListing @relation(fields: [listingId], references: [id])
-  user            User          @relation(fields: [userId], references: [id])
-  
+  listingId String
+  userId    String // Customer who placed the order
+  sellerId  String // Business/User who listed the phone
+
+  listing OldPhoneListing @relation(fields: [listingId], references: [id])
+  user    User            @relation(fields: [userId], references: [id])
+
   // Order Details
-  customerName    String
-  customerPhone   String
-  offerPrice      Float
-  deliveryStatus  Int           @default(0) // 0=Pending, 1=Accepted, 2=In Transit, 3=Out for Delivery, 4=Delivered, 5=Rejected
-  remark          String?       // Remark for status update
-  feedback        String?       // Customer feedback after delivery
-  rating          Int?          @default(0) // Rating from 1-5
-  
+  customerName   String
+  customerPhone  String
+  offerPrice     Float
+  deliveryStatus Int     @default(0) // 0=Pending, 1=Accepted, 2=In Transit, 3=Out for Delivery, 4=Delivered, 5=Rejected
+  remark         String? // Remark for status update
+  feedback       String? // Customer feedback after delivery
+  rating         Int?    @default(0) // Rating from 1-5
+
   // Delivery Details
   deliveryAddress String?
   deliveryDate    DateTime?
-  
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([listingId])
   @@index([userId])
   @@index([sellerId])
@@ -293,26 +295,26 @@ model OldPhoneOrder {
 //////////////////////
 
 model Notification {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
   // Relations
-  userId      String?
-  businessId  String?
-  
-  user        User?    @relation(fields: [userId], references: [id])
-  business    Business? @relation(fields: [businessId], references: [id])
-  
+  userId     String?
+  businessId String?
+
+  user     User?     @relation(fields: [userId], references: [id])
+  business Business? @relation(fields: [businessId], references: [id])
+
   // Notification Details
-  title       String
-  message     String
-  type        String   // order, completed, pending, success, warning, info
-  isRead      Boolean  @default(false)
-  
+  title   String
+  message String
+  type    String // order, completed, pending, success, warning, info
+  isRead  Boolean @default(false)
+
   // Related Entity
-  relatedId   String?  // Can be orderId, listingId, etc.
-  
-  createdAt   DateTime @default(now())
-  
+  relatedId String? // Can be orderId, listingId, etc.
+
+  createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([businessId])
   @@index([isRead])
@@ -326,19 +328,19 @@ model Notification {
 //////////////////////
 
 model OrderHistory {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  orderId         String
-  userId          String?
-  actionType      String
-  sourceType      String
-  sourceRoute     String
-  requestPayload  Json?
-  appliedPayload  Json?
-  beforeState     Json?
-  afterState      Json?
-  batchId         String?
-  paymentStatus   Int      @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
-  createdAt       DateTime @default(now())
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId        String
+  userId         String?
+  actionType     String
+  sourceType     String
+  sourceRoute    String
+  requestPayload Json?
+  appliedPayload Json?
+  beforeState    Json?
+  afterState     Json?
+  batchId        String?
+  paymentStatus  Int      @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
+  createdAt      DateTime @default(now())
 
   // ⚡ PERFORMANCE: Indexes for common queries
   @@index([orderId])
@@ -355,21 +357,21 @@ model OrderHistory {
 //////////////////////
 
 model Payment {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  userId      String
-  orderId     String
+  userId  String
+  orderId String
 
-  user        User?    @relation(fields: [userId], references: [id])
-  order       Order?   @relation(fields: [orderId], references: [id])
+  user  User?  @relation(fields: [userId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
 
-  amount      Float
-  status      String   // PENDING | VERIFY | REJECTED | PAID | FAILED
-  paymentStatus Int     @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
-  paymentDate DateTime?  @default(now())
-  razorpayId  String?
+  amount        Float
+  status        String // PENDING | VERIFY | REJECTED | PAID | FAILED
+  paymentStatus Int       @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
+  paymentDate   DateTime? @default(now())
+  razorpayId    String?
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 //////////////////////
@@ -390,8 +392,8 @@ model Admin {
 
 model MembershipPricing {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  category  String   // "USER" or "BUSINESS"
-  type      String   // "BASIC", "PREMIUM", "ELITE"
+  category  String // "USER" or "BUSINESS"
+  type      String // "BASIC", "PREMIUM", "ELITE"
   price     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
