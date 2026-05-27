@@ -22,3 +22,4 @@ prisma/.env
 
 # Vercel
 .vercel/
+.vercel
