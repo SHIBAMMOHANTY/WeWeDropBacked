@@ -9,8 +9,8 @@ import { verifyOTP } from "@/lib/otp";
 export async function POST(req: Request) {
   const { phone, otp } = await req.json();
 
-  // 1️⃣ Verify OTP
-  const valid = verifyOTP(phone, otp);
+  // 1️⃣ Verify OTP (must await — it's async!)
+  const valid = await verifyOTP(phone, otp);
   if (!valid) {
     return NextResponse.json({ error: "Invalid OTP" }, { status: 401 });
   }
@@ -32,12 +32,16 @@ export async function POST(req: Request) {
     role: user.role,
   });
 
-  // 4️⃣ Response
+  // 4️⃣ Response — include username/name so frontend can display real user details
   return NextResponse.json({
     message: "Login successful",
     token,
-    id: user.id,          // ✅ UUID
+    id: user.id,
     phone: user.phone,
     role: user.role,
+    name: user.username || null,   // real name if set, null if not yet filled
+    username: user.username || null,
+    email: user.email || null,
   });
 }
+
