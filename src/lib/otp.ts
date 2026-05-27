@@ -39,16 +39,25 @@ async function sendOTPByEmail(email: string, otp: string): Promise<void> {
   console.log('[OTP] Email OTP sent to', email);
 }
 
-/** Send OTP via MSG91 WhatsApp */
-async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
+/**
+ * Send OTP via MSG91 WhatsApp.
+ * Returns true if sent successfully, false if MSG91 is not configured (dev mode).
+ */
+async function sendOTPByWhatsApp(phone: string, otp: string): Promise<boolean> {
   // Strip '+' — MSG91 expects number WITHOUT '+' (e.g. 919876543210)
   const mobileNumber = phone.replace(/^\+/, '');
 
-  const authKey   = process.env.MSG91_AUTH_KEY!;
-  const intNumber = process.env.MSG91_INTEGRATED_NUMBER!; // WhatsApp Business number
-  const template  = process.env.MSG91_TEMPLATE_NAME!;      // Approved template name
-  const namespace = process.env.MSG91_NAMESPACE!;           // Template namespace
+  const authKey   = process.env.MSG91_AUTH_KEY;
+  const intNumber = process.env.MSG91_INTEGRATED_NUMBER; // WhatsApp Business number
+  const template  = process.env.MSG91_TEMPLATE_NAME;      // Approved template name
+  const namespace = process.env.MSG91_NAMESPACE;           // Template namespace
   const langCode  = process.env.MSG91_LANG_CODE || 'en';
+
+  // Dev mode: if MSG91 is not configured, skip sending and let caller return OTP directly
+  if (!authKey || !intNumber || !template || !namespace) {
+    console.warn('[OTP] MSG91 not configured — running in dev mode, OTP will be returned in response.');
+    return false; // signal: not sent via WhatsApp
+  }
 
   const payload = {
     integrated_number: intNumber,
@@ -93,14 +102,20 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
   }
 
   console.log('[OTP] WhatsApp OTP sent to', mobileNumber);
+  return true;
 }
 
 /**
  * sendOTP — auto-detects email vs phone:
  *   - If `emailOrPhone` looks like an email → sends via SMTP (nodemailer)
  *   - If it looks like a phone number     → sends via MSG91 WhatsApp
+ *
+ * Returns an object with:
+ *   - `devMode: true`  when MSG91 is not configured (OTP returned directly for testing)
+ *   - `devMode: false` when OTP was actually dispatched via WhatsApp/Email
+ *   - `otp` is always included so the route can expose it in dev mode
  */
-export async function sendOTP(emailOrPhone: string): Promise<void> {
+export async function sendOTP(emailOrPhone: string): Promise<{ devMode: boolean; otp: string }> {
   const otp = generateOTP();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
 
@@ -111,8 +126,10 @@ export async function sendOTP(emailOrPhone: string): Promise<void> {
 
   if (isEmail(emailOrPhone)) {
     await sendOTPByEmail(emailOrPhone, otp);
+    return { devMode: false, otp };
   } else {
-    await sendOTPByWhatsApp(emailOrPhone, otp);
+    const sent = await sendOTPByWhatsApp(emailOrPhone, otp);
+    return { devMode: !sent, otp };
   }
 }
 

@@ -43,11 +43,26 @@ export async function POST(req: Request) {
     }
 
     // send OTP and handle failures
+    let devMode = false;
+    let generatedOtp: string | undefined;
     try {
-      await sendOTP(phone);
+      const result = await sendOTP(phone);
+      devMode = result.devMode;
+      generatedOtp = result.otp;
     } catch (e) {
       console.error("[otp] sendOTP failed:", (e as Error).message);
       return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
+    }
+
+    // In dev mode (no MSG91 configured), return the OTP directly in the response
+    if (devMode) {
+      return NextResponse.json({
+        success: true,
+        message: "OTP generated (dev mode — no WhatsApp sent)",
+        phone,
+        otp: generatedOtp, // ⚠️ remove this in production
+        dev: true,
+      });
     }
 
     return NextResponse.json({ success: true, message: "OTP sent", phone });
