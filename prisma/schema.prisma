@@ -67,9 +67,9 @@ enum PhoneCondition {
 model User {
   id         String          @id @default(auto()) @map("_id") @db.ObjectId
   phone      String          @unique
-  username   String?         @unique
+  username   String?
   password   String?
-  email      String?         @unique
+  email      String?
   role       Role            @default(USER)
   membership MembershipType?
   isActive   Boolean         @default(true)
@@ -91,7 +91,7 @@ model User {
   // Avatar image URL with default empty string
   avatar String @default("")
 
-  numericId Int? @unique
+  numericId Int?
 }
 
 //////////////////////
@@ -133,7 +133,7 @@ model Business {
 
 model Order {
   id      String  @id @default(auto()) @map("_id") @db.ObjectId
-  orderId String? @unique
+  orderId String?
 
   // Relations
   userId          String
@@ -197,7 +197,7 @@ model Order {
 
 model OldPhoneListing {
   id        String  @id @default(auto()) @map("_id") @db.ObjectId
-  listingId String? @unique
+  listingId String?
 
   // Relations
   userId     String
@@ -257,7 +257,7 @@ model OldPhoneListing {
 
 model OldPhoneOrder {
   id      String  @id @default(auto()) @map("_id") @db.ObjectId
-  orderId String? @unique
+  orderId String?
 
   // Relations
   listingId String
