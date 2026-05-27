@@ -17,16 +17,22 @@ export async function POST(req: Request) {
     }
     phone = phone.trim();
 
-    console.log("Attempting to save user to DB...");
+    console.log("Checking if user is registered in DB...");
 
-    // upsert user
-    const user = await prisma.user.upsert({
+    // Find registered user
+    const user = await prisma.user.findUnique({
       where: { phone },
-      create: { phone },
-      update: {},
     });
 
-    console.log("User saved:", { id: user.id, phone: user.phone });
+    if (!user) {
+      console.log(`Phone number ${phone} is not registered.`);
+      return NextResponse.json(
+        { error: "Number is not registered" },
+        { status: 400 }
+      );
+    }
+
+    console.log("User found:", { id: user.id, phone: user.phone });
 
     // allocate stable numeric id and persist to DB (best-effort)
     try {
@@ -54,6 +60,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
     }
 
+    const userDetails = {
+      id: user.id,
+      phone: user.phone,
+      role: user.role,
+      name: user.username || null,
+      username: user.username || null,
+      email: user.email || null,
+      avatar: user.avatar || "",
+      membership: user.membership || null,
+    };
+
     // In dev mode (no MSG91 configured), return the OTP directly in the response
     if (devMode) {
       return NextResponse.json({
@@ -62,10 +79,16 @@ export async function POST(req: Request) {
         phone,
         otp: generatedOtp, // ⚠️ remove this in production
         dev: true,
+        user: userDetails,
       });
     }
 
-    return NextResponse.json({ success: true, message: "OTP sent", phone });
+    return NextResponse.json({
+      success: true,
+      message: "OTP sent",
+      phone,
+      user: userDetails,
+    });
 
   } catch (error: any) {
     console.error("--------------------------------");
