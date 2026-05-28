@@ -41,9 +41,8 @@ async function sendOTPByEmail(email: string, otp: string): Promise<void> {
 
 /**
  * Send OTP via MSG91 WhatsApp.
- * Returns true if sent successfully, false if MSG91 is not configured (dev mode).
  */
-async function sendOTPByWhatsApp(phone: string, otp: string): Promise<boolean> {
+async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
   // Strip '+' — MSG91 expects number WITHOUT '+' (e.g. 919876543210)
   const mobileNumber = phone.replace(/^\+/, '');
 
@@ -53,10 +52,8 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<boolean> {
   const namespace = process.env.MSG91_NAMESPACE;           // Template namespace
   const langCode  = process.env.MSG91_LANG_CODE || 'en';
 
-  // Dev mode: if MSG91 is not configured, skip sending and let caller return OTP directly
   if (!authKey || !intNumber || !template || !namespace) {
-    console.warn('[OTP] MSG91 not configured — running in dev mode, OTP will be returned in response.');
-    return false; // signal: not sent via WhatsApp
+    throw new Error('MSG91 configuration is missing.');
   }
 
   const payload = {
@@ -102,20 +99,14 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<boolean> {
   }
 
   console.log('[OTP] WhatsApp OTP sent to', mobileNumber);
-  return true;
 }
 
 /**
  * sendOTP — auto-detects email vs phone:
  *   - If `emailOrPhone` looks like an email → sends via SMTP (nodemailer)
  *   - If it looks like a phone number     → sends via MSG91 WhatsApp
- *
- * Returns an object with:
- *   - `devMode: true`  when MSG91 is not configured (OTP returned directly for testing)
- *   - `devMode: false` when OTP was actually dispatched via WhatsApp/Email
- *   - `otp` is always included so the route can expose it in dev mode
  */
-export async function sendOTP(emailOrPhone: string): Promise<{ devMode: boolean; otp: string }> {
+export async function sendOTP(emailOrPhone: string): Promise<void> {
   const otp = generateOTP();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
 
@@ -126,10 +117,8 @@ export async function sendOTP(emailOrPhone: string): Promise<{ devMode: boolean;
 
   if (isEmail(emailOrPhone)) {
     await sendOTPByEmail(emailOrPhone, otp);
-    return { devMode: false, otp };
   } else {
-    const sent = await sendOTPByWhatsApp(emailOrPhone, otp);
-    return { devMode: !sent, otp };
+    await sendOTPByWhatsApp(emailOrPhone, otp);
   }
 }
 
