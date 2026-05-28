@@ -13,7 +13,8 @@ export class ApiError extends Error {
 }
 
 export function jsonResponse(body: unknown, status = 200, extraHeaders: HeadersInit = {}) {
-  return new NextResponse(JSON.stringify(body), {
+  const responseBody = status === 204 ? null : JSON.stringify(body);
+  return new NextResponse(responseBody, {
     status,
     headers: {
       "Content-Type": "application/json",
