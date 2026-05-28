@@ -96,12 +96,17 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
     }
   );
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`MSG91 WhatsApp error: ${err}`);
+  const responseText = await res.text();
+  let responseJson;
+  try {
+    responseJson = JSON.parse(responseText);
+  } catch (e) {}
+
+  if (!res.ok || (responseJson && (responseJson.hasError || responseJson.status === 'error' || responseJson.status === 'fail'))) {
+    throw new Error(`MSG91 WhatsApp error: ${res.status} - ${responseText}`);
   }
 
-  console.log('[OTP] WhatsApp OTP sent to', mobileNumber);
+  console.log('[OTP] WhatsApp OTP sent to', mobileNumber, 'MSG91 Response:', responseText);
 }
 
 /**
