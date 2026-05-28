@@ -231,7 +231,6 @@ export async function POST(req: Request) {
       success: true,
       message: "OTP sent",
       phone,
-      user: userDetails,
     });
 
   } catch (error: any) {

@@ -44,7 +44,10 @@ async function sendOTPByEmail(email: string, otp: string): Promise<void> {
  */
 async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
   // Strip '+' — MSG91 expects number WITHOUT '+' (e.g. 919876543210)
-  const mobileNumber = phone.replace(/^\+/, '');
+  let mobileNumber = phone.replace(/^\+/, '');
+  if (mobileNumber.length === 10) {
+    mobileNumber = `91${mobileNumber}`;
+  }
 
   const authKey   = process.env.MSG91_AUTH_KEY;
   const intNumber = process.env.MSG91_INTEGRATED_NUMBER; // WhatsApp Business number
@@ -69,12 +72,12 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
         to_and_components: [
           {
             to: [mobileNumber],
-            components: [
-              {
-                type: 'body',
-                parameters: [{ type: 'text', text: otp }],
+            components: {
+              body_1: {
+                type: 'text',
+                value: otp,
               },
-            ],
+            },
           },
         ],
       },
