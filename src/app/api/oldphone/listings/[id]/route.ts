@@ -30,6 +30,7 @@ const listingUpdateSchema = z.object({
   purchaseDate: z.string().optional(),
   isActive: z.boolean().optional(),
   isSold: z.boolean().optional(),
+  inCart: z.boolean().optional(),
 });
 
 export async function OPTIONS() {

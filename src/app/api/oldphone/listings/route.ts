@@ -28,6 +28,7 @@ const listingCreateSchema = z.object({
   images: z.array(z.string()).optional(),
   billImage: z.string().optional(),
   purchaseDate: z.string().optional(),
+  inCart: z.boolean().optional(),
 });
 
 export async function OPTIONS() {
@@ -41,6 +42,10 @@ export async function GET(req: Request) {
     const isActive = parseBoolean(url.searchParams.get("isActive"));
     if (typeof isActive === "boolean") {
       filters.isActive = isActive;
+    }
+    const inCart = parseBoolean(url.searchParams.get("inCart"));
+    if (typeof inCart === "boolean") {
+      filters.inCart = inCart;
     }
     const userId = url.searchParams.get("userId");
     const businessId = url.searchParams.get("businessId");
@@ -103,6 +108,7 @@ export async function POST(req: Request) {
         images: payload.images ?? [],
         billImage: payload.billImage,
         purchaseDate: payload.purchaseDate,
+        inCart: payload.inCart ?? false,
       },
     });
 

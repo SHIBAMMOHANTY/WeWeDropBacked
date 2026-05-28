@@ -12,10 +12,16 @@ export class ApiError extends Error {
   }
 }
 
-export function jsonResponse(body: unknown, status = 200) {
+export function jsonResponse(body: unknown, status = 200, extraHeaders: HeadersInit = {}) {
   return new NextResponse(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      ...extraHeaders,
+    },
   });
 }
 
