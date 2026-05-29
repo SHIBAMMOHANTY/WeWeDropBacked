@@ -64,7 +64,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (!listing) {
       throw new ApiError("Listing not found", 404);
     }
-    if (listing.userId !== session.id && listing.businessId !== session.id && session.role !== "ADMIN") {
+    if (listing.userId !== session.id && listing.businessId !== session.id && session.role !== "SUPER_ADMIN") {
       throw new ApiError("Forbidden", 403);
     }
     const payload = listingUpdateSchema.parse(await req.json());
@@ -92,7 +92,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     if (!listing) {
       throw new ApiError("Listing not found", 404);
     }
-    if (listing.userId !== session.id && listing.businessId !== session.id && session.role !== "ADMIN") {
+    if (listing.userId !== session.id && listing.businessId !== session.id && session.role !== "SUPER_ADMIN") {
       throw new ApiError("Forbidden", 403);
     }
     const updated = await prisma.oldPhoneListing.update({ where: { id: listing.id }, data: { isActive: false } });
