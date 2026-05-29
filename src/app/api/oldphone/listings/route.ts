@@ -109,12 +109,13 @@ export async function POST(req: Request) {
         billImage: payload.billImage,
         purchaseDate: payload.purchaseDate,
         inCart: payload.inCart ?? false,
+        isActive: false,
       },
     });
 
     await createNotification({
       title: 'Old phone listing created',
-      message: `Your listing ${listing.phoneName} is now active.`,
+      message: `Your listing ${listing.phoneName} has been created and is pending review.`,
       type: 'listing',
       relatedId: listing.listingId ?? listing.id,
       userId: session.role === 'USER' ? session.id : undefined,
