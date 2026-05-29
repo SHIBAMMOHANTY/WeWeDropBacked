@@ -64,12 +64,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (!listing) {
       throw new ApiError("Listing not found", 404);
     }
-    if (listing.userId !== session.id && listing.businessId !== session.id && session.role !== "SUPER_ADMIN") {
-      throw new ApiError("Forbidden", 403);
-    }
     const payload = listingUpdateSchema.parse(await req.json());
     if (Object.keys(payload).length === 0) {
       throw new ApiError("No fields provided for update", 400);
+    }
+
+    const isOwner = listing.userId === session.id || listing.businessId === session.id;
+    const isAdmin = session.role === "SUPER_ADMIN";
+    const isUser = session.role === "USER";
+
+    if (!isOwner && !isAdmin && !isUser) {
+      throw new ApiError("Forbidden", 403);
     }
     const updated = await prisma.oldPhoneListing.update({ where: { id: listing.id }, data: payload });
     return jsonResponse({ success: true, data: updated, message: "Listing updated successfully" });
