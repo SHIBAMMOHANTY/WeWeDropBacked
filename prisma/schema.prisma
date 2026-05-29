@@ -280,6 +280,11 @@ model OldPhoneOrder {
   deliveryAddress String?
   deliveryDate    DateTime?
 
+  // Payment Details
+  paymentMethod   String?
+  paymentId       String?
+  paymentDate     DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -10,6 +10,7 @@ const orderStatusUpdateSchema = z.object({
   remark: z.string().optional(),
   feedback: z.string().optional(),
   rating: z.number().int().min(1).max(5).optional(),
+  deliveryDate: z.string().optional(),
 });
 
 export async function OPTIONS() {
@@ -59,6 +60,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       deliveryStatus: payload.deliveryStatus,
       remark: payload.remark,
     };
+
+    if (payload.deliveryDate) {
+      const parsedDate = new Date(payload.deliveryDate);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        updateData.deliveryDate = parsedDate;
+      }
+    }
 
     if (payload.deliveryStatus === 4) {
       if (payload.rating === undefined || payload.rating < 1 || payload.rating > 5) {
