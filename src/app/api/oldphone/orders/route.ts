@@ -12,7 +12,6 @@ const orderCreateSchema = z.object({
   offerPrice: z.number().positive(),
   deliveryAddress: z.string().optional(),
   deliveryDate: z.string().optional(),
-  inCart: z.boolean().optional(),
 });
 
 export async function OPTIONS() {
@@ -38,11 +37,6 @@ export async function GET(req: Request) {
       where.sellerId = session.id;
     } else {
       where.userId = session.id;
-    }
-
-    const inCart = parseBoolean(url.searchParams.get("inCart"));
-    if (typeof inCart === "boolean") {
-      where.inCart = inCart;
     }
 
     const { page, limit, skip } = buildPagination(req.url);
@@ -107,7 +101,6 @@ export async function POST(req: Request) {
           offerPrice: payload.offerPrice,
           deliveryAddress: payload.deliveryAddress,
           deliveryDate: deliveryDate ?? undefined,
-          inCart: payload.inCart ?? false,
           deliveryStatus: 0,
         },
       }),

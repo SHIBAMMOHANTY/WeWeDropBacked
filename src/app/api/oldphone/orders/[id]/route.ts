@@ -10,7 +10,6 @@ const orderStatusUpdateSchema = z.object({
   remark: z.string().optional(),
   feedback: z.string().optional(),
   rating: z.number().int().min(1).max(5).optional(),
-  inCart: z.boolean().optional(),
 });
 
 export async function OPTIONS() {
@@ -60,9 +59,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       deliveryStatus: payload.deliveryStatus,
       remark: payload.remark,
     };
-    if (payload.inCart !== undefined) {
-      updateData.inCart = payload.inCart;
-    }
 
     if (payload.deliveryStatus === 4) {
       if (payload.rating === undefined || payload.rating < 1 || payload.rating > 5) {

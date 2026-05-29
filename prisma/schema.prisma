@@ -239,7 +239,6 @@ model OldPhoneListing {
   // Status
   isActive Boolean @default(true)
   isSold   Boolean @default(false)
-  inCart   Boolean @default(false)
 
   orders OldPhoneOrder[]
 
@@ -276,7 +275,6 @@ model OldPhoneOrder {
   remark         String? // Remark for status update
   feedback       String? // Customer feedback after delivery
   rating         Int?    @default(0) // Rating from 1-5
-  inCart         Boolean @default(false)
 
   // Delivery Details
   deliveryAddress String?
