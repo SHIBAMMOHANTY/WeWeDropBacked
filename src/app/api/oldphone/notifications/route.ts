@@ -36,3 +36,32 @@ export async function GET(req: Request) {
     return jsonResponse({ success: false, error: "Server error" }, 500);
   }
 }
+
+export async function POST(req: Request) {
+  try {
+    const session = await getAuthSession(req);
+    const body = await req.json();
+
+    if (!body.title || !body.message || !body.type) {
+      return jsonResponse({ success: false, error: "Missing required fields: title, message, type" }, 400);
+    }
+
+    const notification = await prisma.notification.create({
+      data: {
+        title: body.title,
+        message: body.message,
+        type: body.type,
+        userId: session.role !== "BUSINESS" ? session.id : undefined,
+        businessId: session.role === "BUSINESS" ? session.id : undefined,
+        relatedId: body.relatedId,
+      },
+    });
+
+    return jsonResponse({ success: true, data: notification, message: "Notification created successfully" }, 201);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return jsonResponse({ success: false, error: error.message }, error.status);
+    }
+    return jsonResponse({ success: false, error: "Server error" }, 500);
+  }
+}
