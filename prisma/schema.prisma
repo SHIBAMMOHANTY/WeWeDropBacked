@@ -207,13 +207,15 @@ model OldPhoneListing {
   business Business? @relation(fields: [businessId], references: [id])
 
   // Phone Details
-  phoneName    String
-  phoneModel   String
-  phoneStorage String
-  phoneColor   String
-  phonePrice   Float
-  imeiNumber   String?
-  description  String?
+  phoneName      String
+  phoneModel     String
+  phoneStorage   String
+  phoneRam       String?
+  mobileRepaired Boolean?
+  phoneColor     String
+  phonePrice     Float
+  imeiNumber     String?
+  description    String?
 
   // Condition Details
   phoneOn              Boolean?
