@@ -50,14 +50,16 @@ export async function GET(req: Request) {
     }
 
     const where: Record<string, unknown> = {};
-    if (role === "seller") {
-      where.sellerId = session.id;
-    } else if (role === "buyer") {
-      where.userId = session.id;
-    } else if (session.role === "BUSINESS") {
-      where.sellerId = session.id;
-    } else {
-      where.userId = session.id;
+    if (session.role !== "SUPER_ADMIN") {
+      if (role === "seller") {
+        where.sellerId = session.id;
+      } else if (role === "buyer") {
+        where.userId = session.id;
+      } else if (session.role === "BUSINESS") {
+        where.sellerId = session.id;
+      } else {
+        where.userId = session.id;
+      }
     }
 
     const { page, limit, skip } = buildPagination(req.url);
