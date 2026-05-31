@@ -12,7 +12,10 @@ export async function GET(req: Request) {
   try {
     const session = await getAuthSession(req);
     const isRead = parseBoolean(new URL(req.url).searchParams.get("isRead"));
-    const where: Record<string, unknown> = session.role === "BUSINESS" ? { businessId: session.id } : { userId: session.id };
+    let where: Record<string, unknown> = {};
+    if (session.role !== "SUPER_ADMIN") {
+      where = session.role === "BUSINESS" ? { businessId: session.id } : { userId: session.id };
+    }
     if (typeof isRead === "boolean") {
       (where as Record<string, unknown>).isRead = isRead;
     }

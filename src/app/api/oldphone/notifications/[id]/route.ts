@@ -16,7 +16,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       throw new ApiError("Notification not found", 404);
     }
     const belongsToRequester = session.role === "BUSINESS" ? notification.businessId === session.id : notification.userId === session.id;
-    if (!belongsToRequester) {
+    if (session.role !== "SUPER_ADMIN" && !belongsToRequester) {
       throw new ApiError("Forbidden", 403);
     }
     const updated = await prisma.notification.update({ where: { id: notification.id }, data: { isRead: true } });
