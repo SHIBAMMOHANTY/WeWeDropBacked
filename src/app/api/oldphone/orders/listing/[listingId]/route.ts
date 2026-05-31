@@ -18,7 +18,7 @@ export async function GET(req: Request, { params }: { params: { listingId: strin
     if (!listing) {
       throw new ApiError("Listing not found", 404);
     }
-    if (listing.userId !== session.id && listing.businessId !== session.id) {
+    if (session.role !== "SUPER_ADMIN" && listing.userId !== session.id && listing.businessId !== session.id) {
       throw new ApiError("Forbidden", 403);
     }
     const { page, limit, skip } = buildPagination(req.url);
