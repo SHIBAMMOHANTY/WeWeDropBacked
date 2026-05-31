@@ -44,13 +44,14 @@ export async function GET(req: Request) {
     const session = await getAuthSession(req);
     const url = new URL(req.url);
     const roleQuery = url.searchParams.get("role");
+    const filterQuery = url.searchParams.get("filter");
     const role = roleQuery ? roleQuery.toLowerCase() : undefined;
     if (role && !["buyer", "seller"].includes(role)) {
       throw new ApiError("Invalid role query", 400);
     }
 
     const where: Record<string, unknown> = {};
-    if (session.role !== "SUPER_ADMIN") {
+    if (session.role !== "SUPER_ADMIN" || filterQuery === "mine") {
       if (role === "seller") {
         where.sellerId = session.id;
       } else if (role === "buyer") {
