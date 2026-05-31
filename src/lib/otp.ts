@@ -77,6 +77,11 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
                 type: 'text',
                 value: otp,
               },
+              button_1: {
+                subtype: 'url',
+                type: 'text',
+                value: otp,
+              },
             },
           },
         ],
