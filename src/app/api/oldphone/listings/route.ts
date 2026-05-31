@@ -47,6 +47,20 @@ export async function GET(req: Request) {
     if (userId) filters.userId = userId;
     if (businessId) filters.businessId = businessId;
 
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const session = await getAuthSession(req);
+      if (session.role !== "SUPER_ADMIN") {
+        if (session.role === "BUSINESS") {
+          filters.businessId = session.id;
+          delete filters.userId; // ensure they can't override
+        } else {
+          filters.userId = session.id;
+          delete filters.businessId; // ensure they can't override
+        }
+      }
+    }
+
     const { page, limit, skip } = buildPagination(req.url);
     const [total, listings] = await Promise.all([
       prisma.oldPhoneListing.count({ where: filters }),
@@ -55,6 +69,7 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
+        include: { orders: true }
       }),
     ]);
 
