@@ -71,7 +71,14 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
-        include: { listing: true },
+        include: {
+          listing: {
+            include: {
+              business: true,
+              user: true,
+            },
+          },
+        },
       }),
     ]);
 

@@ -29,7 +29,14 @@ export async function GET(req: Request, { params }: { params: { listingId: strin
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
-        include: { listing: true },
+        include: {
+          listing: {
+            include: {
+              business: true,
+              user: true,
+            },
+          },
+        },
       }),
     ]);
 
