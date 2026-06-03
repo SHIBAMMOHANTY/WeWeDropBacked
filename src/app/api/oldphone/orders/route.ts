@@ -91,6 +91,7 @@ export async function POST(req: Request) {
       throw new ApiError("Only authenticated customers can place old phone orders", 403);
     }
     const body = await req.json();
+    console.log("RECEIVED PAYLOAD:", JSON.stringify(body, null, 2));
     const payload = orderCreateSchema.parse(body);
 
     const firstItem = payload.order.items[0];

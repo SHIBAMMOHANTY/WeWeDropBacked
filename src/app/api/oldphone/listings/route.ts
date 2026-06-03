@@ -71,7 +71,11 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
-        include: { orders: true }
+        include: { 
+          orders: true,
+          user: { select: { id: true, phone: true, username: true, email: true, role: true, avatar: true } },
+          business: { select: { id: true, email: true, dealerName: true, contactNumber: true, approved: true, isActive: true } }
+        }
       }),
     ]);
 

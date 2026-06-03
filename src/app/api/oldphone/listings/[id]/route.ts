@@ -30,6 +30,8 @@ const listingUpdateSchema = z.object({
   purchaseDate: z.string().optional(),
   isActive: z.boolean().optional(),
   isSold: z.boolean().optional(),
+  gift: z.enum(["Earbuds", "Neckband", "Smart watch"]).optional(),
+  exactPrice: z.number().positive().optional(),
 });
 
 export async function OPTIONS() {

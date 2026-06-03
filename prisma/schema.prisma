@@ -232,6 +232,8 @@ model OldPhoneListing {
   financeKitAvailable Boolean?
   accessories         String[] // Box, Charger, Bill, Headphones, Cable
   warranty            Boolean?
+  gift                String?
+  exactPrice          Float?
 
   // Images
   images       String[] // Array of image URLs
