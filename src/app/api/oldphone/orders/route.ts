@@ -122,7 +122,7 @@ export async function POST(req: Request) {
       }
 
       const sellerId = listing.businessId ?? listing.userId;
-      const orderId = `OP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const orderId = `WPWD-${Math.floor(1000 + Math.random() * 9000)}`;
       
       const customerName = `${payload.customer.firstName} ${payload.customer.lastName}`;
       const addr = payload.shippingAddress;

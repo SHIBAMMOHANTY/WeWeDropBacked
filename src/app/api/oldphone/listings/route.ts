@@ -115,7 +115,7 @@ export async function POST(req: Request) {
 
     const listing = await prisma.oldPhoneListing.create({
       data: {
-        listingId: `OL-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        listingId: `WPWD-${Math.floor(1000 + Math.random() * 9000)}`,
         userId: session.id,
         businessId: session.role === 'BUSINESS' ? session.id : null,
         phoneName: payload.phoneName,
