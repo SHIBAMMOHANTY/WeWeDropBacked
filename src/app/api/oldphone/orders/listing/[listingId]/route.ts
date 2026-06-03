@@ -32,15 +32,32 @@ export async function GET(req: Request, { params }: { params: { listingId: strin
         include: {
           listing: {
             include: {
-              business: true,
-              user: true,
+              business: { select: { id: true, email: true, dealerName: true, contactNumber: true, approved: true, isActive: true } },
+              user: { select: { id: true, phone: true, username: true, email: true, role: true, avatar: true } },
             },
           },
         },
       }),
     ]);
+    const formattedOrders = orders.map((order: any) => {
+      let businessName = order.listing?.businessId;
+      if (order.listing?.business) {
+        businessName = order.listing.business.dealerName;
+      } else if (order.listing?.user && order.listing.businessId === order.listing.user.id) {
+        businessName = order.listing.user.username || order.listing.user.phone;
+      } else if (order.listing?.user) {
+        businessName = order.listing.user.username || order.listing.user.phone;
+      }
+      return {
+        ...order,
+        listing: {
+          ...order.listing,
+          businessId: businessName,
+        },
+      };
+    });
 
-    return jsonResponse({ success: true, data: orders, message: "Listing orders retrieved successfully", meta: { page, limit, total } });
+    return jsonResponse({ success: true, data: formattedOrders, message: "Listing orders retrieved successfully", meta: { page, limit, total } });
   } catch (error) {
     if (error instanceof ApiError) {
       return jsonResponse({ success: false, error: error.message }, error.status);

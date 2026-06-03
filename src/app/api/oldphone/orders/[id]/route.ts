@@ -26,8 +26,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       include: {
         listing: {
           include: {
-            business: true,
-            user: true,
+            business: { select: { id: true, email: true, dealerName: true, contactNumber: true, approved: true, isActive: true } },
+            user: { select: { id: true, phone: true, username: true, email: true, role: true, avatar: true } },
           },
         },
       },
@@ -35,10 +35,26 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     if (!order) {
       throw new ApiError("Order not found", 404);
     }
-    if (order.userId !== session.id && order.sellerId !== session.id) {
+    if (session.role !== "SUPER_ADMIN" && order.userId !== session.id && order.sellerId !== session.id) {
       throw new ApiError("Forbidden", 403);
+    }    let businessName = order.listing?.businessId;
+    if (order.listing?.business) {
+      businessName = order.listing.business.dealerName;
+    } else if (order.listing?.user && order.listing.businessId === order.listing.user.id) {
+      businessName = order.listing.user.username || order.listing.user.phone;
+    } else if (order.listing?.user) {
+      businessName = order.listing.user.username || order.listing.user.phone;
     }
-    return jsonResponse({ success: true, data: order, message: "Order retrieved successfully" });
+
+    const formattedOrder = {
+      ...order,
+      listing: {
+        ...order.listing,
+        businessId: businessName,
+      },
+    };
+
+    return jsonResponse({ success: true, data: formattedOrder, message: "Order retrieved successfully" });
   } catch (error) {
     if (error instanceof ApiError) {
       return jsonResponse({ success: false, error: error.message }, error.status);
@@ -59,7 +75,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (!order) {
       throw new ApiError("Order not found", 404);
     }
-    if (order.sellerId !== session.id) {
+    if (session.role !== "SUPER_ADMIN" && order.sellerId !== session.id) {
       throw new ApiError("Forbidden", 403);
     }
 
