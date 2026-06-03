@@ -79,7 +79,23 @@ export async function GET(req: Request) {
       }),
     ]);
 
-    return jsonResponse({ success: true, data: listings, message: "Listings retrieved successfully", meta: { page, limit, total } });
+    const formattedListings = listings.map((listing: any) => {
+      let businessName = listing.businessId;
+      if (listing.business) {
+        businessName = listing.business.dealerName;
+      } else if (listing.user && listing.businessId === listing.user.id) {
+        businessName = listing.user.username || listing.user.phone;
+      } else if (listing.user) {
+        businessName = listing.user.username || listing.user.phone;
+      }
+
+      return {
+        ...listing,
+        businessId: businessName,
+      };
+    });
+
+    return jsonResponse({ success: true, data: formattedListings, message: "Listings retrieved successfully", meta: { page, limit, total } });
   } catch (error) {
     if (error instanceof ApiError) {
       return jsonResponse({ success: false, error: error.message }, error.status);
