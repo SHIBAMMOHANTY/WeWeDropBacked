@@ -23,7 +23,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     const id = params.id;
     const order = await prisma.oldPhoneOrder.findFirst({
       where: { OR: [{ id }, { orderId: id }] },
-      include: { listing: true },
+      include: {
+        listing: {
+          include: {
+            business: true,
+            user: true,
+          },
+        },
+      },
     });
     if (!order) {
       throw new ApiError("Order not found", 404);
