@@ -232,13 +232,13 @@ model OldPhoneListing {
   financeKitAvailable Boolean?
   accessories         String[] // Box, Charger, Bill, Headphones, Cable
   warranty            Boolean?
-  gift                String?
-  exactPrice          Float?
 
   // Images
   images       String[] // Array of image URLs
   billImage    String? // Purchase bill image URL
   purchaseDate String?
+  gift         String?
+  exactPrice   Float?
 
   // Status
   isActive Boolean @default(true)
@@ -275,6 +275,8 @@ model OldPhoneOrder {
   customerName   String
   customerPhone  String
   offerPrice     Float
+  exactPrice     Float?
+  gift           String?
   deliveryStatus Int     @default(0) // 0=Pending, 1=Accepted, 2=In Transit, 3=Out for Delivery, 4=Delivered, 5=Rejected
   remark         String? // Remark for status update
   feedback       String? // Customer feedback after delivery

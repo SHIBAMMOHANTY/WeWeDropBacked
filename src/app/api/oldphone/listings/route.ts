@@ -30,6 +30,8 @@ const listingCreateSchema = z.object({
   images: z.array(z.string()).optional(),
   billImage: z.string().optional(),
   purchaseDate: z.string().optional(),
+  gift: z.string().optional(),
+  exactPrice: z.number().positive().optional(),
 });
 
 export async function OPTIONS() {
@@ -142,6 +144,8 @@ export async function POST(req: Request) {
         images: payload.images ?? [],
         billImage: payload.billImage,
         purchaseDate: payload.purchaseDate,
+        gift: payload.gift,
+        exactPrice: payload.exactPrice,
         isActive: false,
       },
     });

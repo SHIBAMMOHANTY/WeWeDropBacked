@@ -15,6 +15,8 @@ const orderCreateSchema = z.object({
     paymentMethod: z.string(),
     paymentId: z.string().optional(),
     totalAmount: z.number().positive(),
+    exactPrice: z.number().positive().optional(),
+    gift: z.string().optional(),
   }),
   customer: z.object({
     firstName: z.string().min(1),
@@ -167,6 +169,8 @@ export async function POST(req: Request) {
           customerName,
           customerPhone: payload.customer.mobileNo,
           offerPrice: payload.order.totalAmount,
+          exactPrice: payload.order.exactPrice,
+          gift: payload.order.gift,
           deliveryAddress,
           paymentMethod: payload.order.paymentMethod,
           paymentId: payload.order.paymentId,
