@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const orderStatusUpdateSchema = z.object({
-  deliveryStatus: z.number().int().min(0).max(5),
+  deliveryStatus: z.number().int().min(0).max(5).optional(),
   remark: z.string().optional(),
   feedback: z.string().optional(),
   rating: z.number().int().min(1).max(5).optional(),
@@ -68,21 +68,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const session = await getAuthSession(req);
     const id = params.id;
     const payload = orderStatusUpdateSchema.parse(await req.json());
-    if (!isValidDeliveryStatus(payload.deliveryStatus)) {
+    if (payload.deliveryStatus !== undefined && !isValidDeliveryStatus(payload.deliveryStatus)) {
       throw new ApiError("Invalid delivery status", 400);
     }
     const order = await prisma.oldPhoneOrder.findFirst({ where: { OR: [{ id }, { orderId: id }] } });
     if (!order) {
       throw new ApiError("Order not found", 404);
     }
-    if (session.role !== "SUPER_ADMIN" && order.sellerId !== session.id) {
+    if (session.role !== "SUPER_ADMIN" && order.sellerId !== session.id && order.userId !== session.id) {
       throw new ApiError("Forbidden", 403);
     }
 
-    const updateData: Record<string, unknown> = {
-      deliveryStatus: payload.deliveryStatus,
-      remark: payload.remark,
-    };
+    const updateData: Record<string, unknown> = {};
+    if (payload.deliveryStatus !== undefined) updateData.deliveryStatus = payload.deliveryStatus;
+    if (payload.remark !== undefined) updateData.remark = payload.remark;
+    if (payload.rating !== undefined) updateData.rating = payload.rating;
+    if (payload.feedback !== undefined) updateData.feedback = payload.feedback;
 
     if (payload.deliveryDate) {
       const parsedDate = new Date(payload.deliveryDate);
@@ -98,8 +99,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (!payload.feedback || payload.feedback.trim().length === 0) {
         throw new ApiError("Feedback is required when marking delivered", 400);
       }
-      updateData.rating = payload.rating;
-      updateData.feedback = payload.feedback;
     }
 
     const [updatedOrder] = await prisma.$transaction([
