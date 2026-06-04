@@ -133,7 +133,7 @@ export async function POST(req: Request) {
       if (!listing) {
         throw new ApiError("Active listing not found or already sold", 400);
       }
-      if (payload.order.totalAmount > listing.phonePrice) {
+      if (payload.order.totalAmount > listing.phonePrice + 1000) {
         throw new ApiError("Offer price cannot exceed listing price", 400);
       }
 
