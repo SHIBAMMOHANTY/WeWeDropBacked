@@ -30,7 +30,7 @@ const listingUpdateSchema = z.object({
   purchaseDate: z.string().optional(),
   isActive: z.boolean().optional(),
   isSold: z.boolean().optional(),
-  gift: z.string().optional(),
+  gift: z.string().nullable().optional(),
   exactPrice: z.number().positive().optional(),
 });
 

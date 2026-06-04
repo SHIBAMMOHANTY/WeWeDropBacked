@@ -30,7 +30,7 @@ const listingCreateSchema = z.object({
   images: z.array(z.string()).optional(),
   billImage: z.string().optional(),
   purchaseDate: z.string().optional(),
-  gift: z.string().optional(),
+  gift: z.string().nullable().optional(),
   exactPrice: z.number().positive().optional(),
 });
 
