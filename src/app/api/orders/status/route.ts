@@ -214,7 +214,10 @@ export async function GET(req: NextRequest) {
       console.log("Business identifiers:", businessIdentifiers);
       orders = await prisma.order.findMany({
         where: {
-          businessId: { in: businessIdentifiers },
+          OR: [
+            { businessId: { in: businessIdentifiers } },
+            { userId: user.id }
+          ]
         },
         orderBy: { createdAt: "desc" },
       });
