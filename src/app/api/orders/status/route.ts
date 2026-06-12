@@ -182,7 +182,25 @@ export async function GET(req: NextRequest) {
 
     console.log("User:", user);
 
-    const role = (user.role ?? "").toUpperCase();
+    let role = (user.role ?? "").toUpperCase();
+    if (!role && user.id) {
+      const dbUser = await prisma.user.findUnique({ where: { id: user.id } }).catch(() => null);
+      if (dbUser && dbUser.role) {
+        role = dbUser.role.toUpperCase();
+      } else {
+        const dbAdmin = await prisma.admin.findUnique({ where: { id: user.id } }).catch(() => null);
+        if (dbAdmin) {
+          role = "SUPER_ADMIN";
+        } else {
+          const dbBusiness = await prisma.business.findUnique({ where: { id: user.id } }).catch(() => null);
+          if (dbBusiness) {
+            role = "BUSINESS";
+          }
+        }
+      }
+      console.log("Role resolved from DB fallback:", role);
+    }
+    
     let orders;
 
     if (role === "SUPER_ADMIN") {
