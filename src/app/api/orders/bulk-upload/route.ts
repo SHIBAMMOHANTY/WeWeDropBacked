@@ -94,32 +94,42 @@ function parseOptionalDate(value?: string): Date | undefined {
 function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors: ValidationError[]; data?: OrderData } {
   const errors: ValidationError[] = [];
 
+  // Fallback mappings to support flexible CSV headers
+  const brandName = row.brandName || row.brand;
+  const productName = row.productName || row.product;
+  const imeiNumber = row.imeiNumber || row.imei;
+  const customerName = row.customerName || row.name;
+  const contactNumber = row.contactNumber || row.phone;
+  const serviceDate = row.serviceDate || row.billDate;
+  
+  let membershipType = String(row.membershipType || row.membership || row.plan || "BASIC").toUpperCase();
+  if (!["BASIC", "PREMIUM", "ELITE"].includes(membershipType)) {
+    membershipType = "BASIC";
+  }
+
   // Required fields validation
   if (!row.userId) {
     errors.push({ row: rowIndex, field: "userId", message: "userId is required" });
   }
-  if (!row.membershipType || !["BASIC", "PREMIUM", "ELITE"].includes(row.membershipType)) {
-    errors.push({ row: rowIndex, field: "membershipType", message: "membershipType must be BASIC, PREMIUM, or ELITE" });
-  }
-  if (!row.brandName) {
+  if (!brandName) {
     errors.push({ row: rowIndex, field: "brandName", message: "brandName is required" });
   }
-  if (!row.productName) {
+  if (!productName) {
     errors.push({ row: rowIndex, field: "productName", message: "productName is required" });
   }
-  if (!row.imeiNumber) {
+  if (!imeiNumber) {
     errors.push({ row: rowIndex, field: "imeiNumber", message: "imeiNumber is required" });
   }
   if (!row.billImage) {
     errors.push({ row: rowIndex, field: "billImage", message: "billImage is required" });
   }
-  if (!row.serviceDate) {
+  if (!serviceDate) {
     errors.push({ row: rowIndex, field: "serviceDate", message: "serviceDate is required" });
   }
-  if (!row.customerName) {
+  if (!customerName) {
     errors.push({ row: rowIndex, field: "customerName", message: "customerName is required" });
   }
-  if (!row.contactNumber) {
+  if (!contactNumber) {
     errors.push({ row: rowIndex, field: "contactNumber", message: "contactNumber is required" });
   }
   if (row.amount === undefined || row.amount === null || row.amount === "") {
@@ -138,16 +148,16 @@ function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors
 
   const orderData: OrderData = {
     userId: row.userId,
-    membershipType: row.membershipType,
-    brandName: row.brandName,
-    productName: row.productName,
-    imeiNumber: row.imeiNumber,
+    membershipType: membershipType as any,
+    brandName: brandName,
+    productName: productName,
+    imeiNumber: imeiNumber,
     billImage: row.billImage,
-    serviceDate: row.serviceDate,
+    serviceDate: serviceDate,
     deliveryDate: row.deliveryDate || undefined,
     serviceCenterDate: row.serviceCenterDate || undefined,
-    customerName: row.customerName,
-    contactNumber: row.contactNumber,
+    customerName: customerName,
+    contactNumber: contactNumber,
     amount,
     businessId: row.businessId || undefined,
     deliveryAgentId: row.deliveryAgentId || undefined,
@@ -156,7 +166,7 @@ function validateOrderData(row: any, rowIndex: number): { valid: boolean; errors
     billingDate: row.billingDate || undefined,
     state: row.state || undefined,
     pincode: row.pincode || undefined,
-    fullAddress: row.fullAddress || undefined,
+    fullAddress: row.fullAddress || row.address || undefined,
     preferredDate: row.preferredDate || undefined,
     warrantyStatus: row.warrantyStatus || undefined,
     issueType: row.issueType || undefined,
