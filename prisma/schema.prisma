@@ -422,3 +422,71 @@ model Banner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+//////////////////////
+// BUYBACK SYSTEM MODELS
+//////////////////////
+
+model DeviceMaster {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  brand              String
+  model              String
+  storage            String
+  launchPrice        Float
+  launchDate         String?
+  basePriceExcellent Float
+  basePriceGood      Float
+  basePriceAverage   Float
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([brand, model, storage])
+  @@index([isActive])
+}
+
+model PriceRule {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  screenDamageDeduction Float    @default(0)
+  batteryDeduction      Float    @default(0)
+  cameraDeduction       Float    @default(0)
+  fingerprintDeduction  Float    @default(0)
+  faceIdDeduction       Float    @default(0)
+  bodyDamageDeduction   Float    @default(0)
+  speakerDeduction      Float    @default(0)
+  chargingPortDeduction Float    @default(0)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model Quote {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  quoteNumber       String   @unique
+  userId            String
+  brand             String
+  model             String
+  storage           String
+  condition         String
+  screenCracked     Boolean  @default(false)
+  batteryHealth     Int      @default(100)
+  cameraIssue       Boolean  @default(false)
+  fingerprintIssue  Boolean  @default(false)
+  faceIdIssue       Boolean  @default(false)
+  bodyDamage        Boolean  @default(false)
+  speakerIssue      Boolean  @default(false)
+  chargingPortIssue Boolean  @default(false)
+  estimatedPrice    Float
+  finalPrice        Float?
+  status            String   @default("pending")
+  images            String[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
