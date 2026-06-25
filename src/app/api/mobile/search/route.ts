@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ScraperService } from '@/services/mobile/scraper.service';
 import { CacheService } from '@/lib/mobile/cache';
 import { prisma } from '@/lib/prisma';
+import { DeviceGenerator } from '@/services/mobile/generator.service';
 
 export async function GET(req: NextRequest) {
   try {
@@ -64,6 +65,24 @@ export async function GET(req: NextRequest) {
 
         results = dbDevices.map(d => {
           const flipkartPrice = d.currentPrices.find(cp => cp.seller.toLowerCase() === 'flipkart');
+          const fallbackPrice = d.currentPrices[0];
+          return {
+            id: d.id,
+            brand: d.brand,
+            model: d.model,
+            image: d.images?.[0] || '',
+            releaseDate: d.releaseDate || undefined,
+            price: flipkartPrice?.price ?? fallbackPrice?.price ?? (d.launchPrice ? Math.round(d.launchPrice * 0.85) : undefined),
+            mrp: flipkartPrice?.mrp ?? fallbackPrice?.mrp ?? d.launchPrice ?? undefined,
+          };
+        });
+      }
+
+      // If the database also does not have any matches, dynamically generate the devices in real-time
+      if (results.length === 0) {
+        const generated = await DeviceGenerator.generateAndSave(query);
+        results = generated.map(d => {
+          const flipkartPrice = d.currentPrices.find((cp: any) => cp.seller.toLowerCase() === 'flipkart');
           const fallbackPrice = d.currentPrices[0];
           return {
             id: d.id,
