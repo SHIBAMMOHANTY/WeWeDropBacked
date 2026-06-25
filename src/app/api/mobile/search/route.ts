@@ -31,13 +31,15 @@ export async function GET(req: NextRequest) {
       console.error('Error during Flipkart search scraping:', error);
     }
 
-    // Map to required return shape: id, brand, model, image, releaseDate
+    // Map to required return shape: id, brand, model, image, releaseDate, price, mrp
     let results = scrapedResults.map(p => ({
       id: p.id,
       brand: p.brand,
       model: p.model,
       image: p.image,
       releaseDate: p.releaseDate,
+      price: p.price,
+      mrp: p.mrp,
     }));
 
     // Fallback to searching the local MongoDB database if the scraper returns 0 results
@@ -54,16 +56,25 @@ export async function GET(req: NextRequest) {
               ],
             })),
           },
+          include: {
+            currentPrices: true,
+          },
           take: 20,
         });
 
-        results = dbDevices.map(d => ({
-          id: d.id,
-          brand: d.brand,
-          model: d.model,
-          image: d.images?.[0] || '',
-          releaseDate: d.releaseDate || undefined,
-        }));
+        results = dbDevices.map(d => {
+          const flipkartPrice = d.currentPrices.find(cp => cp.seller.toLowerCase() === 'flipkart');
+          const fallbackPrice = d.currentPrices[0];
+          return {
+            id: d.id,
+            brand: d.brand,
+            model: d.model,
+            image: d.images?.[0] || '',
+            releaseDate: d.releaseDate || undefined,
+            price: flipkartPrice?.price ?? fallbackPrice?.price ?? (d.launchPrice ? Math.round(d.launchPrice * 0.85) : undefined),
+            mrp: flipkartPrice?.mrp ?? fallbackPrice?.mrp ?? d.launchPrice ?? undefined,
+          };
+        });
       }
     }
 
