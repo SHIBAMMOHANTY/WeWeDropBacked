@@ -490,3 +490,59 @@ model Quote {
   @@index([createdAt])
 }
 
+// ===================================
+// MOBILE PRICE INTELLIGENCE MODULE
+// ===================================
+
+model Device {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  slug         String   @unique
+  brand        String
+  model        String
+  display      String?
+  processor    String?
+  ram          String?
+  storage      String?
+  battery      String?
+  camera       String?
+  os           String?
+  images       String[]
+  launchPrice  Float?
+  releaseDate  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  currentPrices  CurrentPrice[]
+  priceHistories PriceHistory[]
+
+  @@index([brand, model])
+}
+
+model CurrentPrice {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  deviceId     String   @db.ObjectId
+  device       Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  seller       String
+  price        Float
+  mrp          Float?
+  availability String?
+  productUrl   String?
+  lastUpdated  DateTime @default(now())
+
+  @@unique([deviceId, seller])
+}
+
+model PriceHistory {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  deviceId     String   @db.ObjectId
+  device       Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  seller       String
+  price        Float
+  mrp          Float?
+  recordedAt   DateTime @default(now())
+
+  @@index([deviceId])
+  @@index([recordedAt])
+}
+
+

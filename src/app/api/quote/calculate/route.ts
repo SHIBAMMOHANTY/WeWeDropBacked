@@ -20,6 +20,7 @@ const calculateSchema = z.object({
   bodyDamage: z.boolean().default(false),
   speakerIssue: z.boolean().default(false),
   chargingPortIssue: z.boolean().default(false),
+  modelSlug: z.string().optional(),
 });
 
 export async function OPTIONS() {
