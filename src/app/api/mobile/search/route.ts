@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ScraperService } from '@/services/mobile/scraper.service';
 import { CacheService } from '@/lib/mobile/cache';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,16 +24,48 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, results: cachedData });
     }
 
-    const scrapedResults = await ScraperService.search(query, page);
+    let scrapedResults: any[] = [];
+    try {
+      scrapedResults = await ScraperService.search(query, page);
+    } catch (error) {
+      console.error('Error during Flipkart search scraping:', error);
+    }
 
     // Map to required return shape: id, brand, model, image, releaseDate
-    const results = scrapedResults.map(p => ({
+    let results = scrapedResults.map(p => ({
       id: p.id,
       brand: p.brand,
       model: p.model,
       image: p.image,
       releaseDate: p.releaseDate,
     }));
+
+    // Fallback to searching the local MongoDB database if the scraper returns 0 results
+    if (results.length === 0) {
+      const keywords = query.trim().split(/\s+/).filter(Boolean);
+      if (keywords.length > 0) {
+        const dbDevices = await prisma.device.findMany({
+          where: {
+            AND: keywords.map(kw => ({
+              OR: [
+                { brand: { contains: kw, mode: 'insensitive' } },
+                { model: { contains: kw, mode: 'insensitive' } },
+                { slug: { contains: kw, mode: 'insensitive' } },
+              ],
+            })),
+          },
+          take: 20,
+        });
+
+        results = dbDevices.map(d => ({
+          id: d.id,
+          brand: d.brand,
+          model: d.model,
+          image: d.images?.[0] || '',
+          releaseDate: d.releaseDate || undefined,
+        }));
+      }
+    }
 
     CacheService.set(cacheKey, results, 1800); // cache search for 30 minutes
 
@@ -45,3 +78,4 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
