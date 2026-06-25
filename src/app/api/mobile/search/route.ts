@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ScraperService } from '@/services/mobile/scraper.service';
 import { CacheService } from '@/lib/mobile/cache';
 import { prisma } from '@/lib/prisma';
-import { DeviceGenerator } from '@/services/mobile/generator.service';
 
 export async function GET(req: NextRequest) {
   try {
@@ -43,10 +42,11 @@ export async function GET(req: NextRequest) {
       mrp: p.mrp,
     }));
 
-    // Fallback to searching the local MongoDB database if the scraper returns 0 results
+    // Fallback to searching local MongoDB collections (Device & DeviceMaster) if the scraper returns 0 results
     if (results.length === 0) {
       const keywords = query.trim().split(/\s+/).filter(Boolean);
       if (keywords.length > 0) {
+        // 1. Search scraped devices
         const dbDevices = await prisma.device.findMany({
           where: {
             AND: keywords.map(kw => ({
@@ -63,7 +63,21 @@ export async function GET(req: NextRequest) {
           take: 20,
         });
 
-        results = dbDevices.map(d => {
+        // 2. Search catalog master devices
+        const dbDeviceMasters = await prisma.deviceMaster.findMany({
+          where: {
+            AND: keywords.map(kw => ({
+              OR: [
+                { brand: { contains: kw, mode: 'insensitive' } },
+                { model: { contains: kw, mode: 'insensitive' } },
+              ],
+            })),
+            isActive: true,
+          },
+          take: 20,
+        });
+
+        const deviceResults = dbDevices.map(d => {
           const flipkartPrice = d.currentPrices.find(cp => cp.seller.toLowerCase() === 'flipkart');
           const fallbackPrice = d.currentPrices[0];
           return {
@@ -76,24 +90,40 @@ export async function GET(req: NextRequest) {
             mrp: flipkartPrice?.mrp ?? fallbackPrice?.mrp ?? d.launchPrice ?? undefined,
           };
         });
-      }
 
-      // If the database also does not have any matches, dynamically generate the devices in real-time
-      if (results.length === 0) {
-        const generated = await DeviceGenerator.generateAndSave(query);
-        results = generated.map(d => {
-          const flipkartPrice = d.currentPrices.find((cp: any) => cp.seller.toLowerCase() === 'flipkart');
-          const fallbackPrice = d.currentPrices[0];
+        const masterResults = dbDeviceMasters.map(dm => {
+          const isApple = dm.brand.toLowerCase() === 'apple' || dm.brand.toLowerCase() === 'iphone';
+          const defaultImage = isApple
+            ? 'https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?q=80&w=350&h=350&fit=crop'
+            : 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?q=80&w=350&h=350&fit=crop';
+          
           return {
-            id: d.id,
-            brand: d.brand,
-            model: d.model,
-            image: d.images?.[0] || '',
-            releaseDate: d.releaseDate || undefined,
-            price: flipkartPrice?.price ?? fallbackPrice?.price ?? (d.launchPrice ? Math.round(d.launchPrice * 0.85) : undefined),
-            mrp: flipkartPrice?.mrp ?? fallbackPrice?.mrp ?? d.launchPrice ?? undefined,
+            id: dm.id,
+            brand: dm.brand,
+            model: `${dm.model} (${dm.storage})`,
+            image: defaultImage,
+            releaseDate: dm.launchDate || undefined,
+            price: dm.basePriceExcellent,
+            mrp: dm.launchPrice,
           };
         });
+
+        // Merge and deduplicate
+        const merged = [...deviceResults];
+        for (const mr of masterResults) {
+          const alreadyExists = merged.some(dr => {
+            const drBrand = dr.brand.toLowerCase();
+            const drModel = dr.model.toLowerCase();
+            const mrBrand = mr.brand.toLowerCase();
+            const mrModel = mr.model.toLowerCase();
+            return drBrand === mrBrand && (drModel.includes(mrModel) || mrModel.includes(drModel));
+          });
+          if (!alreadyExists) {
+            merged.push(mr);
+          }
+        }
+
+        results = merged;
       }
     }
 
