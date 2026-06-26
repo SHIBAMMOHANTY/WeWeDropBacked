@@ -80,16 +80,16 @@ export class ScraperService {
       });
 
       if (!response.ok) {
-        console.warn(`Flipkart search failed with status ${response.status}. Trying DuckDuckGo fallback...`);
-        return this.searchViaDuckDuckGo(query);
+        console.warn(`Flipkart search failed with status ${response.status}. Trying Yahoo search fallback...`);
+        return this.searchViaYahoo(query);
       }
 
       const html = await response.text();
       const stateMatches = html.match(/window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});/);
       
       if (!stateMatches) {
-        console.warn('Flipkart initial state not found. Trying DuckDuckGo fallback...');
-        return this.searchViaDuckDuckGo(query);
+        console.warn('Flipkart initial state not found. Trying Yahoo search fallback...');
+        return this.searchViaYahoo(query);
       }
 
       const state = JSON.parse(stateMatches[1]);
@@ -152,14 +152,14 @@ export class ScraperService {
       traverse(state);
       return products;
     } catch (error) {
-      console.error('Error during Flipkart search scraping. Trying DuckDuckGo fallback...', error);
-      return this.searchViaDuckDuckGo(query);
+      console.error('Error during Flipkart search scraping. Trying Yahoo search fallback...', error);
+      return this.searchViaYahoo(query);
     }
   }
 
-  private static async searchViaDuckDuckGo(query: string): Promise<ScrapedProduct[]> {
+  private static async searchViaYahoo(query: string): Promise<ScrapedProduct[]> {
     try {
-      const url = `https://html.duckduckgo.com/html/?q=site:flipkart.com+${encodeURIComponent(query)}`;
+      const url = `https://search.yahoo.com/search?p=site:flipkart.com+${encodeURIComponent(query)}`;
       const response = await fetch(url, {
         headers: {
           'User-Agent': this.userAgent,
@@ -173,72 +173,88 @@ export class ScraperService {
 
       const html = await response.text();
       const products: ScrapedProduct[] = [];
-      const regex = /<a\s+[^>]*?class="[^"]*?result__a[^"]*?"[^>]*?href="[^"]*?uddg=([^"&]*)[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
+      const regex = /<a\s+[^>]*?href="([^"]*)"[^>]*>([\s\S]*?<\/h3>)/gi;
       
       let match;
       const seenPids = new Set<string>();
 
       while ((match = regex.exec(html)) !== null) {
-        const encodedUrl = match[1];
-        const rawTitle = match[2];
+        const href = match[1];
+        const inner = match[2];
         try {
-          const decodedUrl = decodeURIComponent(encodedUrl);
-          if (decodedUrl.includes('flipkart.com') && decodedUrl.includes('/p/')) {
-            const title = rawTitle.replace(/<[^>]*>/g, '').replace(/\s*-\s*Flipkart/gi, '').trim();
-            const pid = decodedUrl.split('/p/')[1]?.split('?')[0] || '';
+          if (href.includes('/RU=')) {
+            const parts = href.split('/RU=');
+            const encoded = parts[1].split('/RK=')[0];
+            const decodedUrl = decodeURIComponent(encoded);
             
-            if (pid && !seenPids.has(pid)) {
-              seenPids.add(pid);
-              
-              const brand = this.parseBrand(title);
-              const brandLower = brand.toLowerCase();
-              
-              // Guess specs and launchPrice
-              const isApple = brandLower === 'apple' || brandLower === 'iphone';
-              const image = isApple
-                ? 'https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?q=80&w=350&h=350&fit=crop'
-                : 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?q=80&w=350&h=350&fit=crop';
-              
-              const releaseDate = this.estimateReleaseDate(title);
-              
-              // Estimate launchPrice base
-              let launchPrice = 45000;
-              const lowerTitle = title.toLowerCase();
-              if (isApple) {
-                if (lowerTitle.includes('pro max')) launchPrice = 139900;
-                else if (lowerTitle.includes('pro')) launchPrice = 119900;
-                else if (lowerTitle.includes('plus')) launchPrice = 89900;
-                else launchPrice = 79900;
-              } else if (brandLower === 'samsung') {
-                if (lowerTitle.includes('ultra')) launchPrice = 124999;
-                else if (lowerTitle.includes('fold')) launchPrice = 154999;
-                else if (lowerTitle.includes('flip')) launchPrice = 94999;
-                else if (lowerTitle.includes('s24') || lowerTitle.includes('s23') || lowerTitle.includes('s22')) launchPrice = 79999;
-                else launchPrice = 24999;
-              } else if (brandLower === 'oneplus') {
-                if (lowerTitle.includes('nord')) launchPrice = 29999;
-                else launchPrice = 64999;
+            if (decodedUrl.includes('flipkart.com') && decodedUrl.includes('/p/')) {
+              let pid = '';
+              try {
+                const urlObj = new URL(decodedUrl);
+                pid = urlObj.searchParams.get('pid') || '';
+              } catch (e) {
+                // ignore URL parsing error
+              }
+              if (!pid) {
+                pid = decodedUrl.split('/p/')[1]?.split('?')[0] || '';
               }
               
-              // Adjust launch price slightly if storage is in title
-              if (lowerTitle.includes('256 gb') || lowerTitle.includes('256gb')) launchPrice += 10000;
-              else if (lowerTitle.includes('512 gb') || lowerTitle.includes('512gb')) launchPrice += 20000;
-              else if (lowerTitle.includes('1 tb') || lowerTitle.includes('1tb')) launchPrice += 40000;
+              if (pid && !seenPids.has(pid)) {
+                seenPids.add(pid);
+                
+                const h3Match = inner.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
+                const title = h3Match ? h3Match[1].replace(/<[^>]*>/g, '').trim() : 'Unknown';
+                
+                const brand = this.parseBrand(title);
+                const brandLower = brand.toLowerCase();
+                
+                // Guess specs and launchPrice
+                const isApple = brandLower === 'apple' || brandLower === 'iphone';
+                const image = isApple
+                  ? 'https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?q=80&w=350&h=350&fit=crop'
+                  : 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?q=80&w=350&h=350&fit=crop';
+                
+                const releaseDate = this.estimateReleaseDate(title);
+                
+                // Estimate launchPrice base
+                let launchPrice = 45000;
+                const lowerTitle = title.toLowerCase();
+                if (isApple) {
+                  if (lowerTitle.includes('pro max')) launchPrice = 139900;
+                  else if (lowerTitle.includes('pro')) launchPrice = 119900;
+                  else if (lowerTitle.includes('plus')) launchPrice = 89900;
+                  else launchPrice = 79900;
+                } else if (brandLower === 'samsung') {
+                  if (lowerTitle.includes('ultra')) launchPrice = 124999;
+                  else if (lowerTitle.includes('fold')) launchPrice = 154999;
+                  else if (lowerTitle.includes('flip')) launchPrice = 94999;
+                  else if (lowerTitle.includes('s24') || lowerTitle.includes('s23') || lowerTitle.includes('s22')) launchPrice = 79999;
+                  else launchPrice = 24999;
+                } else if (brandLower === 'oneplus') {
+                  if (lowerTitle.includes('nord')) launchPrice = 29999;
+                  else launchPrice = 64999;
+                }
+                
+                // Adjust launch price slightly if storage is in title
+                if (lowerTitle.includes('256 gb') || lowerTitle.includes('256gb')) launchPrice += 10000;
+                else if (lowerTitle.includes('512 gb') || lowerTitle.includes('512gb')) launchPrice += 20000;
+                else if (lowerTitle.includes('1 tb') || lowerTitle.includes('1tb')) launchPrice += 40000;
 
-              const price = Math.round(launchPrice * 0.85);
+                const price = Math.round(launchPrice * 0.85);
 
-              products.push({
-                id: pid,
-                brand,
-                model: title,
-                image,
-                releaseDate,
-                price,
-                mrp: launchPrice,
-                url: decodedUrl,
-                availability: 'In Stock',
-                keySpecs: [],
-              });
+                products.push({
+                  id: pid,
+                  brand,
+                  model: title,
+                  image,
+                  releaseDate,
+                  price,
+                  mrp: launchPrice,
+                  url: decodedUrl,
+                  availability: 'In Stock',
+                  keySpecs: [],
+                });
+              }
             }
           }
         } catch (err) {
@@ -247,7 +263,7 @@ export class ScraperService {
       }
       return products;
     } catch (error) {
-      console.error('Error during DuckDuckGo search fallback scraping:', error);
+      console.error('Error during Yahoo search fallback scraping:', error);
       return [];
     }
   }
