@@ -23,6 +23,7 @@ export interface ScrapedSpecs {
   os?: string;
   images: string[];
   launchPrice?: number;
+  price?: number;
   releaseDate?: string;
 }
 

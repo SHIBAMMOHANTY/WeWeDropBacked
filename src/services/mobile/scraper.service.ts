@@ -4,6 +4,18 @@ export class ScraperService {
   private static userAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+  private static getHeaders() {
+    return {
+      'User-Agent': this.userAgent,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Cache-Control': 'max-age=0'
+    };
+  }
+
   /**
    * Helper to replace image template URL placeholders with real sizes
    */
@@ -72,11 +84,7 @@ export class ScraperService {
       const url = `https://www.flipkart.com/search?q=${encodeURIComponent(query)}&page=${page}`;
       
       const response = await fetch(url, {
-        headers: {
-          'User-Agent': this.userAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-        },
+        headers: this.getHeaders(),
       });
 
       if (!response.ok) {
@@ -161,11 +169,7 @@ export class ScraperService {
     try {
       const url = `https://search.yahoo.com/search?p=site:flipkart.com+${encodeURIComponent(query)}`;
       const response = await fetch(url, {
-        headers: {
-          'User-Agent': this.userAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-        },
+        headers: this.getHeaders(),
         signal: AbortSignal.timeout(15000)
       });
 
@@ -177,10 +181,11 @@ export class ScraperService {
       
       let match;
       const seenPids = new Set<string>();
+      const tasks: Promise<any>[] = [];
+      const maxResults = 4;
 
-      while ((match = regex.exec(html)) !== null) {
+      while ((match = regex.exec(html)) !== null && tasks.length < maxResults) {
         const href = match[1];
-        const inner = match[2];
         try {
           if (href.includes('/RU=')) {
             const parts = href.split('/RU=');
@@ -202,64 +207,37 @@ export class ScraperService {
               if (pid && !seenPids.has(pid)) {
                 seenPids.add(pid);
                 
-                const h3Match = inner.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
-                const title = h3Match ? h3Match[1].replace(/<[^>]*>/g, '').trim() : 'Unknown';
-                
-                const brand = this.parseBrand(title);
-                const brandLower = brand.toLowerCase();
-                
-                // Guess specs and launchPrice
-                const isApple = brandLower === 'apple' || brandLower === 'iphone';
-                const image = isApple
-                  ? 'https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?q=80&w=350&h=350&fit=crop'
-                  : 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?q=80&w=350&h=350&fit=crop';
-                
-                const releaseDate = this.estimateReleaseDate(title);
-                
-                // Estimate launchPrice base
-                let launchPrice = 45000;
-                const lowerTitle = title.toLowerCase();
-                if (isApple) {
-                  if (lowerTitle.includes('pro max')) launchPrice = 139900;
-                  else if (lowerTitle.includes('pro')) launchPrice = 119900;
-                  else if (lowerTitle.includes('plus')) launchPrice = 89900;
-                  else launchPrice = 79900;
-                } else if (brandLower === 'samsung') {
-                  if (lowerTitle.includes('ultra')) launchPrice = 124999;
-                  else if (lowerTitle.includes('fold')) launchPrice = 154999;
-                  else if (lowerTitle.includes('flip')) launchPrice = 94999;
-                  else if (lowerTitle.includes('s24') || lowerTitle.includes('s23') || lowerTitle.includes('s22')) launchPrice = 79999;
-                  else launchPrice = 24999;
-                } else if (brandLower === 'oneplus') {
-                  if (lowerTitle.includes('nord')) launchPrice = 29999;
-                  else launchPrice = 64999;
-                }
-                
-                // Adjust launch price slightly if storage is in title
-                if (lowerTitle.includes('256 gb') || lowerTitle.includes('256gb')) launchPrice += 10000;
-                else if (lowerTitle.includes('512 gb') || lowerTitle.includes('512gb')) launchPrice += 20000;
-                else if (lowerTitle.includes('1 tb') || lowerTitle.includes('1tb')) launchPrice += 40000;
-
-                const price = Math.round(launchPrice * 0.85);
-
-                products.push({
-                  id: pid,
-                  brand,
-                  model: title,
-                  image,
-                  releaseDate,
-                  price,
-                  mrp: launchPrice,
-                  url: decodedUrl,
-                  availability: 'In Stock',
-                  keySpecs: [],
-                });
+                const pId = pid;
+                tasks.push(
+                  this.fetchDetails(decodedUrl).then(specs => {
+                    if (specs) {
+                      return {
+                        id: pId,
+                        brand: specs.brand,
+                        model: specs.model,
+                        image: specs.images[0] || '',
+                        releaseDate: specs.releaseDate,
+                        price: specs.price,
+                        mrp: specs.launchPrice,
+                        url: decodedUrl,
+                        availability: 'In Stock',
+                        keySpecs: [],
+                      };
+                    }
+                    return null;
+                  })
+                );
               }
             }
           }
         } catch (err) {
           // ignore
         }
+      }
+
+      const results = await Promise.all(tasks);
+      for (const res of results) {
+        if (res) products.push(res);
       }
       return products;
     } catch (error) {
@@ -278,11 +256,7 @@ export class ScraperService {
         : `https://www.flipkart.com${productUrlPath}`;
 
       const response = await fetch(url, {
-        headers: {
-          'User-Agent': this.userAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-        },
+        headers: this.getHeaders(),
       });
 
       if (!response.ok) {
@@ -320,21 +294,45 @@ export class ScraperService {
 
       collect(state);
 
-      // Parse pricing to get launch price / MRP
-      let launchPrice: number | undefined;
-      const traversePricing = (obj: any) => {
+      // Parse pricing to get selling price and MRP/launch price
+      let sellingPrice = 0;
+      let launchPrice = 0;
+      const findDetailsPricing = (obj: any) => {
         if (!obj || typeof obj !== 'object') return;
-        if (obj.strikeOff === true && typeof obj.value === 'number') {
-          launchPrice = obj.value;
+        if (typeof obj.finalPrice === 'number' && typeof obj.mrp === 'number') {
+          sellingPrice = obj.finalPrice;
+          launchPrice = obj.mrp;
           return;
         }
         if (Array.isArray(obj)) {
-          obj.forEach(traversePricing);
+          obj.forEach(findDetailsPricing);
         } else {
-          Object.keys(obj).forEach(k => traversePricing(obj[k]));
+          Object.keys(obj).forEach(k => {
+            if (sellingPrice === 0) findDetailsPricing(obj[k]);
+          });
         }
       };
-      traversePricing(state);
+      findDetailsPricing(state);
+
+      if (sellingPrice === 0) {
+        // Fallback pricing finder
+        const findFallbackPrice = (obj: any) => {
+          if (!obj || typeof obj !== 'object') return;
+          if (typeof obj.primaryProductPrice === 'number' && obj.primaryProductPrice > 0) {
+            sellingPrice = obj.primaryProductPrice;
+            launchPrice = obj.primaryProductPrice;
+            return;
+          }
+          if (Array.isArray(obj)) {
+            obj.forEach(findFallbackPrice);
+          } else {
+            Object.keys(obj).forEach(k => {
+              if (sellingPrice === 0) findFallbackPrice(obj[k]);
+            });
+          }
+        };
+        findFallbackPrice(state);
+      }
 
       // Extraction heuristics
       let display = '';
@@ -424,6 +422,7 @@ export class ScraperService {
         os: os || undefined,
         images: uniqueImages,
         launchPrice: launchPrice || 69900, // Default estimate if missing
+        price: sellingPrice || launchPrice || 59900,
         releaseDate: this.estimateReleaseDate(title),
       };
     } catch (error) {
