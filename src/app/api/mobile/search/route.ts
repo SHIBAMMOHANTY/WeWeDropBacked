@@ -151,8 +151,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Cache for 30 minutes
-    CacheService.set(cacheKey, results, 1800);
+    // Only cache non-empty results — avoids stale empty [] being served after new data is added
+    if (results.length > 0) {
+      CacheService.set(cacheKey, results, 1800);
+    }
 
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
