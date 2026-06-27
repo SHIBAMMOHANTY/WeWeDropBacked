@@ -76,6 +76,34 @@ export class ScraperService {
     return '2024-06-01'; // general default
   }
 
+  private static cleanModelName(title: string, brand: string): string {
+    let clean = title;
+    
+    // Extract storage (e.g. 128 GB, 256GB, 1TB)
+    let storage = '';
+    const storageMatch = title.match(/\b(\d+)\s*(GB|TB)\b/i);
+    if (storageMatch) {
+      storage = `${storageMatch[1]}${storageMatch[2].toUpperCase()}`;
+    }
+
+    // Remove everything from the first parenthesis or comma
+    clean = clean.split('(')[0].split(',')[0].trim();
+
+    // Remove the brand name from the beginning if it exists
+    const brandRegex = new RegExp(`^${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+`, 'i');
+    clean = clean.replace(brandRegex, '').trim();
+
+    // Ensure 5g is capitalized
+    clean = clean.replace(/\b5g\b/i, '5G').replace(/\b4g\b/i, '4G');
+
+    if (storage && !clean.includes(storage)) {
+      clean = `${clean} (${storage})`;
+    }
+
+    // Fallback if cleaning stripped too much
+    return clean || title.split('(')[0].trim();
+  }
+
   /**
    * Search devices on Flipkart and parse results
    */
@@ -111,9 +139,9 @@ export class ScraperService {
           obj.widget.data.products.forEach((p: any) => {
             if (p.productInfo && p.productInfo.value) {
               const info = p.productInfo.value;
-              const title = info.titles?.title || info.titles?.newTitle || '';
+              const rawTitle = info.titles?.newTitle || info.titles?.title || '';
               
-              if (!title) return;
+              if (!rawTitle) return;
 
               // Parse pricing details
               let price = 0;
@@ -131,15 +159,15 @@ export class ScraperService {
                 image = this.formatImageUrl(info.media.images[0].url);
               }
 
-              // Determine availability
               const availability = info.availability?.displayState === 'IN_STOCK' ? 'In Stock' : 'Out of Stock';
+              const brand = this.parseBrand(rawTitle);
 
               products.push({
                 id: info.id,
-                brand: this.parseBrand(title),
-                model: info.titles?.newTitle || title,
+                brand,
+                model: this.cleanModelName(rawTitle, brand),
                 image,
-                releaseDate: this.estimateReleaseDate(title),
+                releaseDate: this.estimateReleaseDate(rawTitle),
                 price,
                 mrp,
                 url: info.baseUrl ? `https://www.flipkart.com${info.baseUrl}` : undefined,
