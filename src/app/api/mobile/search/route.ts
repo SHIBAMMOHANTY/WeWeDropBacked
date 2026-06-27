@@ -46,6 +46,10 @@ function extractBrandFromQuery(q: string): string {
       return word.charAt(0).toUpperCase() + word.slice(1);
     }
   }
+  // Fallback for completely new/unknown brands (like "Ai Nova 5G")
+  if (words.length > 0 && words[0]) {
+    return words[0].charAt(0).toUpperCase() + words[0].slice(1);
+  }
   return 'Unknown';
 }
 
