@@ -54,7 +54,11 @@ function extractBrandFromQuery(q: string): string {
 }
 
 function capitalizeWords(str: string): string {
-  return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  return str.split(/\s+/).map(w => {
+    if (w.toLowerCase() === '5g') return '5G';
+    if (w.toLowerCase() === '4g') return '4G';
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
 }
 
 export async function GET(req: NextRequest) {
@@ -182,39 +186,6 @@ export async function GET(req: NextRequest) {
         }
       } catch {
         // Scraper failed entirely
-      }
-    }
-
-    // ─── 5. DYNAMIC STUB GENERATOR: Always return data for valid new phones ───
-    if (results.length === 0) {
-      const brand = extractBrandFromQuery(normalizedQuery);
-      if (brand !== 'Unknown') {
-        // Construct a synthetic model name from the query
-        let syntheticModel = capitalizeWords(normalizedQuery.replace(/(apple|samsung)/i, '').trim());
-        
-        // Handle cases where people just search 'iphone' without a number
-        if (syntheticModel.toLowerCase() === 'iphone' || syntheticModel === '') {
-            syntheticModel = `${brand} Phone`;
-        } else if (brand === 'Apple' && !syntheticModel.toLowerCase().includes('iphone')) {
-            syntheticModel = `iPhone ${syntheticModel}`;
-        }
-        
-        // Default estimate price for a new generic unreleased phone
-        let estimatedPrice = 69999;
-        if (syntheticModel.toLowerCase().includes('pro max') || syntheticModel.toLowerCase().includes('ultra')) estimatedPrice = 129999;
-        else if (syntheticModel.toLowerCase().includes('pro')) estimatedPrice = 99999;
-        else if (syntheticModel.toLowerCase().includes('plus')) estimatedPrice = 89999;
-
-        results.push({
-          id: `dyn_${Date.now()}`,
-          brand: brand,
-          model: syntheticModel,
-          image: getBrandImage(brand),
-          releaseDate: new Date().toISOString().split('T')[0],
-          price: Math.round(estimatedPrice * 0.75), // buyback estimate
-          mrp: estimatedPrice,
-          isDynamic: true // Flag indicating this is an auto-generated fallback
-        });
       }
     }
 
