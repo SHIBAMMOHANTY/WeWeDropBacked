@@ -32,7 +32,7 @@ export class ScraperService {
    */
   private static parseBrand(title: string): string {
     const brands = [
-      'apple', 'samsung', 'oneplus', 'xiaomi', 'redmi', 'mi', 'realme',
+      'apple', 'iphone', 'samsung', 'oneplus', 'xiaomi', 'redmi', 'mi', 'realme',
       'vivo', 'oppo', 'google', 'motorola', 'infinix', 'tecno', 'poco',
       'asus', 'nothing', 'iqoo', 'honor', 'nokia'
     ];
@@ -40,6 +40,7 @@ export class ScraperService {
     const matched = brands.find(brand => lowerTitle.includes(brand));
     
     if (matched) {
+      if (matched === 'iphone') return 'Apple';
       return matched.charAt(0).toUpperCase() + matched.slice(1);
     }
     // Fallback: return the first word of the title
@@ -372,20 +373,34 @@ export class ScraperService {
       let os = '';
       let title = 'Unknown Phone';
 
-      // Find title in state
-      const traverseTitle = (obj: any) => {
-        if (!obj || typeof obj !== 'object') return;
-        if (obj.title && typeof obj.title === 'string' && obj.title.includes('(')) {
-          title = obj.title;
-          return;
+      // Find title from HTML <title> tag first
+      const titleMatches = html.match(/<title>([^<]+)<\/title>/i);
+      if (titleMatches) {
+        const rawTitle = titleMatches[1];
+        const parts = rawTitle.split(/ - Buy |- Buy| online at /i);
+        if (parts[0]) {
+          title = parts[0].trim();
         }
-        if (Array.isArray(obj)) {
-          obj.forEach(traverseTitle);
-        } else {
-          Object.keys(obj).forEach(k => traverseTitle(obj[k]));
-        }
-      };
-      traverseTitle(state);
+      }
+
+      if (!title || !title.includes('(')) {
+        // Fallback to traverseTitle
+        let fallbackTitle = 'Unknown Phone';
+        const traverseTitle = (obj: any) => {
+          if (!obj || typeof obj !== 'object') return;
+          if (obj.title && typeof obj.title === 'string' && obj.title.includes('(')) {
+            fallbackTitle = obj.title;
+            return;
+          }
+          if (Array.isArray(obj)) {
+            obj.forEach(traverseTitle);
+          } else {
+            Object.keys(obj).forEach(k => traverseTitle(obj[k]));
+          }
+        };
+        traverseTitle(state);
+        title = fallbackTitle;
+      }
 
       for (const txt of Array.from(textStrings)) {
         const lower = txt.toLowerCase();

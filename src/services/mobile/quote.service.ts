@@ -76,6 +76,48 @@ export class QuoteService {
 
     const dm = masterDevice ?? masterDeviceNoStorage;
 
+    // Check if device is in Device collection, register if missing (as required by Mobile Price Intel spec)
+    const deviceSlug = `${brand}-${model}-${storage || '128GB'}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+
+    let device = await prisma.device.findUnique({
+      where: { slug: deviceSlug },
+    });
+
+    if (!device) {
+      const isApple = brand.toLowerCase() === 'apple' || model.toLowerCase().includes('iphone');
+      const estimatedLaunchPrice = dm?.launchPrice || (isApple ? 80000 : 30000);
+      const estimatedReleaseDate = dm?.launchDate || '2023-01-01';
+
+      device = await prisma.device.create({
+        data: {
+          slug: deviceSlug,
+          brand,
+          model,
+          storage: storage || '128GB',
+          launchPrice: estimatedLaunchPrice,
+          releaseDate: estimatedReleaseDate,
+          display: isApple ? '6.1 inch OLED Display' : '6.5 inch FHD+ Display',
+          processor: isApple ? 'A16 Bionic Chip' : 'Octa Core Processor',
+          ram: isApple ? '6 GB RAM' : '8 GB RAM',
+          battery: isApple ? '3349 mAh' : '5000 mAh',
+          camera: isApple ? '48MP + 12MP Rear Camera' : '50MP Rear Camera',
+          os: isApple ? 'iOS 17' : 'Android 14',
+          images: [],
+        },
+      });
+
+      // Fetch and populate prices for this new device in the background/sync
+      try {
+        const { PriceService } = await import('./price.service');
+        await PriceService.collectPrices(device.id);
+      } catch (err) {
+        console.error('Failed to collect prices for newly registered device:', err);
+      }
+    }
+
     let basePrice: number;
     let launchPrice: number;
     let releaseYear: number;

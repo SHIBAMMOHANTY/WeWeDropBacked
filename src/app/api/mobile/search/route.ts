@@ -31,6 +31,7 @@ function normalizeQuery(q: string): string {
   return q.toLowerCase()
     .replace(/\bi\s+phone\b/g, 'iphone')
     .replace(/\bone\s+plus\b/g, 'oneplus')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -174,15 +175,89 @@ export async function GET(req: NextRequest) {
         clearTimeout(timeout);
 
         if (scrapedResults && scrapedResults.length > 0) {
-          results = scrapedResults.map((p: any) => ({
-            id:          p.id,
-            brand:       p.brand,
-            model:       p.model,
-            image:       p.image || getBrandImage(p.brand),
-            releaseDate: p.releaseDate,
-            price:       p.price,
-            mrp:         p.mrp,
-          }));
+          const mappedResults: any[] = [];
+          for (const p of scrapedResults) {
+            const cleanStorage = p.model.match(/\b\d+\s*(?:gb|tb)\b/i)?.[0] || '128GB';
+            const slug = `${p.brand}-${p.model}-${cleanStorage}`
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/(^-|-$)+/g, '');
+
+            let deviceId = p.id;
+            try {
+              let device = await prisma.device.findUnique({ where: { slug } });
+              if (!device) {
+                const isApple = p.brand.toLowerCase() === 'apple' || p.model.toLowerCase().includes('iphone');
+                device = await prisma.device.create({
+                  data: {
+                    slug,
+                    brand: p.brand,
+                    model: p.model,
+                    storage: cleanStorage,
+                    launchPrice: p.mrp || p.price || (isApple ? 80000 : 30000),
+                    releaseDate: p.releaseDate || '2023-01-01',
+                    display: isApple ? '6.1 inch OLED Display' : '6.5 inch FHD+ Display',
+                    processor: isApple ? 'A16 Bionic Chip' : 'Octa Core Processor',
+                    ram: isApple ? '6 GB RAM' : '8 GB RAM',
+                    battery: isApple ? '3349 mAh' : '5000 mAh',
+                    camera: isApple ? '48MP + 12MP Rear Camera' : '50MP Rear Camera',
+                    os: isApple ? 'iOS 17' : 'Android 14',
+                    images: p.image ? [p.image] : [],
+                  }
+                });
+              }
+              deviceId = device.id;
+
+              // Upsert Flipkart price
+              await prisma.currentPrice.upsert({
+                where: {
+                  deviceId_seller: {
+                    deviceId: device.id,
+                    seller: 'Flipkart',
+                  }
+                },
+                update: {
+                  price: p.price,
+                  mrp: p.mrp,
+                  availability: p.availability || 'In Stock',
+                  productUrl: p.url,
+                  lastUpdated: new Date(),
+                },
+                create: {
+                  deviceId: device.id,
+                  seller: 'Flipkart',
+                  price: p.price,
+                  mrp: p.mrp,
+                  availability: p.availability || 'In Stock',
+                  productUrl: p.url,
+                  lastUpdated: new Date(),
+                }
+              });
+
+              // Add to price history
+              await prisma.priceHistory.create({
+                data: {
+                  deviceId: device.id,
+                  seller: 'Flipkart',
+                  price: p.price,
+                  mrp: p.mrp,
+                }
+              });
+            } catch (err) {
+              console.error('Failed to register/upsert scraped device in DB:', err);
+            }
+
+            mappedResults.push({
+              id:          deviceId,
+              brand:       p.brand,
+              model:       p.model,
+              image:       p.image || getBrandImage(p.brand),
+              releaseDate: p.releaseDate,
+              price:       p.price,
+              mrp:         p.mrp,
+            });
+          }
+          results = mappedResults;
         }
       } catch {
         // Scraper failed entirely
