@@ -1,35 +1,23 @@
 import { z } from 'zod';
 import { QuoteRequest, QuoteResponse } from '@/lib/mobile/interfaces';
-import { DeviceRepository } from '@/repositories/mobile/device.repository';
-import { PriceService } from './price.service';
-import { ScraperService } from './scraper.service';
+import { prisma } from '@/lib/prisma';
 
 // Zod Input Validation Schema
 export const QuoteInputSchema = z.object({
-  brand: z.string().min(1, 'Brand is required'),
-  model: z.string().min(1, 'Model is required'),
-  storage: z.string().min(1, 'Storage is required'),
-  condition: z.enum(['excellent', 'good', 'average'], {
+  brand:         z.string().min(1, 'Brand is required'),
+  model:         z.string().min(1, 'Model is required'),
+  storage:       z.string().min(1, 'Storage is required'),
+  condition:     z.enum(['excellent', 'good', 'average'], {
     errorMap: () => ({ message: "Condition must be 'excellent', 'good', or 'average'" }),
   }),
   batteryHealth: z.number().min(0).max(100, 'Battery health must be between 0 and 100'),
-  screenDamage: z.boolean(),
-  accessories: z.array(z.string()),
+  screenDamage:  z.boolean(),
+  accessories:   z.array(z.string()),
 });
 
 export class QuoteService {
   /**
-   * Helper to slugify brand and model
-   */
-  private static makeSlug(brand: string, model: string, storage: string): string {
-    return `${brand}-${model}-${storage}`
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)+/g, '');
-  }
-
-  /**
-   * Helper to parse release year from release date string (YYYY-MM-DD)
+   * Parse release year from YYYY-MM-DD or YYYY string
    */
   private static getReleaseYear(releaseDate?: string | null): number {
     if (!releaseDate) return 2024;
@@ -38,156 +26,134 @@ export class QuoteService {
   }
 
   /**
+   * Estimate current market price from launch price and age
+   */
+  private static estimateMarketPrice(launchPrice: number, releaseYear: number): number {
+    const currentYear = new Date().getFullYear();
+    const age = Math.max(0, currentYear - releaseYear);
+    let factor = 0.85;
+    if (age === 2) factor = 0.70;
+    else if (age === 3) factor = 0.55;
+    else if (age >= 4) factor = 0.40;
+    return Math.round(launchPrice * factor);
+  }
+
+  /**
    * Calculate mobile buyback quote estimation
    */
   static async calculateQuote(rawInput: any): Promise<QuoteResponse> {
-    // Validate inputs
-    const validatedInput = QuoteInputSchema.parse(rawInput);
-    const { brand, model, storage, condition, batteryHealth, screenDamage, accessories } = validatedInput;
+    const { brand, model, storage, condition, batteryHealth, screenDamage, accessories } =
+      QuoteInputSchema.parse(rawInput);
 
-    const slug = this.makeSlug(brand, model, storage);
-    let device = await DeviceRepository.findBySlug(slug);
-    let isLiveDevice = !!device;
+    // ─── 1. Find in DeviceMaster (buyback catalog) — most reliable source ───
+    const brandKeywords = brand.split(/\s+/);
+    const modelKeywords = model.split(/\s+/);
 
-    // If device doesn't exist, try scraping and creating a new Device record
-    if (!device) {
-      const query = `${brand} ${model} ${storage}`;
-      const searchResults = await ScraperService.search(query, 1);
-      
-      if (searchResults.length > 0) {
-        // Find best match in scraped results to fetch detailed specifications page
-        const match = searchResults[0];
-        let detailSpecs = match.url 
-          ? await ScraperService.fetchDetails(match.url)
-          : null;
+    const masterDevice = await prisma.deviceMaster.findFirst({
+      where: {
+        AND: [
+          ...brandKeywords.map(kw => ({ brand: { contains: kw, mode: 'insensitive' as const } })),
+          ...modelKeywords.map(kw => ({ model: { contains: kw, mode: 'insensitive' as const } })),
+          { storage: { contains: storage, mode: 'insensitive' } },
+          { isActive: true },
+        ],
+      },
+    });
 
-        if (!detailSpecs) {
-          detailSpecs = ScraperService.parseSpecsFromKeySpecs(match.model, match.keySpecs || [], match.image, match.price || 0, match.mrp || 0);
-        }
+    // ─── 2. If no storage match, try without storage constraint ───
+    const masterDeviceNoStorage = !masterDevice
+      ? await prisma.deviceMaster.findFirst({
+          where: {
+            AND: [
+              ...brandKeywords.map(kw => ({ brand: { contains: kw, mode: 'insensitive' as const } })),
+              ...modelKeywords.map(kw => ({ model: { contains: kw, mode: 'insensitive' as const } })),
+              { isActive: true },
+            ],
+          },
+          orderBy: { launchPrice: 'desc' }, // pick the highest variant as baseline
+        })
+      : null;
 
-        device = await DeviceRepository.create({
-          slug,
-          brand: detailSpecs.brand,
-          model: detailSpecs.model,
-          display: detailSpecs.display,
-          processor: detailSpecs.processor,
-          ram: detailSpecs.ram,
-          storage: detailSpecs.storage || storage,
-          battery: detailSpecs.battery,
-          camera: detailSpecs.camera,
-          os: detailSpecs.os,
-          images: detailSpecs.images && detailSpecs.images.length > 0 ? detailSpecs.images : [match.image],
-          launchPrice: detailSpecs.launchPrice || match.price || 50000,
-          releaseDate: detailSpecs.releaseDate || match.releaseDate,
-        });
+    const dm = masterDevice ?? masterDeviceNoStorage;
+
+    let basePrice: number;
+    let launchPrice: number;
+    let releaseYear: number;
+
+    if (dm) {
+      launchPrice  = dm.launchPrice;
+      releaseYear  = this.getReleaseYear(dm.launchDate);
+
+      // Use condition-specific buyback price from DeviceMaster as the base
+      if (condition === 'excellent') {
+        basePrice = dm.basePriceExcellent;
+      } else if (condition === 'good') {
+        basePrice = dm.basePriceGood;
       } else {
-        // Ultimate fallback: Create a dummy device mapping
-        device = await DeviceRepository.create({
-          slug,
-          brand,
-          model,
-          storage,
-          images: [],
-          launchPrice: 60000,
-          releaseDate: '2024-01-01',
-        });
+        basePrice = dm.basePriceAverage;
       }
+    } else {
+      // ─── 3. Generic estimation fallback ───
+      // Rough launch price guess from brand tier
+      const brandLower = brand.toLowerCase();
+      if (brandLower.includes('apple') || brandLower.includes('iphone')) {
+        launchPrice = 80000;
+      } else if (brandLower.includes('samsung') && model.toLowerCase().includes('ultra')) {
+        launchPrice = 120000;
+      } else if (brandLower.includes('samsung')) {
+        launchPrice = 50000;
+      } else if (brandLower.includes('oneplus')) {
+        launchPrice = 40000;
+      } else {
+        launchPrice = 25000;
+      }
+      releaseYear = 2023;
+      const marketPrice = this.estimateMarketPrice(launchPrice, releaseYear);
+      basePrice = condition === 'excellent'
+        ? Math.round(marketPrice * 0.55)
+        : condition === 'good'
+          ? Math.round(marketPrice * 0.45)
+          : Math.round(marketPrice * 0.35);
     }
 
-    // Collect current market prices for baseline calculations
-    const pricesData = await PriceService.collectPrices(device.id);
-    const baseMarketPrice = pricesData.averagePrice;
+    // ─── Apply deductions on top of the base buyback price ───
 
-    // 1. Device Age depreciation
-    const currentYear = new Date().getFullYear(); // 2026 in system
-    const releaseYear = this.getReleaseYear(device.releaseDate);
-    const age = Math.max(0, currentYear - releaseYear);
-
-    let ageMultiplier = 0.85; // <= 1 year
-    if (age === 2) {
-      ageMultiplier = 0.70;
-    } else if (age === 3) {
-      ageMultiplier = 0.55;
-    } else if (age >= 4) {
-      ageMultiplier = 0.40;
-    }
-
-    // Brand bonus (premium brands retain value better)
-    const brandLower = brand.toLowerCase();
-    if (brandLower.includes('apple') || brandLower.includes('iphone')) {
-      ageMultiplier *= 1.05; // retains +5%
-    } else if (brandLower.includes('samsung')) {
-      ageMultiplier *= 1.02; // retains +2%
-    }
-
-    // 2. Condition multiplier
-    let conditionMultiplier = 1.0; // excellent
-    if (condition === 'good') {
-      conditionMultiplier = 0.88; // -12%
-    } else if (condition === 'average') {
-      conditionMultiplier = 0.75; // -25%
-    }
-
-    // 3. Battery health deductions
+    // 1. Battery health deduction
     let batteryMultiplier = 1.0;
     if (batteryHealth < 80) {
-      batteryMultiplier = 0.85; // -15%
+      batteryMultiplier = 0.85;
     } else if (batteryHealth < 85) {
-      batteryMultiplier = 0.94; // -6%
+      batteryMultiplier = 0.94;
     }
 
-    // 4. Screen Damage deduction
-    const screenDamageMultiplier = screenDamage ? 0.70 : 1.0; // -30%
+    // 2. Screen damage deduction
+    const screenDamageMultiplier = screenDamage ? 0.70 : 1.0;
 
-    // 5. Accessories deductions (deduct if standard accessories are missing)
+    // 3. Missing accessories deductions
     let accessoriesMultiplier = 1.0;
     const lowerAccessories = accessories.map(a => a.toLowerCase());
-    
-    if (!lowerAccessories.includes('charger')) {
-      accessoriesMultiplier *= 0.97; // -3%
-    }
-    if (!lowerAccessories.includes('box')) {
-      accessoriesMultiplier *= 0.98; // -2%
-    }
-    if (!lowerAccessories.includes('bill')) {
-      accessoriesMultiplier *= 0.95; // -5%
-    }
+    if (!lowerAccessories.includes('charger')) accessoriesMultiplier *= 0.97;
+    if (!lowerAccessories.includes('box'))     accessoriesMultiplier *= 0.98;
+    if (!lowerAccessories.includes('bill'))    accessoriesMultiplier *= 0.95;
 
-    // Calculate estimated buyback price
-    let estimatedPrice =
-      baseMarketPrice *
-      ageMultiplier *
-      conditionMultiplier *
-      batteryMultiplier *
-      screenDamageMultiplier *
-      accessoriesMultiplier;
+    // Final price
+    let estimatedPrice = basePrice * batteryMultiplier * screenDamageMultiplier * accessoriesMultiplier;
 
-    // Floor price: Device should retain at least 15% of the current market value if functional
-    const minFloorPrice = baseMarketPrice * 0.15;
-    if (estimatedPrice < minFloorPrice) {
-      estimatedPrice = minFloorPrice;
-    }
+    // Floor: at least 10% of launch price
+    const minFloorPrice = launchPrice * 0.10;
+    if (estimatedPrice < minFloorPrice) estimatedPrice = minFloorPrice;
 
     // Round to nearest 100
     estimatedPrice = Math.round(estimatedPrice / 100) * 100;
+    const minPrice = Math.round((estimatedPrice * 0.90) / 100) * 100;
+    const maxPrice = Math.round((estimatedPrice * 1.10) / 100) * 100;
 
-    const minPrice = Math.round((estimatedPrice * 0.9) / 100) * 100;
-    const maxPrice = Math.round((estimatedPrice * 1.1) / 100) * 100;
+    // Confidence score
+    let confidenceScore = dm ? 0.85 : 0.55;
+    if (masterDevice) confidenceScore = Math.min(1.0, confidenceScore + 0.10); // exact storage match
+    if (batteryHealth >= 85) confidenceScore = Math.min(1.0, confidenceScore + 0.05);
+    if (!screenDamage)       confidenceScore = Math.min(1.0, confidenceScore + 0.05);
 
-    // Calculate Confidence Score
-    let confidenceScore = 0.6;
-    if (isLiveDevice) confidenceScore += 0.2;
-    if (pricesData.prices.some(p => p.price > 0 && p.seller === 'Flipkart')) confidenceScore += 0.1;
-    if (batteryHealth >= 85) confidenceScore += 0.1;
-
-    // Clamp confidence score between 0.0 and 1.0
-    confidenceScore = Math.min(1.0, Math.max(0.0, confidenceScore));
-
-    return {
-      estimatedPrice,
-      minPrice,
-      maxPrice,
-      confidenceScore,
-    };
+    return { estimatedPrice, minPrice, maxPrice, confidenceScore };
   }
 }
