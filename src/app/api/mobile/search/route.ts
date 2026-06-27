@@ -158,8 +158,8 @@ export async function GET(req: NextRequest) {
 
     let results = merged;
 
-    // ─── 4. If still empty, try a live Flipkart scrape with a short timeout ───
-    if (results.length === 0) {
+    // ─── 4. If no real-time scraped devices exist in database, try a live Flipkart scrape with a short timeout ───
+    if (deviceResults.length === 0) {
       try {
         const { ScraperService } = await import('@/services/mobile/scraper.service');
         const controller = new AbortController();
@@ -175,15 +175,25 @@ export async function GET(req: NextRequest) {
         clearTimeout(timeout);
 
         if (scrapedResults && scrapedResults.length > 0) {
-          const mappedResults: any[] = [];
-          for (const p of scrapedResults) {
+          // Map results immediately for fast response
+          results = scrapedResults.map((p: any) => ({
+            id:          p.id, // scraped ID as temporary fallback
+            brand:       p.brand,
+            model:       p.model,
+            image:       p.image || getBrandImage(p.brand),
+            releaseDate: p.releaseDate,
+            price:       p.price,
+            mrp:         p.mrp,
+          }));
+
+          // Trigger database registration in the background concurrently
+          Promise.all(scrapedResults.map(async (p: any) => {
             const cleanStorage = p.model.match(/\b\d+\s*(?:gb|tb)\b/i)?.[0] || '128GB';
             const slug = `${p.brand}-${p.model}-${cleanStorage}`
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, '-')
               .replace(/(^-|-$)+/g, '');
 
-            let deviceId = p.id;
             try {
               let device = await prisma.device.findUnique({ where: { slug } });
               if (!device) {
@@ -206,7 +216,6 @@ export async function GET(req: NextRequest) {
                   }
                 });
               }
-              deviceId = device.id;
 
               // Upsert Flipkart price
               await prisma.currentPrice.upsert({
@@ -246,18 +255,9 @@ export async function GET(req: NextRequest) {
             } catch (err) {
               console.error('Failed to register/upsert scraped device in DB:', err);
             }
-
-            mappedResults.push({
-              id:          deviceId,
-              brand:       p.brand,
-              model:       p.model,
-              image:       p.image || getBrandImage(p.brand),
-              releaseDate: p.releaseDate,
-              price:       p.price,
-              mrp:         p.mrp,
-            });
-          }
-          results = mappedResults;
+          })).catch(err => {
+            console.error('Background device registration failed:', err);
+          });
         }
       } catch {
         // Scraper failed entirely

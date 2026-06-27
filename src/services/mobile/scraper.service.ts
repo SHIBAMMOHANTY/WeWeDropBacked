@@ -140,7 +140,7 @@ export class ScraperService {
           obj.widget.data.products.forEach((p: any) => {
             if (p.productInfo && p.productInfo.value) {
               const info = p.productInfo.value;
-              const rawTitle = info.titles?.newTitle || info.titles?.title || '';
+              const rawTitle = info.titles?.title || (info.titles?.superTitle ? `${info.titles.superTitle} ${info.titles.newTitle}` : info.titles?.newTitle) || '';
               
               if (!rawTitle) return;
 
