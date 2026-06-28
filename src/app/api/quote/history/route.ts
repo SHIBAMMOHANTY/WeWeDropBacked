@@ -19,11 +19,10 @@ export async function GET(req: Request) {
     // 2. Parse query parameters for pagination
     const { page, limit, skip } = buildPagination(req.url);
 
-    // 3. Exclude auto-saved 'pending' drafts from POST /quote/calculate.
-    //    Valid quotes have status: 'submitted', 'ordered', 'completed', etc.
+    // 3. Return ALL quotes for this user including 'pending' drafts from
+    //    POST /quote/calculate (price previews) so they appear in history.
     const query = {
       userId: session.id,
-      status: { not: 'pending' },
     };
     
     const total = await prisma.quote.count({ where: query });
