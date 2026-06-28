@@ -123,13 +123,54 @@ export async function POST(req: Request) {
     const firstItem = payload.order.items[0];
 
     const order = await prisma.$transaction(async (tx) => {
-      const listing = await tx.oldPhoneListing.findFirst({
+      let listing = await tx.oldPhoneListing.findFirst({
         where: {
           OR: [{ id: firstItem.phoneId }, { listingId: firstItem.phoneId }],
           isActive: true,
           isSold: false, // Ensure not sold
         },
       });
+      let isQuoteOrder = false;
+
+      if (!listing) {
+        // Try looking up in the Quote table!
+        const quote = await tx.quote.findUnique({
+          where: { id: firstItem.phoneId },
+        });
+
+        if (quote) {
+          isQuoteOrder = true;
+          // Dynamically create an OldPhoneListing from this Quote so that OldPhoneOrder relation works!
+          listing = await tx.oldPhoneListing.create({
+            data: {
+              userId: quote.userId,
+              phoneName: quote.brand,
+              phoneModel: quote.model,
+              phoneStorage: quote.storage,
+              phonePrice: quote.finalPrice || quote.estimatedPrice,
+              mobileRepaired: true, // It is refurbished!
+              phoneColor: "Default",
+              imeiNumber: "N/A",
+              description: `Quote Order. Quote Number: ${quote.quoteNumber}`,
+              bodyCondition: quote.condition.toUpperCase() === "EXCELLENT" 
+                ? "EXCELLENT" 
+                : quote.condition.toUpperCase() === "GOOD" 
+                  ? "GOOD" 
+                  : "AVERAGE",
+              images: quote.images && quote.images.length > 0 ? quote.images : [],
+              isActive: true,
+              isSold: true, // Mark it sold immediately since it's being ordered!
+            }
+          });
+
+          // Also update the Quote status to "ordered"
+          await tx.quote.update({
+            where: { id: quote.id },
+            data: { status: "ordered" }
+          });
+        }
+      }
+
       if (!listing) {
         throw new ApiError("Active listing not found or already sold", 400);
       }
@@ -137,14 +178,16 @@ export async function POST(req: Request) {
         throw new ApiError("Offer price cannot exceed listing price", 400);
       }
 
-      // Atomically check and update isSold
-      const updateResult = await tx.oldPhoneListing.updateMany({
-        where: { id: listing.id, isSold: false },
-        data: { isSold: true },
-      });
+      // Atomically check and update isSold for normal listings
+      if (!isQuoteOrder) {
+        const updateResult = await tx.oldPhoneListing.updateMany({
+          where: { id: listing.id, isSold: false },
+          data: { isSold: true },
+        });
 
-      if (updateResult.count === 0) {
-        throw new ApiError("Listing already sold", 400);
+        if (updateResult.count === 0) {
+          throw new ApiError("Listing already sold", 400);
+        }
       }
 
       const sellerId = listing.businessId ?? listing.userId;

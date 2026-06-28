@@ -1,0 +1,50 @@
+import { jsonResponse, getAuthSession, buildPagination } from '@/lib/api';
+import { prisma } from '@/lib/prisma';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function OPTIONS() {
+  return jsonResponse(null, 204);
+}
+
+export async function GET(req: Request) {
+  try {
+    // 1. Authenticate user
+    const session = await getAuthSession(req);
+    if (!session || !session.id) {
+      return jsonResponse({ error: 'Unauthorized: Authentication required' }, 401);
+    }
+
+    // 2. Parse query parameters for pagination
+    const { page, limit, skip } = buildPagination(req.url);
+
+    // 3. Query user's quotes from Prisma client with pagination
+    const query = { userId: session.id };
+    
+    const total = await prisma.quote.count({ where: query });
+    const quotes = await prisma.quote.findMany({
+      where: query,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    });
+
+    return jsonResponse({
+      success: true,
+      quotes,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err: any) {
+    console.error('Fetch User Quote History Error:', err);
+    return jsonResponse(
+      { error: err.message || 'Internal server error while fetching quote history' },
+      500
+    );
+  }
+}

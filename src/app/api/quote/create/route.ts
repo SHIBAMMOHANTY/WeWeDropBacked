@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { jsonResponse, getAuthSession } from '@/lib/api';
+import { jsonResponse, getAuthSession, buildPagination } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
 import { PricingService } from '@/services/pricing.service';
 
@@ -22,6 +22,7 @@ const calculateSchema = z.object({
   speakerIssue: z.boolean().default(false),
   chargingPortIssue: z.boolean().default(false),
   modelSlug: z.string().optional(),
+  launchPrice: z.number().optional(),
 });
 
 const createQuoteSchema = calculateSchema.extend({
@@ -101,6 +102,47 @@ export async function POST(req: Request) {
     return jsonResponse(
       { error: err.message || 'Internal server error while creating quote' },
       err.message?.includes('Device not found') ? 404 : 500
+    );
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    // 1. Authenticate user
+    const session = await getAuthSession(req);
+    if (!session || !session.id) {
+      return jsonResponse({ error: 'Unauthorized: Authentication required' }, 401);
+    }
+
+    // 2. Parse query parameters for pagination
+    const { page, limit, skip } = buildPagination(req.url);
+
+    // 3. Query user's quotes from Prisma client with pagination
+    const query = { userId: session.id };
+    
+    const total = await prisma.quote.count({ where: query });
+    const quotes = await prisma.quote.findMany({
+      where: query,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    });
+
+    return jsonResponse({
+      success: true,
+      quotes,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err: any) {
+    console.error('Fetch User Quote History Error:', err);
+    return jsonResponse(
+      { error: err.message || 'Internal server error while fetching quote history' },
+      500
     );
   }
 }

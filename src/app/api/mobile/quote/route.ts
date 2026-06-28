@@ -5,8 +5,11 @@ import { ZodError } from 'zod';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    console.log("BACKEND MOBILE QUOTE REQUEST PATH: /api/mobile/quote");
+    console.log("REQUEST PAYLOAD:", JSON.stringify(body, null, 2));
 
     const quote = await QuoteService.calculateQuote(body);
+    console.log("BACKEND MOBILE QUOTE RESPONSE:", JSON.stringify(quote, null, 2));
 
     return NextResponse.json({ success: true, quote });
   } catch (error: any) {

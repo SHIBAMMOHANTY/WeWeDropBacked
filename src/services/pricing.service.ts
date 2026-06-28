@@ -14,6 +14,7 @@ export interface QuoteCalculationRequest {
   speakerIssue: boolean;
   chargingPortIssue: boolean;
   modelSlug?: string; // Optional real-time API slug
+  launchPrice?: number;
 }
 
 export interface QuoteCalculationResponse {
@@ -126,6 +127,24 @@ function estimateFallbackBasePrice(brand: string, modelName: string): { excellen
   };
 }
 
+function cleanModelName(model: string, brand: string): string {
+  let m = model.trim();
+  m = m.replace(/\s*\([^)]*\)/g, '').trim();
+  const brandLower = brand.toLowerCase().trim();
+  if (m.toLowerCase().startsWith(brandLower)) {
+    m = m.substring(brandLower.length).trim();
+  }
+  return m;
+}
+
+function getDeductionPercentage(ruleValue: number): number {
+  if (ruleValue <= 0) return 0;
+  if (ruleValue > 100) {
+    return ruleValue / 10000;
+  }
+  return ruleValue / 100;
+}
+
 interface APIDeviceSpecs {
   launchPrice?: number;
   releaseYear?: number;
@@ -138,6 +157,14 @@ interface APIDeviceSpecs {
 async function fetchSpecsFromAPI(brandName: string, modelName: string, modelSlug?: string): Promise<APIDeviceSpecs | null> {
   try {
     let slug = modelSlug;
+
+    // Clean modelName to remove storage/variant suffixes like "(128GB)" or "128GB"
+    const cleanedModelName = modelName
+      .replace(/\(\d+GB\)/gi, '')
+      .replace(/\b\d+GB\b/gi, '')
+      .replace(/\(\s*\)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     // Step 1: If modelSlug is not provided, look it up by searching brand and model
     if (!slug) {
@@ -156,9 +183,9 @@ async function fetchSpecsFromAPI(brandName: string, modelName: string, modelSlug
       if (!modelsJson.status || !modelsJson.data || !modelsJson.data.phones) return null;
 
       const modelList = modelsJson.data.phones as Array<{ phone_name: string; slug: string }>;
-      let matchedModel = modelList.find(m => m.phone_name.toLowerCase().trim() === modelName.toLowerCase().trim());
+      let matchedModel = modelList.find(m => m.phone_name.toLowerCase().trim() === cleanedModelName.toLowerCase());
       if (!matchedModel) {
-        matchedModel = modelList.find(m => m.phone_name.toLowerCase().includes(modelName.toLowerCase()) || modelName.toLowerCase().includes(m.phone_name.toLowerCase()));
+        matchedModel = modelList.find(m => m.phone_name.toLowerCase().includes(cleanedModelName.toLowerCase()) || cleanedModelName.toLowerCase().includes(m.phone_name.toLowerCase()));
       }
       if (!matchedModel) return null;
       slug = matchedModel.slug;
@@ -259,64 +286,157 @@ export class PricingService {
     let launchPrice = 0;
     let releaseYear = 2026;
 
-    // Try fetching specs in real-time from API
-    const apiSpecs = await fetchSpecsFromAPI(data.brand, data.model, data.modelSlug);
+    const cleanedModel = cleanModelName(data.model, data.brand);
 
-    if (apiSpecs && apiSpecs.launchPrice && apiSpecs.launchPrice > 0) {
-      launchPrice = apiSpecs.launchPrice;
-      releaseYear = apiSpecs.releaseYear || 2026;
+    // 1. Fetch matching Device Master using case-insensitive constraints from DB first (most reliable source)
+    const device = await prisma.deviceMaster.findFirst({
+      where: {
+        brand: { equals: data.brand.trim(), mode: 'insensitive' },
+        OR: [
+          { model: { equals: data.model.trim(), mode: 'insensitive' } },
+          { model: { equals: cleanedModel, mode: 'insensitive' } },
+          { model: { contains: cleanedModel, mode: 'insensitive' } }
+        ],
+        storage: { equals: data.storage.trim(), mode: 'insensitive' },
+        isActive: true,
+      },
+    });
 
-      const ageYears = Math.max(0, 2026 - releaseYear);
-      let multiplierExcellent = 0.55; // default starting point
-      const brandLower = data.brand.toLowerCase();
-
-      // Brand-specific depreciation mapping
-      if (brandLower.includes("apple") || data.model.toLowerCase().includes("iphone")) {
-        if (ageYears <= 1) multiplierExcellent = 0.68;
-        else if (ageYears === 2) multiplierExcellent = 0.55;
-        else if (ageYears === 3) multiplierExcellent = 0.42;
-        else if (ageYears === 4) multiplierExcellent = 0.32;
-        else multiplierExcellent = 0.22;
-      } else if (brandLower.includes("samsung")) {
-        if (ageYears <= 1) multiplierExcellent = 0.60;
-        else if (ageYears === 2) multiplierExcellent = 0.48;
-        else if (ageYears === 3) multiplierExcellent = 0.36;
-        else if (ageYears === 4) multiplierExcellent = 0.26;
-        else multiplierExcellent = 0.16;
+    if (device) {
+      basePriceExcellent = device.basePriceExcellent;
+      basePriceGood = device.basePriceGood;
+      basePriceAverage = device.basePriceAverage;
+      launchPrice = data.launchPrice || device.launchPrice;
+      if (device.launchDate) {
+        const year = parseInt(device.launchDate.split('-')[0], 10);
+        releaseYear = isNaN(year) ? 2024 : year;
       } else {
-        if (ageYears <= 1) multiplierExcellent = 0.52;
-        else if (ageYears === 2) multiplierExcellent = 0.40;
-        else if (ageYears === 3) multiplierExcellent = 0.30;
-        else if (ageYears === 4) multiplierExcellent = 0.20;
-        else multiplierExcellent = 0.12;
+        releaseYear = 2024;
       }
-
-      basePriceExcellent = Math.round(launchPrice * multiplierExcellent);
-      basePriceGood = Math.round(basePriceExcellent * 0.9);
-      basePriceAverage = Math.round(basePriceExcellent * 0.78);
     } else {
-      // 1. Fetch matching Device Master using case-insensitive constraints from DB
-      const device = await prisma.deviceMaster.findFirst({
-        where: {
-          brand: { equals: data.brand.trim(), mode: 'insensitive' },
-          model: { equals: data.model.trim(), mode: 'insensitive' },
-          storage: { equals: data.storage.trim(), mode: 'insensitive' },
-          isActive: true,
-        },
+      // 2. Bypassed or not found in DeviceMaster, try matching in registered Device collection
+      const deviceSlug = `${data.brand}-${data.model}-${data.storage || '128GB'}`
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '');
+
+      const dbDevice = await prisma.device.findUnique({
+        where: { slug: deviceSlug },
       });
 
-      if (device) {
-        basePriceExcellent = device.basePriceExcellent;
-        basePriceGood = device.basePriceGood;
-        basePriceAverage = device.basePriceAverage;
-        launchPrice = device.launchPrice;
+      if (dbDevice && dbDevice.launchPrice && dbDevice.launchPrice > 0) {
+        launchPrice = data.launchPrice || dbDevice.launchPrice;
+        if (dbDevice.releaseDate) {
+          const year = parseInt(dbDevice.releaseDate.split('-')[0], 10);
+          releaseYear = isNaN(year) ? 2024 : year;
+        } else {
+          releaseYear = 2024;
+        }
+
+        const ageYears = Math.max(0, 2026 - releaseYear);
+        let multiplierExcellent = 0.55;
+        const brandLower = data.brand.toLowerCase();
+
+        if (brandLower.includes("apple") || data.model.toLowerCase().includes("iphone")) {
+          if (ageYears <= 1) multiplierExcellent = 0.68;
+          else if (ageYears === 2) multiplierExcellent = 0.55;
+          else if (ageYears === 3) multiplierExcellent = 0.42;
+          else if (ageYears === 4) multiplierExcellent = 0.32;
+          else multiplierExcellent = 0.22;
+        } else if (brandLower.includes("samsung")) {
+          if (ageYears <= 1) multiplierExcellent = 0.60;
+          else if (ageYears === 2) multiplierExcellent = 0.48;
+          else if (ageYears === 3) multiplierExcellent = 0.36;
+          else if (ageYears === 4) multiplierExcellent = 0.26;
+          else multiplierExcellent = 0.16;
+        } else {
+          if (ageYears <= 1) multiplierExcellent = 0.52;
+          else if (ageYears === 2) multiplierExcellent = 0.40;
+          else if (ageYears === 3) multiplierExcellent = 0.30;
+          else if (ageYears === 4) multiplierExcellent = 0.20;
+          else multiplierExcellent = 0.12;
+        }
+
+        basePriceExcellent = Math.round(launchPrice * multiplierExcellent);
+        basePriceGood = Math.round(basePriceExcellent * 0.9);
+        basePriceAverage = Math.round(basePriceExcellent * 0.78);
       } else {
-        // Fallback: Estimate base price dynamically
-        const estimates = estimateFallbackBasePrice(data.brand, data.model);
-        basePriceExcellent = estimates.excellent;
-        basePriceGood = estimates.good;
-        basePriceAverage = estimates.average;
-        launchPrice = Math.round(estimates.excellent * 1.55); // estimated original retail/market price
+        // If data.launchPrice is provided in payload, use it to estimate base price dynamically
+        if (data.launchPrice && data.launchPrice > 0) {
+          launchPrice = data.launchPrice;
+          releaseYear = 2024;
+          
+          const ageYears = Math.max(0, 2026 - releaseYear);
+          let multiplierExcellent = 0.55;
+          const brandLower = data.brand.toLowerCase();
+
+          if (brandLower.includes("apple") || data.model.toLowerCase().includes("iphone")) {
+            if (ageYears <= 1) multiplierExcellent = 0.68;
+            else if (ageYears === 2) multiplierExcellent = 0.55;
+            else if (ageYears === 3) multiplierExcellent = 0.42;
+            else if (ageYears === 4) multiplierExcellent = 0.32;
+            else multiplierExcellent = 0.22;
+          } else if (brandLower.includes("samsung")) {
+            if (ageYears <= 1) multiplierExcellent = 0.60;
+            else if (ageYears === 2) multiplierExcellent = 0.48;
+            else if (ageYears === 3) multiplierExcellent = 0.36;
+            else if (ageYears === 4) multiplierExcellent = 0.26;
+            else multiplierExcellent = 0.16;
+          } else {
+            if (ageYears <= 1) multiplierExcellent = 0.52;
+            else if (ageYears === 2) multiplierExcellent = 0.40;
+            else if (ageYears === 3) multiplierExcellent = 0.30;
+            else if (ageYears === 4) multiplierExcellent = 0.20;
+            else multiplierExcellent = 0.12;
+          }
+
+          basePriceExcellent = Math.round(launchPrice * multiplierExcellent);
+          basePriceGood = Math.round(basePriceExcellent * 0.9);
+          basePriceAverage = Math.round(basePriceExcellent * 0.78);
+        } else {
+          // 3. Try fetching specs in real-time from phone-specs-api as third priority
+          const apiSpecs = await fetchSpecsFromAPI(data.brand, data.model, data.modelSlug);
+
+          if (apiSpecs && apiSpecs.launchPrice && apiSpecs.launchPrice > 0) {
+            launchPrice = apiSpecs.launchPrice;
+            releaseYear = apiSpecs.releaseYear || 2026;
+
+            const ageYears = Math.max(0, 2026 - releaseYear);
+            let multiplierExcellent = 0.55;
+            const brandLower = data.brand.toLowerCase();
+
+            if (brandLower.includes("apple") || data.model.toLowerCase().includes("iphone")) {
+              if (ageYears <= 1) multiplierExcellent = 0.68;
+              else if (ageYears === 2) multiplierExcellent = 0.55;
+              else if (ageYears === 3) multiplierExcellent = 0.42;
+              else if (ageYears === 4) multiplierExcellent = 0.32;
+              else multiplierExcellent = 0.22;
+            } else if (brandLower.includes("samsung")) {
+              if (ageYears <= 1) multiplierExcellent = 0.60;
+              else if (ageYears === 2) multiplierExcellent = 0.48;
+              else if (ageYears === 3) multiplierExcellent = 0.36;
+              else if (ageYears === 4) multiplierExcellent = 0.26;
+              else multiplierExcellent = 0.16;
+            } else {
+              if (ageYears <= 1) multiplierExcellent = 0.52;
+              else if (ageYears === 2) multiplierExcellent = 0.40;
+              else if (ageYears === 3) multiplierExcellent = 0.30;
+              else if (ageYears === 4) multiplierExcellent = 0.20;
+              else multiplierExcellent = 0.12;
+            }
+
+            basePriceExcellent = Math.round(launchPrice * multiplierExcellent);
+            basePriceGood = Math.round(basePriceExcellent * 0.9);
+            basePriceAverage = Math.round(basePriceExcellent * 0.78);
+          } else {
+            // 4. Bypassed/Estimator Fallback: Estimate base price dynamically
+            const estimates = estimateFallbackBasePrice(data.brand, data.model);
+            basePriceExcellent = estimates.excellent;
+            basePriceGood = estimates.good;
+            basePriceAverage = estimates.average;
+            launchPrice = Math.round(estimates.excellent * 1.55);
+          }
+        }
       }
     }
 
@@ -355,56 +475,84 @@ export class PricingService {
     const breakdown: any = { basePrice };
     let totalDeduction = 0;
 
+    // Define deduction percentages (e.g. screenDamageDeduction of 3500 represents a 35% cap, i.e., 3500 / 10000 = 0.35)
+    const screenDamagePct = getDeductionPercentage(activeRules.screenDamageDeduction);
+    const batteryPct = getDeductionPercentage(activeRules.batteryDeduction);
+    const cameraPct = getDeductionPercentage(activeRules.cameraDeduction);
+    const fingerprintPct = getDeductionPercentage(activeRules.fingerprintDeduction);
+    const faceIdPct = getDeductionPercentage(activeRules.faceIdDeduction);
+    const bodyDamagePct = getDeductionPercentage(activeRules.bodyDamageDeduction);
+    const speakerPct = getDeductionPercentage(activeRules.speakerDeduction);
+    const chargingPortPct = getDeductionPercentage(activeRules.chargingPortDeduction);
+
     // Screen Damage
-    if (data.screenCracked && activeRules.screenDamageDeduction > 0) {
-      breakdown.screenDamageDeduction = activeRules.screenDamageDeduction;
-      totalDeduction += activeRules.screenDamageDeduction;
+    if (data.screenCracked && screenDamagePct > 0) {
+      const deduction = Math.round(basePrice * screenDamagePct);
+      breakdown.screenDamageDeduction = deduction;
+      totalDeduction += deduction;
     }
 
     // Battery Health < 80
-    if (data.batteryHealth < 80 && activeRules.batteryDeduction > 0) {
-      breakdown.batteryDeduction = activeRules.batteryDeduction;
-      totalDeduction += activeRules.batteryDeduction;
+    if (data.batteryHealth < 80 && batteryPct > 0) {
+      const deduction = Math.round(basePrice * batteryPct);
+      breakdown.batteryDeduction = deduction;
+      totalDeduction += deduction;
     }
 
     // Camera Issue
-    if (data.cameraIssue && activeRules.cameraDeduction > 0) {
-      breakdown.cameraDeduction = activeRules.cameraDeduction;
-      totalDeduction += activeRules.cameraDeduction;
+    if (data.cameraIssue && cameraPct > 0) {
+      const deduction = Math.round(basePrice * cameraPct);
+      breakdown.cameraDeduction = deduction;
+      totalDeduction += deduction;
     }
 
     // Fingerprint Issue
-    if (data.fingerprintIssue && activeRules.fingerprintDeduction > 0) {
-      breakdown.fingerprintDeduction = activeRules.fingerprintDeduction;
-      totalDeduction += activeRules.fingerprintDeduction;
+    if (data.fingerprintIssue && fingerprintPct > 0) {
+      const deduction = Math.round(basePrice * fingerprintPct);
+      breakdown.fingerprintDeduction = deduction;
+      totalDeduction += deduction;
     }
 
-    // Face ID Issue
-    if (data.faceIdIssue && activeRules.faceIdDeduction > 0) {
-      breakdown.faceIdDeduction = activeRules.faceIdDeduction;
-      totalDeduction += activeRules.faceIdDeduction;
+    // Face ID Issue (Only applicable for Apple devices that support Face ID)
+    const isApple = data.brand.toLowerCase().includes('apple') || data.model.toLowerCase().includes('iphone');
+    const hasFaceId = isApple && !data.model.toLowerCase().match(/\b(iphone\s*(5|6|7|8|se))\b/i);
+    if (data.faceIdIssue && hasFaceId && faceIdPct > 0) {
+      const deduction = Math.round(basePrice * faceIdPct);
+      breakdown.faceIdDeduction = deduction;
+      totalDeduction += deduction;
     }
 
     // Body Damage
-    if (data.bodyDamage && activeRules.bodyDamageDeduction > 0) {
-      breakdown.bodyDamageDeduction = activeRules.bodyDamageDeduction;
-      totalDeduction += activeRules.bodyDamageDeduction;
+    if (data.bodyDamage && bodyDamagePct > 0) {
+      const deduction = Math.round(basePrice * bodyDamagePct);
+      breakdown.bodyDamageDeduction = deduction;
+      totalDeduction += deduction;
     }
 
     // Speaker Issue
-    if (data.speakerIssue && activeRules.speakerDeduction > 0) {
-      breakdown.speakerDeduction = activeRules.speakerDeduction;
-      totalDeduction += activeRules.speakerDeduction;
+    if (data.speakerIssue && speakerPct > 0) {
+      const deduction = Math.round(basePrice * speakerPct);
+      breakdown.speakerDeduction = deduction;
+      totalDeduction += deduction;
     }
 
     // Charging Port Issue
-    if (data.chargingPortIssue && activeRules.chargingPortDeduction > 0) {
-      breakdown.chargingPortDeduction = activeRules.chargingPortDeduction;
-      totalDeduction += activeRules.chargingPortDeduction;
+    if (data.chargingPortIssue && chargingPortPct > 0) {
+      const deduction = Math.round(basePrice * chargingPortPct);
+      breakdown.chargingPortDeduction = deduction;
+      totalDeduction += deduction;
     }
 
-    // Calculate final price ensuring it never falls below 0
-    const estimatedPrice = Math.max(0, basePrice - totalDeduction);
+    // Enforce floor price: at least 10% of launch price, absolute minimum of 1000 rupees
+    const minFloorPrice = Math.max(
+      Math.round((launchPrice * 0.10) / 100) * 100,
+      1000
+    );
+
+    let estimatedPrice = Math.max(minFloorPrice, basePrice - totalDeduction);
+
+    // Round to nearest 100
+    estimatedPrice = Math.round(estimatedPrice / 100) * 100;
 
     return {
       success: true,

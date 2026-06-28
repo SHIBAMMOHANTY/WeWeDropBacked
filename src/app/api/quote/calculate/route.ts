@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { jsonResponse } from '@/lib/api';
+import { jsonResponse, getAuthSession, buildPagination } from '@/lib/api';
 import { PricingService } from '@/services/pricing.service';
+import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,7 @@ const calculateSchema = z.object({
   speakerIssue: z.boolean().default(false),
   chargingPortIssue: z.boolean().default(false),
   modelSlug: z.string().optional(),
+  launchPrice: z.number().optional(),
 });
 
 export async function OPTIONS() {
@@ -30,10 +32,13 @@ export async function OPTIONS() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    console.log("BACKEND CALCULATE PRICE REQUEST PATH: /api/quote/calculate");
+    console.log("REQUEST PAYLOAD:", JSON.stringify(body, null, 2));
     
     // Validate request parameters
     const parseResult = calculateSchema.safeParse(body);
     if (!parseResult.success) {
+      console.log("CALCULATE API VALIDATION FAILED:", JSON.stringify(parseResult.error.format(), null, 2));
       return jsonResponse(
         {
           error: 'Validation failed',
@@ -48,13 +53,91 @@ export async function POST(req: Request) {
 
     // Process price estimation
     const calculation = await PricingService.calculateQuote(parseResult.data);
+    console.log("BACKEND CALCULATE PRICE RESPONSE:", JSON.stringify(calculation, null, 2));
     
-    return jsonResponse(calculation);
+    // Auto-save to Quote History if user is authenticated
+    let quote = null;
+    const session = await getAuthSession(req).catch(() => null);
+    if (session && session.id) {
+      const timestampStr = Date.now().toString().slice(-6);
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const quoteNumber = `QB-${timestampStr}-${randomSuffix}`;
+
+      quote = await prisma.quote.create({
+        data: {
+          quoteNumber,
+          userId: session.id,
+          brand: parseResult.data.brand,
+          model: parseResult.data.model,
+          storage: parseResult.data.storage,
+          condition: parseResult.data.condition,
+          screenCracked: parseResult.data.screenCracked,
+          batteryHealth: parseResult.data.batteryHealth,
+          cameraIssue: parseResult.data.cameraIssue,
+          fingerprintIssue: parseResult.data.fingerprintIssue,
+          faceIdIssue: parseResult.data.faceIdIssue,
+          bodyDamage: parseResult.data.bodyDamage,
+          speakerIssue: parseResult.data.speakerIssue,
+          chargingPortIssue: parseResult.data.chargingPortIssue,
+          estimatedPrice: calculation.estimatedPrice,
+          finalPrice: calculation.estimatedPrice,
+          status: 'pending',
+          images: [],
+        },
+      });
+      console.log(`Saved calculation to quote database history: ${quoteNumber}`);
+    }
+
+    return jsonResponse({
+      ...calculation,
+      quote: quote || undefined,
+    });
   } catch (err: any) {
     console.error('Calculation API Error:', err);
     return jsonResponse(
       { error: err.message || 'Internal server error during price calculation' },
       err.message?.includes('Device not found') ? 404 : 500
+    );
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    // 1. Authenticate user
+    const session = await getAuthSession(req);
+    if (!session || !session.id) {
+      return jsonResponse({ error: 'Unauthorized: Authentication required' }, 401);
+    }
+
+    // 2. Parse query parameters for pagination
+    const { page, limit, skip } = buildPagination(req.url);
+
+    // 3. Query user's calculated quotes from Prisma client with pagination
+    const query = { userId: session.id };
+    
+    const total = await prisma.quote.count({ where: query });
+    const quotes = await prisma.quote.findMany({
+      where: query,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    });
+
+    return jsonResponse({
+      success: true,
+      quotes,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err: any) {
+    console.error('Fetch User Calculation History Error:', err);
+    return jsonResponse(
+      { error: err.message || 'Internal server error while fetching calculation history' },
+      500
     );
   }
 }
