@@ -19,8 +19,8 @@ export async function GET(req: Request) {
     // 2. Parse query parameters for pagination
     const { page, limit, skip } = buildPagination(req.url);
 
-    // 3. Query only actually submitted quotes (exclude 'pending' auto-saved drafts
-    //    from POST /quote/calculate which are just price previews)
+    // 3. Exclude auto-saved 'pending' drafts from POST /quote/calculate.
+    //    Valid quotes have status: 'submitted', 'ordered', 'completed', etc.
     const query = {
       userId: session.id,
       status: { not: 'pending' },

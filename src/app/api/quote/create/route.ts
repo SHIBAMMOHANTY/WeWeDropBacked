@@ -94,7 +94,7 @@ export async function POST(req: Request) {
         chargingPortIssue: quoteData.chargingPortIssue,
         estimatedPrice: calculation.estimatedPrice,
         finalPrice: quoteData.finalPrice ?? calculation.estimatedPrice,
-        status: quoteData.customerName ? 'ordered' : 'pending',
+        status: quoteData.customerName ? 'ordered' : 'submitted',
         images: quoteData.images,
         customerName: quoteData.customerName,
         customerAddress: quoteData.customerAddress,
@@ -130,9 +130,8 @@ export async function GET(req: Request) {
     // 2. Parse query parameters for pagination
     const { page, limit, skip } = buildPagination(req.url);
 
-    // 3. Query only actually submitted quotes (NOT the auto-saved 'pending' drafts
-    //    that are created by POST /quote/calculate). Those are just price previews
-    //    and should not appear in the quote list.
+    // 3. Exclude auto-saved 'pending' drafts from POST /quote/calculate.
+    //    Valid submitted quotes have status: 'submitted' or 'ordered' or 'completed' etc.
     const query = {
       userId: session.id,
       status: { not: 'pending' }, // Exclude calculate-auto-saved drafts
