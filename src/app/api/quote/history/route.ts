@@ -19,11 +19,18 @@ export async function GET(req: Request) {
     // 2. Parse query parameters for pagination
     const { page, limit, skip } = buildPagination(req.url);
 
+    const url = new URL(req.url);
+    const status = url.searchParams.get('status');
+
     // 3. Return ALL quotes for this user including 'pending' drafts from
     //    POST /quote/calculate (price previews) so they appear in history.
-    const query = {
+    const query: any = {
       userId: session.id,
     };
+    
+    if (status) {
+      query.status = status;
+    }
     
     const total = await prisma.quote.count({ where: query });
     const quotes = await prisma.quote.findMany({
