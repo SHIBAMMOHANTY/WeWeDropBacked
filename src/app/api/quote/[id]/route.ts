@@ -63,3 +63,67 @@ export async function GET(
     );
   }
 }
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getAuthSession(req);
+    if (!session || !session.id) {
+      return jsonResponse({ error: 'Unauthorized: Authentication required' }, 401);
+    }
+
+    const { id } = params;
+    if (!id) {
+      return jsonResponse({ error: 'Quote ID is required' }, 400);
+    }
+
+    // Must be object ID to update
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    if (!isObjectId) {
+      return jsonResponse({ error: 'Invalid Quote ID for update' }, 400);
+    }
+
+    const quote = await prisma.quote.findUnique({
+      where: { id },
+    });
+
+    if (!quote) {
+      return jsonResponse({ error: 'Quote not found' }, 404);
+    }
+
+    if (quote.userId !== session.id && session.role !== 'SUPER_ADMIN') {
+      return jsonResponse({ error: 'Forbidden: Access denied' }, 403);
+    }
+
+    const body = await req.json();
+
+    const updatedQuote = await prisma.quote.update({
+      where: { id },
+      data: {
+        customerName: body.customerName !== undefined ? body.customerName : undefined,
+        customerAddress: body.customerAddress !== undefined ? body.customerAddress : undefined,
+        customerPincode: body.customerPincode !== undefined ? body.customerPincode : undefined,
+        contactNumber: body.contactNumber !== undefined ? body.contactNumber : undefined,
+        paymentMode: body.paymentMode !== undefined ? body.paymentMode : undefined,
+        description: body.description !== undefined ? body.description : undefined,
+        finalPrice: body.finalPrice !== undefined ? body.finalPrice : undefined,
+        status: body.customerName ? 'ordered' : quote.status,
+      },
+    });
+
+    return jsonResponse({
+      success: true,
+      message: 'Quote updated successfully',
+      quote: updatedQuote,
+    });
+  } catch (err: any) {
+    console.error('Update Quote Error:', err);
+    return jsonResponse(
+      { error: err.message || 'Internal server error while updating quote' },
+      500
+    );
+  }
+}
+

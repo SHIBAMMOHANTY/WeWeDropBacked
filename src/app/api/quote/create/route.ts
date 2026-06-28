@@ -27,6 +27,13 @@ const calculateSchema = z.object({
 
 const createQuoteSchema = calculateSchema.extend({
   images: z.array(z.string()).optional().default([]),
+  customerName: z.string().optional(),
+  customerAddress: z.string().optional(),
+  customerPincode: z.string().optional(),
+  contactNumber: z.string().optional(),
+  paymentMode: z.string().optional(),
+  description: z.string().optional(),
+  finalPrice: z.number().optional(),
 });
 
 export async function OPTIONS() {
@@ -86,9 +93,15 @@ export async function POST(req: Request) {
         speakerIssue: quoteData.speakerIssue,
         chargingPortIssue: quoteData.chargingPortIssue,
         estimatedPrice: calculation.estimatedPrice,
-        finalPrice: calculation.estimatedPrice, // Admin can update this later
-        status: 'pending',
+        finalPrice: quoteData.finalPrice ?? calculation.estimatedPrice,
+        status: quoteData.customerName ? 'ordered' : 'pending',
         images: quoteData.images,
+        customerName: quoteData.customerName,
+        customerAddress: quoteData.customerAddress,
+        customerPincode: quoteData.customerPincode,
+        contactNumber: quoteData.contactNumber,
+        paymentMode: quoteData.paymentMode,
+        description: quoteData.description,
       },
     });
 
