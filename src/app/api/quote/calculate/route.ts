@@ -13,17 +13,57 @@ const calculateSchema = z.object({
   condition: z.enum(['excellent', 'good', 'average'], {
     errorMap: () => ({ message: "Condition must be 'excellent', 'good', or 'average'" }),
   }),
+  // Legacy compat
   screenCracked: z.boolean().default(false),
-  batteryHealth: z.number().min(0).max(100).default(100),
   cameraIssue: z.boolean().default(false),
+  bodyDamage: z.boolean().default(false),
+
+  // Screen
+  screenIssue: z.boolean().default(false),
+  replacementScreen: z.boolean().default(false),
+  glassbroken: z.boolean().default(false),
+  heavyDiscoloration: z.boolean().default(false),
+  scratchOnScreen: z.boolean().default(false),
+
+  // Body
+  bodyHeavyScratch: z.boolean().default(false),
+  minorBodyScratch: z.boolean().default(false),
+  cameraGlassBroken: z.boolean().default(false),
+
+  // SIM
+  simNotWorking: z.boolean().default(false),
+
+  // Cameras
+  frontCameraIssue: z.boolean().default(false),
+  backCameraIssue: z.boolean().default(false),
+
+  // Functional
   fingerprintIssue: z.boolean().default(false),
   faceIdIssue: z.boolean().default(false),
-  bodyDamage: z.boolean().default(false),
   speakerIssue: z.boolean().default(false),
   chargingPortIssue: z.boolean().default(false),
+  volumeButtonIssue: z.boolean().default(false),
+  wifiNotWorking: z.boolean().default(false),
+  silentButtonIssue: z.boolean().default(false),
+  powerButtonIssue: z.boolean().default(false),
+  audioReceiverIssue: z.boolean().default(false),
+  microphoneIssue: z.boolean().default(false),
+  bluetoothIssue: z.boolean().default(false),
+  vibrationIssue: z.boolean().default(false),
+  proximitySensorIssue: z.boolean().default(false),
+
+  // Battery
+  batteryHealth: z.number().min(0).max(100).default(100),
+
+  // Accessories & bonuses
+  hasChargerAndBox: z.boolean().default(false),
+  hasBill: z.boolean().default(false),
+  warrantyMonths: z.number().min(0).default(0),
+
   modelSlug: z.string().optional(),
   launchPrice: z.number().optional(),
 });
+
 
 export async function OPTIONS() {
   return jsonResponse(null, 204);

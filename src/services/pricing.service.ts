@@ -1,19 +1,66 @@
 import { prisma } from '@/lib/prisma';
 
+// ─────────────────────────────────────────────────────────────
+// REQUEST / RESPONSE TYPES
+// ─────────────────────────────────────────────────────────────
+
 export interface QuoteCalculationRequest {
   brand: string;
   model: string;
   storage: string;
   condition: 'excellent' | 'good' | 'average' | string;
-  screenCracked: boolean;
-  batteryHealth: number;
-  cameraIssue: boolean;
-  fingerprintIssue: boolean;
-  faceIdIssue: boolean;
-  bodyDamage: boolean;
-  speakerIssue: boolean;
-  chargingPortIssue: boolean;
-  modelSlug?: string; // Optional real-time API slug
+
+  // Screen
+  screenIssue?: boolean;           // #1  - 75%
+  replacementScreen?: boolean;     // #2  - 55%  (non-original screen)
+  glassbroken?: boolean;           // #4  - 60%
+  heavyDiscoloration?: boolean;    // #6  - 70%
+  scratchOnScreen?: boolean;       // #9  - 40%
+
+  // Body
+  bodyHeavyScratch?: boolean;      // #5  - 25%
+  bodyDamage?: boolean;            // #7  - 30%
+  minorBodyScratch?: boolean;      // #8  - 25%  (1-2 dents/scratches)
+
+  // SIM
+  simNotWorking?: boolean;         // #3  - flat ₹1200 (iPhone 13+), ₹800 (below)
+
+  // Warranty (these add bonus, not deductions — % of base)
+  warrantyMonths?: number;         // #10 - <3m=5%, 3-6m=7.5%, 6-11m=10%
+
+  // Accessories (bonus)
+  hasChargerAndBox?: boolean;      // #11 - +5%
+  hasBill?: boolean;               // #12 - +5%
+
+  // Cameras
+  frontCameraIssue?: boolean;      // #13 - 35%
+  backCameraIssue?: boolean;       // #14 - 40%; both=55%
+
+  // Functional
+  fingerprintIssue?: boolean;      // #15 - 25%
+  volumeButtonIssue?: boolean;     // #16 - 30%
+  wifiNotWorking?: boolean;        // #17 - 60%
+  speakerIssue?: boolean;          // #18 - 30%
+  silentButtonIssue?: boolean;     // #19 - 30%
+  faceIdIssue?: boolean;           // #20 - 45%
+  powerButtonIssue?: boolean;      // #21 - 30%
+  chargingPortIssue?: boolean;     // #22 - 30%
+  audioReceiverIssue?: boolean;    // #23 - 30%
+  cameraGlassBroken?: boolean;     // #24 - 30%
+  microphoneIssue?: boolean;       // #25 - 30%
+  bluetoothIssue?: boolean;        // #26 - 55%
+  vibrationIssue?: boolean;        // #27 - 30%
+  proximitySensorIssue?: boolean;  // #28 - 30%
+
+  // Battery
+  batteryHealth?: number;          // #29/<80%=35%, #30/80-90%=30%
+
+  // Legacy fields (kept for backward compat)
+  screenCracked?: boolean;
+  cameraIssue?: boolean;
+  batteryDeductionOverride?: number;
+
+  modelSlug?: string;
   launchPrice?: number;
 }
 
@@ -23,100 +70,107 @@ export interface QuoteCalculationResponse {
   launchPrice?: number;
   breakdown: {
     basePrice: number;
-    screenDamageDeduction?: number;
-    batteryDeduction?: number;
-    cameraDeduction?: number;
-    fingerprintDeduction?: number;
-    faceIdDeduction?: number;
-    bodyDamageDeduction?: number;
-    speakerDeduction?: number;
-    chargingPortDeduction?: number;
+    deductions: { label: string; amount: number }[];
+    bonuses: { label: string; amount: number }[];
+    totalDeduction: number;
+    totalBonus: number;
   };
 }
 
-/**
- * Fallback estimator to determine a device's base price if it's not pre-configured in the database.
- */
+// ─────────────────────────────────────────────────────────────
+// HELPER: detect iPhone generation from model string
+// ─────────────────────────────────────────────────────────────
+function getiPhoneGeneration(model: string): number {
+  const m = model.toLowerCase();
+  if (m.includes('iphone 17') || m.includes('iphone17')) return 17;
+  if (m.includes('iphone 16') || m.includes('iphone16')) return 16;
+  if (m.includes('iphone 15') || m.includes('iphone15')) return 15;
+  if (m.includes('iphone 14') || m.includes('iphone14')) return 14;
+  if (m.includes('iphone 13') || m.includes('iphone13')) return 13;
+  if (m.includes('iphone 12') || m.includes('iphone12')) return 12;
+  if (m.includes('iphone 11') || m.includes('iphone11')) return 11;
+  if (m.includes('iphone xs') || m.includes('iphone xr') || m.includes('iphone x')) return 10;
+  if (m.includes('iphone se')) return 8;
+  if (m.includes('iphone 8')) return 8;
+  if (m.includes('iphone 7')) return 7;
+  if (m.includes('iphone 6')) return 6;
+  return 0;
+}
+
+// ─────────────────────────────────────────────────────────────
+// HELPER: fallback base price estimator
+// ─────────────────────────────────────────────────────────────
 function estimateFallbackBasePrice(brand: string, modelName: string): { excellent: number; good: number; average: number } {
   const brandLower = brand.toLowerCase();
   const modelLower = modelName.toLowerCase();
-  let excellentPrice = 12000; // default fallback
+  let excellentPrice = 12000;
 
-  // 1. APPLE IPHONES
-  if (brandLower.includes("apple") || modelLower.includes("iphone")) {
+  if (brandLower.includes('apple') || modelLower.includes('iphone')) {
     let yearBase = 32000;
-    
-    if (modelLower.includes("15")) yearBase = 52000;
-    else if (modelLower.includes("16")) yearBase = 68000;
-    else if (modelLower.includes("14")) yearBase = 42000;
-    else if (modelLower.includes("13")) yearBase = 32000;
-    else if (modelLower.includes("12")) yearBase = 24000;
-    else if (modelLower.includes("11")) yearBase = 18000;
-    else if (modelLower.includes("xs") || modelLower.includes("xr")) yearBase = 12000;
-    else if (modelLower.includes("se")) yearBase = 10000;
-    else if (modelLower.includes("8") || modelLower.includes("7") || modelLower.includes("6")) yearBase = 6000;
+    if (modelLower.includes('17')) yearBase = 82000;
+    else if (modelLower.includes('16')) yearBase = 68000;
+    else if (modelLower.includes('15')) yearBase = 52000;
+    else if (modelLower.includes('14')) yearBase = 42000;
+    else if (modelLower.includes('13')) yearBase = 32000;
+    else if (modelLower.includes('12')) yearBase = 24000;
+    else if (modelLower.includes('11')) yearBase = 18000;
+    else if (modelLower.includes('xs') || modelLower.includes('xr')) yearBase = 12000;
+    else if (modelLower.includes('se')) yearBase = 10000;
+    else if (modelLower.includes('8') || modelLower.includes('7') || modelLower.includes('6')) yearBase = 6000;
 
     let tierMultiplier = 1.0;
-    if (modelLower.includes("pro max")) tierMultiplier = 1.6;
-    else if (modelLower.includes("pro")) tierMultiplier = 1.4;
-    else if (modelLower.includes("plus")) tierMultiplier = 1.2;
-    else if (modelLower.includes("mini")) tierMultiplier = 0.85;
+    if (modelLower.includes('pro max')) tierMultiplier = 1.6;
+    else if (modelLower.includes('pro')) tierMultiplier = 1.4;
+    else if (modelLower.includes('plus')) tierMultiplier = 1.2;
+    else if (modelLower.includes('mini')) tierMultiplier = 0.85;
 
     excellentPrice = Math.round(yearBase * tierMultiplier);
-  }
-  // 2. SAMSUNG
-  else if (brandLower.includes("samsung")) {
-    if (modelLower.includes("ultra")) {
-      if (modelLower.includes("s24")) excellentPrice = 82000;
-      else if (modelLower.includes("s23")) excellentPrice = 62000;
-      else if (modelLower.includes("s22")) excellentPrice = 45000;
-      else if (modelLower.includes("s21")) excellentPrice = 32000;
+  } else if (brandLower.includes('samsung')) {
+    if (modelLower.includes('ultra')) {
+      if (modelLower.includes('s24')) excellentPrice = 82000;
+      else if (modelLower.includes('s23')) excellentPrice = 62000;
+      else if (modelLower.includes('s22')) excellentPrice = 45000;
+      else if (modelLower.includes('s21')) excellentPrice = 32000;
       else excellentPrice = 28000;
-    } else if (modelLower.includes("fold")) {
-      if (modelLower.includes("6")) excellentPrice = 75000;
-      else if (modelLower.includes("5")) excellentPrice = 58000;
-      else if (modelLower.includes("4")) excellentPrice = 42000;
+    } else if (modelLower.includes('fold')) {
+      if (modelLower.includes('6')) excellentPrice = 75000;
+      else if (modelLower.includes('5')) excellentPrice = 58000;
+      else if (modelLower.includes('4')) excellentPrice = 42000;
       else excellentPrice = 30000;
-    } else if (modelLower.includes("flip")) {
-      if (modelLower.includes("6")) excellentPrice = 45000;
-      else if (modelLower.includes("5")) excellentPrice = 36000;
-      else if (modelLower.includes("4")) excellentPrice = 26000;
+    } else if (modelLower.includes('flip')) {
+      if (modelLower.includes('6')) excellentPrice = 45000;
+      else if (modelLower.includes('5')) excellentPrice = 36000;
+      else if (modelLower.includes('4')) excellentPrice = 26000;
       else excellentPrice = 18000;
-    } else if (modelLower.includes("s24")) excellentPrice = 48000;
-    else if (modelLower.includes("s23")) excellentPrice = 38000;
-    else if (modelLower.includes("s22")) excellentPrice = 28000;
-    else if (modelLower.includes("s21")) excellentPrice = 18000;
-    else if (modelLower.includes("a55") || modelLower.includes("a54")) excellentPrice = 20000;
-    else if (modelLower.includes("a35") || modelLower.includes("a34")) excellentPrice = 14000;
-    else if (modelLower.includes("a25") || modelLower.includes("a15")) excellentPrice = 9500;
+    } else if (modelLower.includes('s24')) excellentPrice = 48000;
+    else if (modelLower.includes('s23')) excellentPrice = 38000;
+    else if (modelLower.includes('s22')) excellentPrice = 28000;
+    else if (modelLower.includes('s21')) excellentPrice = 18000;
+    else if (modelLower.includes('a55') || modelLower.includes('a54')) excellentPrice = 20000;
+    else if (modelLower.includes('a35') || modelLower.includes('a34')) excellentPrice = 14000;
+    else if (modelLower.includes('a25') || modelLower.includes('a15')) excellentPrice = 9500;
     else excellentPrice = 8000;
-  }
-  // 3. ONEPLUS
-  else if (brandLower.includes("oneplus")) {
-    if (modelLower.includes("12")) excellentPrice = 46000;
-    else if (modelLower.includes("11")) excellentPrice = 34000;
-    else if (modelLower.includes("10")) excellentPrice = 24000;
-    else if (modelLower.includes("9")) excellentPrice = 16000;
-    else if (modelLower.includes("nord")) {
-      if (modelLower.includes("ce")) excellentPrice = 9000;
+  } else if (brandLower.includes('oneplus')) {
+    if (modelLower.includes('12')) excellentPrice = 46000;
+    else if (modelLower.includes('11')) excellentPrice = 34000;
+    else if (modelLower.includes('10')) excellentPrice = 24000;
+    else if (modelLower.includes('9')) excellentPrice = 16000;
+    else if (modelLower.includes('nord')) {
+      if (modelLower.includes('ce')) excellentPrice = 9000;
       else excellentPrice = 13000;
     } else excellentPrice = 14000;
-  }
-  // 4. GOOGLE PIXEL
-  else if (brandLower.includes("google") || modelLower.includes("pixel")) {
+  } else if (brandLower.includes('google') || modelLower.includes('pixel')) {
     excellentPrice = 15000;
-    if (modelLower.includes("8 pro")) excellentPrice = 56000;
-    else if (modelLower.includes("8")) excellentPrice = 38000;
-    else if (modelLower.includes("7 pro")) excellentPrice = 38000;
-    else if (modelLower.includes("7")) excellentPrice = 25000;
-    else if (modelLower.includes("6 pro")) excellentPrice = 24000;
-    else if (modelLower.includes("6")) excellentPrice = 18000;
-  }
-  // 5. OTHER BRANDS
-  else {
-    if (modelLower.includes("pro plus") || modelLower.includes("pro+")) excellentPrice = 15000;
-    else if (modelLower.includes("pro") || modelLower.includes("ultra")) excellentPrice = 12500;
-    else if (modelLower.includes("neo") || modelLower.includes("gt")) excellentPrice = 11000;
+    if (modelLower.includes('8 pro')) excellentPrice = 56000;
+    else if (modelLower.includes('8')) excellentPrice = 38000;
+    else if (modelLower.includes('7 pro')) excellentPrice = 38000;
+    else if (modelLower.includes('7')) excellentPrice = 25000;
+    else if (modelLower.includes('6 pro')) excellentPrice = 24000;
+    else if (modelLower.includes('6')) excellentPrice = 18000;
+  } else {
+    if (modelLower.includes('pro plus') || modelLower.includes('pro+')) excellentPrice = 15000;
+    else if (modelLower.includes('pro') || modelLower.includes('ultra')) excellentPrice = 12500;
+    else if (modelLower.includes('neo') || modelLower.includes('gt')) excellentPrice = 11000;
     else excellentPrice = 7500;
   }
 
@@ -137,28 +191,12 @@ function cleanModelName(model: string, brand: string): string {
   return m;
 }
 
-function getDeductionPercentage(ruleValue: number): number {
-  if (ruleValue <= 0) return 0;
-  if (ruleValue > 100) {
-    return ruleValue / 10000;
-  }
-  return ruleValue / 100;
-}
-
-interface APIDeviceSpecs {
-  launchPrice?: number;
-  releaseYear?: number;
-  thumbnail?: string;
-}
-
-/**
- * Fetch specifications and pricing in real-time from phone-specs-api.
- */
-async function fetchSpecsFromAPI(brandName: string, modelName: string, modelSlug?: string): Promise<APIDeviceSpecs | null> {
+// ─────────────────────────────────────────────────────────────
+// HELPER: Fetch launch price from phone-specs-api
+// ─────────────────────────────────────────────────────────────
+async function fetchSpecsFromAPI(brandName: string, modelName: string, modelSlug?: string): Promise<{ launchPrice?: number; releaseYear?: number } | null> {
   try {
     let slug = modelSlug;
-
-    // Clean modelName to remove storage/variant suffixes like "(128GB)" or "128GB"
     const cleanedModelName = modelName
       .replace(/\(\d+GB\)/gi, '')
       .replace(/\b\d+GB\b/gi, '')
@@ -166,136 +204,85 @@ async function fetchSpecsFromAPI(brandName: string, modelName: string, modelSlug
       .replace(/\s+/g, ' ')
       .trim();
 
-    // Step 1: If modelSlug is not provided, look it up by searching brand and model
     if (!slug) {
-      const brandsRes = await fetch("https://phone-specs-api.vercel.app/brands");
+      const brandsRes = await fetch('https://phone-specs-api.vercel.app/brands');
       if (!brandsRes.ok) return null;
       const brandsJson = await brandsRes.json();
       if (!brandsJson.status || !brandsJson.data) return null;
-
       const brandList = brandsJson.data as Array<{ brand_name: string; brand_slug: string }>;
       const matchedBrand = brandList.find(b => b.brand_name.toLowerCase().trim() === brandName.toLowerCase().trim());
       if (!matchedBrand) return null;
-
       const modelsRes = await fetch(`https://phone-specs-api.vercel.app/brands/${matchedBrand.brand_slug}`);
       if (!modelsRes.ok) return null;
       const modelsJson = await modelsRes.json();
-      if (!modelsJson.status || !modelsJson.data || !modelsJson.data.phones) return null;
-
+      if (!modelsJson.status || !modelsJson.data?.phones) return null;
       const modelList = modelsJson.data.phones as Array<{ phone_name: string; slug: string }>;
       let matchedModel = modelList.find(m => m.phone_name.toLowerCase().trim() === cleanedModelName.toLowerCase());
       if (!matchedModel) {
-        matchedModel = modelList.find(m => m.phone_name.toLowerCase().includes(cleanedModelName.toLowerCase()) || cleanedModelName.toLowerCase().includes(m.phone_name.toLowerCase()));
+        matchedModel = modelList.find(m =>
+          m.phone_name.toLowerCase().includes(cleanedModelName.toLowerCase()) ||
+          cleanedModelName.toLowerCase().includes(m.phone_name.toLowerCase())
+        );
       }
       if (!matchedModel) return null;
       slug = matchedModel.slug;
     }
 
-    // Step 2: Fetch specs for slug
     const detailsRes = await fetch(`https://phone-specs-api.vercel.app/${slug}`);
     if (!detailsRes.ok) return null;
     const detailsJson = await detailsRes.json();
     if (!detailsJson.status || !detailsJson.data) return null;
 
     const data = detailsJson.data;
-    let priceStr = "";
+    let priceStr = '';
     let year = 2026;
-
-    // Extract release date year
     if (data.release_date) {
       const match = data.release_date.match(/\b(20\d{2})\b/);
-      if (match) {
-        year = parseInt(match[1], 10);
-      }
+      if (match) year = parseInt(match[1], 10);
     }
-
-    // Extract price from specifications
     if (data.specifications) {
       for (const group of data.specifications) {
         for (const spec of group.specs) {
-          if (spec.key.toLowerCase() === 'price') {
-            if (spec.val && spec.val.length > 0) {
-              priceStr = spec.val[0];
-            }
+          if (spec.key.toLowerCase() === 'price' && spec.val?.length > 0) {
+            priceStr = spec.val[0];
           }
         }
       }
     }
-
     let parsedLaunchPrice = 0;
     if (priceStr) {
-      const parseCleanNumber = (valStr: string): number => {
-        const cleaned = valStr.replace(/[^\d.]/g, '');
-        return parseFloat(cleaned) || 0;
-      };
-
+      const parseNum = (s: string) => parseFloat(s.replace(/[^\d.]/g, '')) || 0;
       const parts = priceStr.split('/');
-      let inrPrice = 0;
-      let usdPrice = 0;
-      let eurPrice = 0;
-      let gbpPrice = 0;
-      let cadPrice = 0;
-
-      for (const part of parts) {
-        const cleanPart = part.trim();
-        if (cleanPart.includes('₹') || cleanPart.toLowerCase().includes('inr') || cleanPart.includes('Rs.')) {
-          inrPrice = parseCleanNumber(cleanPart);
-        } else if (cleanPart.includes('$') && !cleanPart.includes('C$')) {
-          usdPrice = parseCleanNumber(cleanPart);
-        } else if (cleanPart.includes('€') || cleanPart.toLowerCase().includes('eur')) {
-          eurPrice = parseCleanNumber(cleanPart);
-        } else if (cleanPart.includes('£') || cleanPart.toLowerCase().includes('gbp')) {
-          gbpPrice = parseCleanNumber(cleanPart);
-        } else if (cleanPart.includes('C$') || cleanPart.toLowerCase().includes('cad')) {
-          cadPrice = parseCleanNumber(cleanPart);
-        }
+      for (const p of parts) {
+        if (p.includes('₹') || p.toLowerCase().includes('inr') || p.includes('Rs.')) { parsedLaunchPrice = parseNum(p); break; }
+        if (p.includes('$') && !p.includes('C$')) { parsedLaunchPrice = parseNum(p) * 83.5; }
+        if (p.includes('€')) parsedLaunchPrice = parsedLaunchPrice || parseNum(p) * 90;
+        if (p.includes('£')) parsedLaunchPrice = parsedLaunchPrice || parseNum(p) * 106;
       }
-
-      if (inrPrice > 0) parsedLaunchPrice = inrPrice;
-      else if (usdPrice > 0) parsedLaunchPrice = usdPrice * 83.5;
-      else if (eurPrice > 0) parsedLaunchPrice = eurPrice * 90.0;
-      else if (gbpPrice > 0) parsedLaunchPrice = gbpPrice * 106.0;
-      else if (cadPrice > 0) parsedLaunchPrice = cadPrice * 61.0;
-      else {
-        const firstNum = parseCleanNumber(parts[0]);
-        if (firstNum > 0) parsedLaunchPrice = firstNum * 83.5;
-      }
+      if (!parsedLaunchPrice) parsedLaunchPrice = parseNum(parts[0]) * 83.5;
     }
-
-    return {
-      launchPrice: parsedLaunchPrice > 0 ? Math.round(parsedLaunchPrice) : undefined,
-      releaseYear: year,
-      thumbnail: data.thumbnail
-    };
-  } catch (err) {
-    console.error("Error fetching specs from phone-specs-api:", err);
-    return null;
-  }
+    return { launchPrice: parsedLaunchPrice > 0 ? Math.round(parsedLaunchPrice) : undefined, releaseYear: year };
+  } catch { return null; }
 }
 
+// ─────────────────────────────────────────────────────────────
+// MAIN PRICING SERVICE
+// ─────────────────────────────────────────────────────────────
 export class PricingService {
-  /**
-   * Calculates the buyback value of a mobile device using Prisma database client and real-time API.
-   */
-  static async calculateQuote(
-    data: QuoteCalculationRequest
-  ): Promise<QuoteCalculationResponse> {
+  static async calculateQuote(data: QuoteCalculationRequest): Promise<QuoteCalculationResponse> {
     let basePriceExcellent = 0;
-    let basePriceGood = 0;
-    let basePriceAverage = 0;
     let launchPrice = 0;
     let releaseYear = 2026;
-
     const cleanedModel = cleanModelName(data.model, data.brand);
 
-    // 1. Fetch matching Device Master using case-insensitive constraints from DB first (most reliable source)
+    // 1. DeviceMaster DB lookup
     const device = await prisma.deviceMaster.findFirst({
       where: {
         brand: { equals: data.brand.trim(), mode: 'insensitive' },
         OR: [
           { model: { equals: data.model.trim(), mode: 'insensitive' } },
           { model: { equals: cleanedModel, mode: 'insensitive' } },
-          { model: { contains: cleanedModel, mode: 'insensitive' } }
+          { model: { contains: cleanedModel, mode: 'insensitive' } },
         ],
         storage: { equals: data.storage.trim(), mode: 'insensitive' },
         isActive: true,
@@ -304,261 +291,176 @@ export class PricingService {
 
     if (device) {
       basePriceExcellent = device.basePriceExcellent;
-      basePriceGood = device.basePriceGood;
-      basePriceAverage = device.basePriceAverage;
       launchPrice = data.launchPrice || device.launchPrice;
       if (device.launchDate) {
-        const year = parseInt(device.launchDate.split('-')[0], 10);
-        releaseYear = isNaN(year) ? 2024 : year;
-      } else {
-        releaseYear = 2024;
+        const y = parseInt(device.launchDate.split('-')[0], 10);
+        releaseYear = isNaN(y) ? 2024 : y;
       }
     } else {
-      // 2. Bypassed or not found in DeviceMaster, try matching in registered Device collection
-      const deviceSlug = `${data.brand}-${data.model}-${data.storage || '128GB'}`
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)+/g, '');
+      // 2. Try real-time API
+      const apiSpecs = await fetchSpecsFromAPI(data.brand, data.model, data.modelSlug);
+      if (apiSpecs?.launchPrice && apiSpecs.launchPrice > 0) {
+        launchPrice = apiSpecs.launchPrice;
+        releaseYear = apiSpecs.releaseYear || 2026;
+      } else if (data.launchPrice && data.launchPrice > 0) {
+        launchPrice = data.launchPrice;
+      }
 
-      const dbDevice = await prisma.device.findUnique({
-        where: { slug: deviceSlug },
-      });
-
-      if (dbDevice && dbDevice.launchPrice && dbDevice.launchPrice > 0) {
-        launchPrice = data.launchPrice || dbDevice.launchPrice;
-        if (dbDevice.releaseDate) {
-          const year = parseInt(dbDevice.releaseDate.split('-')[0], 10);
-          releaseYear = isNaN(year) ? 2024 : year;
-        } else {
-          releaseYear = 2024;
-        }
-
+      if (launchPrice > 0) {
         const ageYears = Math.max(0, 2026 - releaseYear);
-        let multiplierExcellent = 0.55;
         const brandLower = data.brand.toLowerCase();
-
-        if (brandLower.includes("apple") || data.model.toLowerCase().includes("iphone")) {
-          if (ageYears <= 1) multiplierExcellent = 0.68;
-          else if (ageYears === 2) multiplierExcellent = 0.55;
-          else if (ageYears === 3) multiplierExcellent = 0.42;
-          else if (ageYears === 4) multiplierExcellent = 0.32;
-          else multiplierExcellent = 0.22;
-        } else if (brandLower.includes("samsung")) {
-          if (ageYears <= 1) multiplierExcellent = 0.60;
-          else if (ageYears === 2) multiplierExcellent = 0.48;
-          else if (ageYears === 3) multiplierExcellent = 0.36;
-          else if (ageYears === 4) multiplierExcellent = 0.26;
-          else multiplierExcellent = 0.16;
+        let mult = 0.55;
+        if (brandLower.includes('apple') || data.model.toLowerCase().includes('iphone')) {
+          if (ageYears <= 1) mult = 0.68;
+          else if (ageYears === 2) mult = 0.55;
+          else if (ageYears === 3) mult = 0.42;
+          else if (ageYears === 4) mult = 0.32;
+          else mult = 0.22;
+        } else if (brandLower.includes('samsung')) {
+          if (ageYears <= 1) mult = 0.60;
+          else if (ageYears === 2) mult = 0.48;
+          else if (ageYears === 3) mult = 0.36;
+          else if (ageYears === 4) mult = 0.26;
+          else mult = 0.16;
         } else {
-          if (ageYears <= 1) multiplierExcellent = 0.52;
-          else if (ageYears === 2) multiplierExcellent = 0.40;
-          else if (ageYears === 3) multiplierExcellent = 0.30;
-          else if (ageYears === 4) multiplierExcellent = 0.20;
-          else multiplierExcellent = 0.12;
+          if (ageYears <= 1) mult = 0.52;
+          else if (ageYears === 2) mult = 0.40;
+          else if (ageYears === 3) mult = 0.30;
+          else if (ageYears === 4) mult = 0.20;
+          else mult = 0.12;
         }
-
-        basePriceExcellent = Math.round(launchPrice * multiplierExcellent);
-        basePriceGood = Math.round(basePriceExcellent * 0.9);
-        basePriceAverage = Math.round(basePriceExcellent * 0.78);
+        basePriceExcellent = Math.round(launchPrice * mult);
       } else {
-        // If data.launchPrice is provided in payload, use it to estimate base price dynamically
-        if (data.launchPrice && data.launchPrice > 0) {
-          launchPrice = data.launchPrice;
-          releaseYear = 2024;
-          
-          const ageYears = Math.max(0, 2026 - releaseYear);
-          let multiplierExcellent = 0.55;
-          const brandLower = data.brand.toLowerCase();
-
-          if (brandLower.includes("apple") || data.model.toLowerCase().includes("iphone")) {
-            if (ageYears <= 1) multiplierExcellent = 0.68;
-            else if (ageYears === 2) multiplierExcellent = 0.55;
-            else if (ageYears === 3) multiplierExcellent = 0.42;
-            else if (ageYears === 4) multiplierExcellent = 0.32;
-            else multiplierExcellent = 0.22;
-          } else if (brandLower.includes("samsung")) {
-            if (ageYears <= 1) multiplierExcellent = 0.60;
-            else if (ageYears === 2) multiplierExcellent = 0.48;
-            else if (ageYears === 3) multiplierExcellent = 0.36;
-            else if (ageYears === 4) multiplierExcellent = 0.26;
-            else multiplierExcellent = 0.16;
-          } else {
-            if (ageYears <= 1) multiplierExcellent = 0.52;
-            else if (ageYears === 2) multiplierExcellent = 0.40;
-            else if (ageYears === 3) multiplierExcellent = 0.30;
-            else if (ageYears === 4) multiplierExcellent = 0.20;
-            else multiplierExcellent = 0.12;
-          }
-
-          basePriceExcellent = Math.round(launchPrice * multiplierExcellent);
-          basePriceGood = Math.round(basePriceExcellent * 0.9);
-          basePriceAverage = Math.round(basePriceExcellent * 0.78);
-        } else {
-          // 3. Try fetching specs in real-time from phone-specs-api as third priority
-          const apiSpecs = await fetchSpecsFromAPI(data.brand, data.model, data.modelSlug);
-
-          if (apiSpecs && apiSpecs.launchPrice && apiSpecs.launchPrice > 0) {
-            launchPrice = apiSpecs.launchPrice;
-            releaseYear = apiSpecs.releaseYear || 2026;
-
-            const ageYears = Math.max(0, 2026 - releaseYear);
-            let multiplierExcellent = 0.55;
-            const brandLower = data.brand.toLowerCase();
-
-            if (brandLower.includes("apple") || data.model.toLowerCase().includes("iphone")) {
-              if (ageYears <= 1) multiplierExcellent = 0.68;
-              else if (ageYears === 2) multiplierExcellent = 0.55;
-              else if (ageYears === 3) multiplierExcellent = 0.42;
-              else if (ageYears === 4) multiplierExcellent = 0.32;
-              else multiplierExcellent = 0.22;
-            } else if (brandLower.includes("samsung")) {
-              if (ageYears <= 1) multiplierExcellent = 0.60;
-              else if (ageYears === 2) multiplierExcellent = 0.48;
-              else if (ageYears === 3) multiplierExcellent = 0.36;
-              else if (ageYears === 4) multiplierExcellent = 0.26;
-              else multiplierExcellent = 0.16;
-            } else {
-              if (ageYears <= 1) multiplierExcellent = 0.52;
-              else if (ageYears === 2) multiplierExcellent = 0.40;
-              else if (ageYears === 3) multiplierExcellent = 0.30;
-              else if (ageYears === 4) multiplierExcellent = 0.20;
-              else multiplierExcellent = 0.12;
-            }
-
-            basePriceExcellent = Math.round(launchPrice * multiplierExcellent);
-            basePriceGood = Math.round(basePriceExcellent * 0.9);
-            basePriceAverage = Math.round(basePriceExcellent * 0.78);
-          } else {
-            // 4. Bypassed/Estimator Fallback: Estimate base price dynamically
-            const estimates = estimateFallbackBasePrice(data.brand, data.model);
-            basePriceExcellent = estimates.excellent;
-            basePriceGood = estimates.good;
-            basePriceAverage = estimates.average;
-            launchPrice = Math.round(estimates.excellent * 1.55);
-          }
-        }
+        // Fallback estimator
+        const est = estimateFallbackBasePrice(data.brand, data.model);
+        basePriceExcellent = est.excellent;
+        launchPrice = Math.round(est.excellent * 1.55);
       }
     }
 
-    // 2. Determine base price depending on condition
-    let basePrice = 0;
-    const normalizedCondition = data.condition.trim().toLowerCase();
+    // Base price by condition
+    let basePrice = basePriceExcellent;
+    const cond = data.condition.trim().toLowerCase();
+    if (cond === 'good') basePrice = Math.round(basePriceExcellent * 0.9);
+    else if (cond === 'average') basePrice = Math.round(basePriceExcellent * 0.78);
+    else if (cond !== 'excellent') throw new Error(`Invalid condition: '${data.condition}'`);
 
-    if (normalizedCondition === 'excellent') {
-      basePrice = basePriceExcellent;
-    } else if (normalizedCondition === 'good') {
-      basePrice = basePriceGood;
-    } else if (normalizedCondition === 'average') {
-      basePrice = basePriceAverage;
-    } else {
-      throw new Error(`Invalid device condition: '${data.condition}'. Supported values are: excellent, good, average`);
-    }
+    const isApple = data.brand.toLowerCase().includes('apple') || data.model.toLowerCase().includes('iphone');
+    const iPhoneGen = isApple ? getiPhoneGeneration(data.model) : 0;
 
-    // 3. Fetch active Price Rules config from MongoDB via Prisma
-    const rules = await prisma.priceRule.findFirst({
-      where: { isActive: true },
-    });
-    
-    // Default fallback rules
-    const activeRules = rules || {
-      screenDamageDeduction: 3500,
-      batteryDeduction: 1500,
-      cameraDeduction: 2000,
-      fingerprintDeduction: 1200,
-      faceIdDeduction: 1800,
-      bodyDamageDeduction: 1500,
-      speakerDeduction: 800,
-      chargingPortDeduction: 800,
+    const deductions: { label: string; amount: number }[] = [];
+    const bonuses: { label: string; amount: number }[] = [];
+
+    const deduct = (label: string, pct: number) => {
+      const amount = Math.round(basePrice * pct);
+      if (amount > 0) deductions.push({ label, amount });
+    };
+    const bonus = (label: string, pct: number) => {
+      const amount = Math.round(basePrice * pct);
+      if (amount > 0) bonuses.push({ label, amount });
     };
 
-    // 4. Apply deductions
-    const breakdown: any = { basePrice };
-    let totalDeduction = 0;
+    // ── SCREEN ISSUES ──────────────────────────────────────────
+    // #1 Screen issue (dead / touch not working) — 75%
+    if (data.screenIssue || data.screenCracked) deduct('Screen Issue', 0.75);
 
-    // Define deduction percentages (e.g. screenDamageDeduction of 3500 represents a 35% cap, i.e., 3500 / 10000 = 0.35)
-    const screenDamagePct = getDeductionPercentage(activeRules.screenDamageDeduction);
-    const batteryPct = getDeductionPercentage(activeRules.batteryDeduction);
-    const cameraPct = getDeductionPercentage(activeRules.cameraDeduction);
-    const fingerprintPct = getDeductionPercentage(activeRules.fingerprintDeduction);
-    const faceIdPct = getDeductionPercentage(activeRules.faceIdDeduction);
-    const bodyDamagePct = getDeductionPercentage(activeRules.bodyDamageDeduction);
-    const speakerPct = getDeductionPercentage(activeRules.speakerDeduction);
-    const chargingPortPct = getDeductionPercentage(activeRules.chargingPortDeduction);
+    // #2 Replacement / non-original screen — 55%
+    else if (data.replacementScreen) deduct('Replacement Screen (Non-Original)', 0.55);
 
-    // Screen Damage
-    if (data.screenCracked && screenDamagePct > 0) {
-      const deduction = Math.round(basePrice * screenDamagePct);
-      breakdown.screenDamageDeduction = deduction;
-      totalDeduction += deduction;
+    // #4 Glass broken (cracked glass only, touch works) — 60%
+    else if (data.glassbroken) deduct('Glass Broken', 0.60);
+
+    // #6 Heavy dot/spot/line/discoloration — 70%
+    else if (data.heavyDiscoloration) deduct('Heavy Discoloration / Dead Spot', 0.70);
+
+    // #9 Scratch on screen — 40%
+    else if (data.scratchOnScreen) deduct('Scratch on Screen', 0.40);
+
+    // ── BODY ISSUES ────────────────────────────────────────────
+    // #5 Heavy body scratch/dent — 25%
+    if (data.bodyHeavyScratch) deduct('Heavy Body Scratch / Dent', 0.25);
+    // #7 Body damage — 30%
+    else if (data.bodyDamage) deduct('Body Damage', 0.30);
+    // #8 1-2 minor dents/scratches — 25%
+    else if (data.minorBodyScratch) deduct('Minor Body Scratch (1-2)', 0.25);
+
+    // #24 Camera glass broken — 30%
+    if (data.cameraGlassBroken) deduct('Camera Glass Broken', 0.30);
+
+    // ── SIM ISSUE (#3) ─────────────────────────────────────────
+    if (data.simNotWorking) {
+      const simFlat = iPhoneGen >= 13 ? 1200 : 800;
+      deductions.push({ label: 'SIM Not Working', amount: simFlat });
     }
 
-    // Battery Health < 80
-    if (data.batteryHealth < 80 && batteryPct > 0) {
-      const deduction = Math.round(basePrice * batteryPct);
-      breakdown.batteryDeduction = deduction;
-      totalDeduction += deduction;
+    // ── CAMERAS (#13, #14) ─────────────────────────────────────
+    if (data.frontCameraIssue && data.backCameraIssue) {
+      // Both cameras not working — 55%
+      deduct('Front + Back Camera Not Working', 0.55);
+    } else if (data.backCameraIssue || data.cameraIssue) {
+      // Back camera — 40%
+      deduct('Back Camera Not Working', 0.40);
+    } else if (data.frontCameraIssue) {
+      // Front camera — 35%
+      deduct('Front Camera Not Working', 0.35);
     }
 
-    // Camera Issue
-    if (data.cameraIssue && cameraPct > 0) {
-      const deduction = Math.round(basePrice * cameraPct);
-      breakdown.cameraDeduction = deduction;
-      totalDeduction += deduction;
+    // ── FINGERPRINT (#15) ──────────────────────────────────────
+    if (data.fingerprintIssue) deduct('Fingerprint Not Working', 0.25);
+
+    // ── FACE ID (#20) — Apple only ─────────────────────────────
+    if (data.faceIdIssue && isApple) deduct('Face ID Not Working', 0.45);
+
+    // ── FUNCTIONAL ISSUES ──────────────────────────────────────
+    if (data.volumeButtonIssue)    deduct('Volume Button Not Working', 0.30);
+    if (data.wifiNotWorking)       deduct('Wi-Fi Not Working', 0.60);
+    if (data.speakerIssue)         deduct('Speaker Not Working', 0.30);
+    if (data.silentButtonIssue)    deduct('Silent / Mute Button Not Working', 0.30);
+    if (data.powerButtonIssue)     deduct('Power Button Not Working', 0.30);
+    if (data.chargingPortIssue)    deduct('Charging Port Not Working', 0.30);
+    if (data.audioReceiverIssue)   deduct('Audio Receiver (Earpiece) Not Working', 0.30);
+    if (data.microphoneIssue)      deduct('Microphone Not Working', 0.30);
+    if (data.bluetoothIssue)       deduct('Bluetooth Not Working', 0.55);
+    if (data.vibrationIssue)       deduct('Vibration Not Working', 0.30);
+    if (data.proximitySensorIssue) deduct('Proximity Sensor Not Working', 0.30);
+
+    // ── BATTERY (#29, #30) ─────────────────────────────────────
+    const batteryHealth = data.batteryHealth ?? 100;
+    if (batteryHealth < 80) {
+      deduct('Battery Health < 80%', 0.35);
+    } else if (batteryHealth < 90) {
+      deduct('Battery Health 80–90%', 0.30);
     }
 
-    // Fingerprint Issue
-    if (data.fingerprintIssue && fingerprintPct > 0) {
-      const deduction = Math.round(basePrice * fingerprintPct);
-      breakdown.fingerprintDeduction = deduction;
-      totalDeduction += deduction;
-    }
+    // ── ACCESSORIES / BONUSES (#11, #12) ──────────────────────
+    if (data.hasChargerAndBox) bonus('Original Charger & Box', 0.05);
+    if (data.hasBill)          bonus('Original Bill', 0.05);
 
-    // Face ID Issue (Only applicable for Apple devices that support Face ID)
-    const isApple = data.brand.toLowerCase().includes('apple') || data.model.toLowerCase().includes('iphone');
-    const hasFaceId = isApple && !data.model.toLowerCase().match(/\b(iphone\s*(5|6|7|8|se))\b/i);
-    if (data.faceIdIssue && hasFaceId && faceIdPct > 0) {
-      const deduction = Math.round(basePrice * faceIdPct);
-      breakdown.faceIdDeduction = deduction;
-      totalDeduction += deduction;
-    }
+    // ── WARRANTY BONUS (#10) ──────────────────────────────────
+    const wm = data.warrantyMonths ?? 0;
+    if (wm > 0 && wm < 3)        bonus('Warranty < 3 Months Remaining', 0.05);
+    else if (wm >= 3 && wm < 6)  bonus('Warranty 3–6 Months', 0.075);
+    else if (wm >= 6 && wm < 12) bonus('Warranty 6–11 Months', 0.10);
 
-    // Body Damage
-    if (data.bodyDamage && bodyDamagePct > 0) {
-      const deduction = Math.round(basePrice * bodyDamagePct);
-      breakdown.bodyDamageDeduction = deduction;
-      totalDeduction += deduction;
-    }
+    // ── COMPUTE FINAL PRICE ────────────────────────────────────
+    const totalDeduction = deductions.reduce((s, d) => s + d.amount, 0);
+    const totalBonus     = bonuses.reduce((s, b) => s + b.amount, 0);
 
-    // Speaker Issue
-    if (data.speakerIssue && speakerPct > 0) {
-      const deduction = Math.round(basePrice * speakerPct);
-      breakdown.speakerDeduction = deduction;
-      totalDeduction += deduction;
-    }
-
-    // Charging Port Issue
-    if (data.chargingPortIssue && chargingPortPct > 0) {
-      const deduction = Math.round(basePrice * chargingPortPct);
-      breakdown.chargingPortDeduction = deduction;
-      totalDeduction += deduction;
-    }
-
-    // Enforce floor price: at least 10% of launch price, absolute minimum of 1000 rupees
-    const minFloorPrice = Math.max(
-      Math.round((launchPrice * 0.10) / 100) * 100,
-      1000
-    );
-
-    let estimatedPrice = Math.max(minFloorPrice, basePrice - totalDeduction);
-
-    // Round to nearest 100
+    const minFloorPrice = Math.max(Math.round((launchPrice * 0.08) / 100) * 100, 500);
+    let estimatedPrice = Math.max(minFloorPrice, basePrice - totalDeduction + totalBonus);
     estimatedPrice = Math.round(estimatedPrice / 100) * 100;
 
     return {
       success: true,
       estimatedPrice,
       launchPrice,
-      breakdown,
+      breakdown: {
+        basePrice,
+        deductions,
+        bonuses,
+        totalDeduction,
+        totalBonus,
+      },
     };
   }
 }
