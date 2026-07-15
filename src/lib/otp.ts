@@ -97,12 +97,6 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
                 type: 'text',
                 value: otp,
               },
-              // copy_code button variable — must also be the OTP
-              button_1: {
-                subtype: 'url',
-                type: 'text',
-                value: otp,
-              },
             },
           },
         ],
