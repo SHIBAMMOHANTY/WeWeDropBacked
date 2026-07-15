@@ -1,6 +1,8 @@
 import transporter from '../config/email.config';
 import { prisma } from './prisma';
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 export function generateOTP(length = 6): string {
   const digits = '0123456789';
   let otp = '';
@@ -10,55 +12,73 @@ export function generateOTP(length = 6): string {
   return otp;
 }
 
-/** Returns true if the value looks like an email address */
-function isEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+/** Normalize phone → always stored as 12-digit string e.g. 919876543210 */
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return `91${digits}`;
+  return digits;
 }
 
-/** Send OTP via Email (nodemailer / SMTP) */
+/** Returns true if the value looks like an email address */
+function isEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+// ── Email OTP ─────────────────────────────────────────────────────────────────
+
 async function sendOTPByEmail(email: string, otp: string): Promise<void> {
   const html = `
     <div style="font-family: Arial, sans-serif; background: #f7f7f7; padding: 32px;">
-      <div style="max-width: 480px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #00000010; padding: 32px;">
+      <div style="max-width: 480px; margin: auto; background: #fff; border-radius: 8px;
+                  box-shadow: 0 2px 8px #00000010; padding: 32px;">
         <h2 style="color: #2d7be0; text-align: center;">We Pick We Drop</h2>
-        <p style="font-size: 16px; color: #333; text-align: center;">Your One-Time Password (OTP) for account verification:</p>
-        <div style="font-size: 32px; font-weight: bold; color: #2d7be0; text-align: center; margin: 24px 0;">${otp}</div>
-        <p style="font-size: 14px; color: #666; text-align: center;">This OTP is valid for 5 minutes. Please do not share it with anyone.</p>
+        <p style="font-size: 16px; color: #333; text-align: center;">
+          Your One-Time Password (OTP) for account verification:
+        </p>
+        <div style="font-size: 32px; font-weight: bold; color: #2d7be0;
+                    text-align: center; margin: 24px 0;">${otp}</div>
+        <p style="font-size: 14px; color: #666; text-align: center;">
+          This OTP is valid for 5 minutes. Do not share it with anyone.
+        </p>
         <hr style="margin: 32px 0; border: none; border-top: 1px solid #eee;">
-        <p style="font-size: 12px; color: #aaa; text-align: center;">Thank you for using We Pick We Drop.<br>For support, contact us at <a href="mailto:support@wepickwedrop.com" style="color: #2d7be0;">support@wepickwedrop.com</a></p>
+        <p style="font-size: 12px; color: #aaa; text-align: center;">
+          Thank you for using We Pick We Drop.<br>
+          Support: <a href="mailto:support@wepickwedrop.com" style="color: #2d7be0;">
+            support@wepickwedrop.com
+          </a>
+        </p>
       </div>
     </div>
   `;
+
   await transporter.sendMail({
     from: process.env.SMTP_USER,
     to: email,
-    subject: 'We Pick We Drop - OTP Verification',
-    text: `Your OTP code is: ${otp}`,
+    subject: 'We Pick We Drop — OTP Verification',
+    text: `Your OTP code is: ${otp}. Valid for 5 minutes.`,
     html,
   });
+
   console.log('[OTP] Email OTP sent to', email);
 }
 
-/**
- * Send OTP via MSG91 WhatsApp.
- */
+// ── WhatsApp OTP (MSG91) ──────────────────────────────────────────────────────
+
 async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
-  // Strip '+' — MSG91 expects number WITHOUT '+' (e.g. 919876543210)
-  let mobileNumber = phone.replace(/^\+/, '');
-  if (mobileNumber.length === 10) {
-    mobileNumber = `91${mobileNumber}`;
-  }
+  const mobileNumber = normalizePhone(phone);
 
   const authKey   = process.env.MSG91_AUTH_KEY;
-  const intNumber = process.env.MSG91_INTEGRATED_NUMBER; // WhatsApp Business number
-  const template  = process.env.MSG91_TEMPLATE_NAME;      // Approved template name
-  const namespace = process.env.MSG91_NAMESPACE;           // Template namespace
+  const intNumber = process.env.MSG91_INTEGRATED_NUMBER;
+  const template  = process.env.MSG91_TEMPLATE_NAME;
   const langCode  = process.env.MSG91_LANG_CODE || 'en';
 
-  if (!authKey || !intNumber || !template || !namespace) {
-    throw new Error('MSG91 configuration is missing.');
+  if (!authKey || !intNumber || !template) {
+    throw new Error(
+      'MSG91 config missing — set MSG91_AUTH_KEY, MSG91_INTEGRATED_NUMBER, MSG91_TEMPLATE_NAME in .env'
+    );
   }
 
+  // namespace field intentionally omitted — Meta rejects it on Cloud API v16+
   const payload = {
     integrated_number: intNumber,
     content_type: 'template',
@@ -68,15 +88,16 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
       template: {
         name: template,
         language: { code: langCode, policy: 'deterministic' },
-        namespace,
         to_and_components: [
           {
             to: [mobileNumber],
             components: {
+              // {{1}} in the message body — the OTP digits
               body_1: {
                 type: 'text',
                 value: otp,
               },
+              // copy_code button variable — must also be the OTP
               button_1: {
                 subtype: 'url',
                 type: 'text',
@@ -88,6 +109,8 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
       },
     },
   };
+
+  console.log('[OTP] Sending WhatsApp OTP →', mobileNumber);
 
   const res = await fetch(
     'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
@@ -102,54 +125,80 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
   );
 
   const responseText = await res.text();
-  let responseJson;
+  console.log('[OTP] MSG91 status:', res.status, '| response:', responseText);
+
+  let responseJson: any;
   try {
     responseJson = JSON.parse(responseText);
-  } catch (e) {}
-
-  if (!res.ok || (responseJson && (responseJson.hasError || responseJson.status === 'error' || responseJson.status === 'fail'))) {
-    throw new Error(`MSG91 WhatsApp error: ${res.status} - ${responseText}`);
+  } catch {
+    if (!res.ok) {
+      throw new Error(`MSG91 error: HTTP ${res.status} — ${responseText}`);
+    }
+    return; // non-JSON but 2xx → treat as success
   }
 
-  console.log('[OTP] WhatsApp OTP sent to', mobileNumber, 'MSG91 Response:', responseText);
+  if (
+    !res.ok ||
+    responseJson?.type === 'error' ||
+    responseJson?.hasError === true ||
+    responseJson?.status === 'fail'
+  ) {
+    throw new Error(
+      `MSG91 WhatsApp OTP failed: ${responseJson?.message || responseJson?.error || responseText}`
+    );
+  }
+
+  console.log('[OTP] WhatsApp OTP sent successfully to', mobileNumber);
 }
 
+// ── Public API ────────────────────────────────────────────────────────────────
+
 /**
- * sendOTP — auto-detects email vs phone:
- *   - If `emailOrPhone` looks like an email → sends via SMTP (nodemailer)
- *   - If it looks like a phone number     → sends via MSG91 WhatsApp
+ * sendOTP(phone)
+ *   - phone number  → sends via MSG91 WhatsApp
+ *   - email address → sends via SMTP (fallback / admin use)
+ *
+ * The OTP record is stored using the normalized identifier so verifyOTP
+ * can look it up with the same value.
  */
-export async function sendOTP(emailOrPhone: string): Promise<void> {
-  const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
+export async function sendOTP(phoneOrEmail: string): Promise<void> {
+  const otp       = generateOTP();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-  // Store OTP in DB
-  await prisma.oTP.create({
-    data: { email: emailOrPhone, otp, expiresAt },
-  });
+  // Use normalized phone as the key so send & verify always match
+  const key = isEmail(phoneOrEmail)
+    ? phoneOrEmail.trim().toLowerCase()
+    : normalizePhone(phoneOrEmail);
 
-  if (isEmail(emailOrPhone)) {
-    await sendOTPByEmail(emailOrPhone, otp);
+  // Upsert: delete any existing unexpired OTP for this key, then create fresh
+  await prisma.oTP.deleteMany({ where: { email: key } });
+  await prisma.oTP.create({ data: { email: key, otp, expiresAt } });
+
+  if (isEmail(phoneOrEmail)) {
+    await sendOTPByEmail(key, otp);
   } else {
-    await sendOTPByWhatsApp(emailOrPhone, otp);
+    await sendOTPByWhatsApp(phoneOrEmail, otp);
   }
 }
 
 /**
- * verifyOTP — works for both email and phone (both stored in 'email' field)
+ * verifyOTP(phone, otp)
+ *   Works for both phone numbers and email addresses.
+ *   Returns true on success and deletes the record (one-time use).
  */
-export async function verifyOTP(emailOrPhone: string, otp: string): Promise<boolean> {
-  // Clean up expired OTPs
+export async function verifyOTP(phoneOrEmail: string, otp: string): Promise<boolean> {
+  const key = isEmail(phoneOrEmail)
+    ? phoneOrEmail.trim().toLowerCase()
+    : normalizePhone(phoneOrEmail);
+
+  // Clean up stale expired records
   await prisma.oTP.deleteMany({
-    where: {
-      expiresAt: { lt: new Date(Date.now() - 6 * 60 * 1000) },
-    },
+    where: { expiresAt: { lt: new Date() } },
   });
 
-  // Find matching OTP record
   const record = await prisma.oTP.findFirst({
     where: {
-      email: emailOrPhone,
+      email: key,
       otp,
       expiresAt: { gt: new Date() },
     },
@@ -157,7 +206,7 @@ export async function verifyOTP(emailOrPhone: string, otp: string): Promise<bool
 
   if (!record) return false;
 
-  // Delete after successful verification (one-time use)
+  // One-time use — delete immediately after match
   await prisma.oTP.delete({ where: { id: record.id } });
   return true;
 }

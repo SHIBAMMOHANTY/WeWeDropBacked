@@ -445,6 +445,28 @@ model DeviceMaster {
   @@index([isActive])
 }
 
+model PricingRule {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  rulesVersion       Int      @unique
+  
+  // Multipliers (JSON) e.g., { "flawless": 1.0, "scratched": 0.8 }
+  screenFactors      Json
+  bodyFactors        Json
+  functionalFactors  Json
+  batteryFactors     Json
+  
+  // Flat Deductions
+  noBillDeduction    Float
+  noBoxDeduction     Float
+  noChargerDeduction Float
+  
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([isActive])
+}
+
 model PriceRule {
   id                    String   @id @default(auto()) @map("_id") @db.ObjectId
   screenDamageDeduction Float    @default(0)
@@ -465,11 +487,13 @@ model PriceRule {
 model Quote {
   id                String   @id @default(auto()) @map("_id") @db.ObjectId
   quoteNumber       String   @unique
-  userId            String
-  brand             String
-  model             String
-  storage           String
-  condition         String
+  userId            String?
+  
+  // Old fields for backward compat
+  brand             String?
+  model             String?
+  storage           String?
+  condition         String?
   screenCracked     Boolean  @default(false)
   batteryHealth     Int      @default(100)
   cameraIssue       Boolean  @default(false)
@@ -478,8 +502,18 @@ model Quote {
   bodyDamage        Boolean  @default(false)
   speakerIssue      Boolean  @default(false)
   chargingPortIssue Boolean  @default(false)
-  estimatedPrice    Float
+  estimatedPrice    Float?
+  
+  // New Single-Source-Of-Truth Pricing fields
+  deviceId          String?  @db.ObjectId // Reference to DeviceMaster
+  basePriceUsed     Float?
+  conditionAnswers  Json?    // Store exact answers selected
+  rulesVersion      Int?
+  breakdown         Json?
   finalPrice        Float?
+  quoteType         String   @default("instant") // 'instant' | 'verified'
+  expiresAt         DateTime?
+
   status            String   @default("pending") // pending, ordered, completed, rejected
   images            String[]
   

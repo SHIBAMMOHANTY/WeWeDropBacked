@@ -13,18 +13,33 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   try {
-    const { email, otp } = await req.json();
-    if (!email || !otp) {
-      return NextResponse.json({ error: 'Email and OTP required' }, { status: 400, headers: corsHeaders });
+    const body = await req.json();
+
+    // Accept 'phone' (primary) or fallback to legacy 'email' field
+    const phone: string = body.phone || body.email || '';
+    const otp: string   = body.otp || '';
+
+    if (!phone || !otp) {
+      return NextResponse.json(
+        { error: 'Phone number and OTP are required' },
+        { status: 400, headers: corsHeaders }
+      );
     }
-    const valid = await verifyOTP(email, otp);
+
+    const valid = await verifyOTP(phone, otp);
     if (valid) {
       return NextResponse.json({ success: true }, { status: 200, headers: corsHeaders });
     } else {
-      return NextResponse.json({ error: 'Invalid or expired OTP' }, { status: 400, headers: corsHeaders });
+      return NextResponse.json(
+        { error: 'Invalid or expired OTP' },
+        { status: 400, headers: corsHeaders }
+      );
     }
   } catch (err: any) {
-    console.error('OTP verify error:', err);
-    return NextResponse.json({ error: 'Failed to verify OTP' }, { status: 500, headers: corsHeaders });
+    console.error('[OTP Verify] Error:', err);
+    return NextResponse.json(
+      { error: 'Failed to verify OTP', details: err?.message || String(err) },
+      { status: 500, headers: corsHeaders }
+    );
   }
 }

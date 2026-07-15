@@ -13,14 +13,34 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json();
-    if (!email) {
-      return NextResponse.json({ error: 'Email required' }, { status: 400, headers: corsHeaders });
+    const body = await req.json();
+
+    // Accept 'phone' (primary) or fallback to legacy 'email' field
+    const phone: string = body.phone || body.email || '';
+
+    if (!phone) {
+      return NextResponse.json(
+        { error: 'Phone number is required' },
+        { status: 400, headers: corsHeaders }
+      );
     }
-    await sendOTP(email);
+
+    // Basic phone validation — must be 10 digits or 12 digits with country code
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 13) {
+      return NextResponse.json(
+        { error: 'Invalid phone number format' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    await sendOTP(phone);
     return NextResponse.json({ success: true }, { status: 200, headers: corsHeaders });
   } catch (err: any) {
-    console.error('OTP send error:', err);
-    return NextResponse.json({ error: 'Failed to send OTP', details: err?.message || String(err) }, { status: 500, headers: corsHeaders });
+    console.error('[OTP Send] Error:', err);
+    return NextResponse.json(
+      { error: 'Failed to send OTP', details: err?.message || String(err) },
+      { status: 500, headers: corsHeaders }
+    );
   }
 }
