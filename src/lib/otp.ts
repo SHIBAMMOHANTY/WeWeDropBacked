@@ -71,6 +71,7 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
   const intNumber = process.env.MSG91_INTEGRATED_NUMBER;
   const template  = process.env.MSG91_TEMPLATE_NAME;
   const langCode  = process.env.MSG91_LANG_CODE || 'en';
+  const namespace = process.env.MSG91_NAMESPACE;
 
   if (!authKey || !intNumber || !template) {
     throw new Error(
@@ -78,7 +79,6 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
     );
   }
 
-  // namespace field intentionally omitted — Meta rejects it on Cloud API v16+
   const payload = {
     integrated_number: intNumber,
     content_type: 'template',
@@ -88,6 +88,7 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
       template: {
         name: template,
         language: { code: langCode, policy: 'deterministic' },
+        namespace: namespace || undefined,
         to_and_components: [
           {
             to: [mobileNumber],
@@ -97,8 +98,8 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
                 type: 'text',
                 value: otp,
               },
-              // URL button at index 0 requires a parameter
-              button_0: {
+              // URL button at index 0 (button_1 in template mapping)
+              button_1: {
                 type: 'text',
                 subtype: 'url',
                 value: otp,
