@@ -97,6 +97,12 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
                 type: 'text',
                 value: otp,
               },
+              // URL button at index 0 requires a parameter
+              button_0: {
+                type: 'text',
+                subtype: 'url',
+                value: otp,
+              },
             },
           },
         ],
