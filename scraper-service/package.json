@@ -1,0 +1,19 @@
+{
+  "name": "cashify-scraper-service",
+  "version": "1.0.0",
+  "description": "Puppeteer-based Cashify price scraper microservice for Railway deployment",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer": "^21.11.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

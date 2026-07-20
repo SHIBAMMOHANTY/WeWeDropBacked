@@ -130,6 +130,7 @@ export async function POST(req: Request) {
 
     return jsonResponse({
       ...calculation,
+      priceSource: calculation.priceSource,
       quote: quote || undefined,
     });
   } catch (err: any) {

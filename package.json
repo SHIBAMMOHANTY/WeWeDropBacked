@@ -16,6 +16,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1030.0",
     "@prisma/client": "^5.22.0",
+    "@sparticuz/chromium-min": "^149.0.0",
     "@types/multer": "^2.1.0",
     "@types/xlsx": "^0.0.35",
     "bcryptjs": "^3.0.3",
@@ -31,6 +32,7 @@
     "nodemailer": "^8.0.1",
     "objection": "^3.1.5",
     "prisma": "^5.22.0",
+    "puppeteer-core": "^25.3.0",
     "razorpay": "^2.9.6",
     "react": "18.2.0",
     "react-dom": "18.2.0",

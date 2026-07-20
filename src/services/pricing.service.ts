@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { getCashifyPrice } from '@/lib/cashify-scraper';
 
 // ─────────────────────────────────────────────────────────────
 // REQUEST / RESPONSE TYPES
@@ -68,6 +69,7 @@ export interface QuoteCalculationResponse {
   success: boolean;
   estimatedPrice: number;
   launchPrice?: number;
+  priceSource: 'database' | 'cashify' | 'api' | 'estimate';
   breakdown: {
     basePrice: number;
     deductions: { label: string; amount: number }[];
@@ -273,9 +275,10 @@ export class PricingService {
     let basePriceExcellent = 0;
     let launchPrice = 0;
     let releaseYear = 2026;
+    let priceSource: 'database' | 'cashify' | 'api' | 'estimate' = 'estimate';
     const cleanedModel = cleanModelName(data.model, data.brand);
 
-    // 1. DeviceMaster DB lookup
+    // ── Step 1: DeviceMaster DB lookup ────────────────────────
     const device = await prisma.deviceMaster.findFirst({
       where: {
         brand: { equals: data.brand.trim(), mode: 'insensitive' },
@@ -292,49 +295,70 @@ export class PricingService {
     if (device) {
       basePriceExcellent = device.basePriceExcellent;
       launchPrice = data.launchPrice || device.launchPrice;
+      priceSource = 'database';
       if (device.launchDate) {
         const y = parseInt(device.launchDate.split('-')[0], 10);
         releaseYear = isNaN(y) ? 2024 : y;
       }
     } else {
-      // 2. Try real-time API
-      const apiSpecs = await fetchSpecsFromAPI(data.brand, data.model, data.modelSlug);
-      if (apiSpecs?.launchPrice && apiSpecs.launchPrice > 0) {
-        launchPrice = apiSpecs.launchPrice;
-        releaseYear = apiSpecs.releaseYear || 2026;
-      } else if (data.launchPrice && data.launchPrice > 0) {
-        launchPrice = data.launchPrice;
+      // ── Step 2: Cashify live price (Vercel-compatible) ───────
+      try {
+        const cashify = await Promise.race([
+          getCashifyPrice(data.brand, data.model, data.storage, data.condition),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+        ]);
+        if (cashify && typeof cashify === 'object' && cashify.price && cashify.price > 0) {
+          basePriceExcellent = cashify.price;
+          priceSource = 'cashify';
+          console.log(`[PricingService] Cashify price used: ₹${cashify.price} (source: ${cashify.source})`);
+        }
+      } catch (e) {
+        console.warn('[PricingService] Cashify fetch failed, falling back:', e);
       }
 
-      if (launchPrice > 0) {
-        const ageYears = Math.max(0, 2026 - releaseYear);
-        const brandLower = data.brand.toLowerCase();
-        let mult = 0.55;
-        if (brandLower.includes('apple') || data.model.toLowerCase().includes('iphone')) {
-          if (ageYears <= 1) mult = 0.68;
-          else if (ageYears === 2) mult = 0.55;
-          else if (ageYears === 3) mult = 0.42;
-          else if (ageYears === 4) mult = 0.32;
-          else mult = 0.22;
-        } else if (brandLower.includes('samsung')) {
-          if (ageYears <= 1) mult = 0.60;
-          else if (ageYears === 2) mult = 0.48;
-          else if (ageYears === 3) mult = 0.36;
-          else if (ageYears === 4) mult = 0.26;
-          else mult = 0.16;
-        } else {
-          if (ageYears <= 1) mult = 0.52;
-          else if (ageYears === 2) mult = 0.40;
-          else if (ageYears === 3) mult = 0.30;
-          else if (ageYears === 4) mult = 0.20;
-          else mult = 0.12;
+      // ── Step 3: phone-specs-api (launch price → estimate) ────
+      if (!basePriceExcellent) {
+        const apiSpecs = await fetchSpecsFromAPI(data.brand, data.model, data.modelSlug);
+        if (apiSpecs?.launchPrice && apiSpecs.launchPrice > 0) {
+          launchPrice = apiSpecs.launchPrice;
+          releaseYear = apiSpecs.releaseYear || 2026;
+          priceSource = 'api';
+        } else if (data.launchPrice && data.launchPrice > 0) {
+          launchPrice = data.launchPrice;
+          priceSource = 'api';
         }
-        basePriceExcellent = Math.round(launchPrice * mult);
-      } else {
-        // Fallback estimator
-        const est = estimateFallbackBasePrice(data.brand, data.model);
-        basePriceExcellent = est.excellent;
-        launchPrice = Math.round(est.excellent * 1.55);
+
+        if (launchPrice > 0) {
+          const ageYears = Math.max(0, 2026 - releaseYear);
+          const brandLower = data.brand.toLowerCase();
+          let mult = 0.55;
+          if (brandLower.includes('apple') || data.model.toLowerCase().includes('iphone')) {
+            if (ageYears <= 1) mult = 0.68;
+            else if (ageYears === 2) mult = 0.55;
+            else if (ageYears === 3) mult = 0.42;
+            else if (ageYears === 4) mult = 0.32;
+            else mult = 0.22;
+          } else if (brandLower.includes('samsung')) {
+            if (ageYears <= 1) mult = 0.60;
+            else if (ageYears === 2) mult = 0.48;
+            else if (ageYears === 3) mult = 0.36;
+            else if (ageYears === 4) mult = 0.26;
+            else mult = 0.16;
+          } else {
+            if (ageYears <= 1) mult = 0.52;
+            else if (ageYears === 2) mult = 0.40;
+            else if (ageYears === 3) mult = 0.30;
+            else if (ageYears === 4) mult = 0.20;
+            else mult = 0.12;
+          }
+          basePriceExcellent = Math.round(launchPrice * mult);
+        } else {
+          // ── Step 4: Static fallback estimator ─────────────────
+          const est = estimateFallbackBasePrice(data.brand, data.model);
+          basePriceExcellent = est.excellent;
+          launchPrice = Math.round(est.excellent * 1.55);
+          priceSource = 'estimate';
+        }
       }
     }
 
@@ -454,6 +478,7 @@ export class PricingService {
       success: true,
       estimatedPrice,
       launchPrice,
+      priceSource,
       breakdown: {
         basePrice,
         deductions,
