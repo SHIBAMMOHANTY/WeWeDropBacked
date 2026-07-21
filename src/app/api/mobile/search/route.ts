@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CacheService } from '@/lib/mobile/cache';
 import { prisma } from '@/lib/prisma';
+import { getCashifyPrice } from '@/lib/cashify-scraper';
 
 // Brand-specific image map for known brands
 const BRAND_IMAGES: Record<string, string> = {
@@ -47,7 +48,6 @@ function extractBrandFromQuery(q: string): string {
       return word.charAt(0).toUpperCase() + word.slice(1);
     }
   }
-  // Fallback for completely new/unknown brands (like "Ai Nova 5G")
   if (words.length > 0 && words[0]) {
     return words[0].charAt(0).toUpperCase() + words[0].slice(1);
   }
@@ -61,6 +61,9 @@ function capitalizeWords(str: string): string {
     return w.charAt(0).toUpperCase() + w.slice(1);
   }).join(' ');
 }
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
@@ -84,7 +87,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, results: cachedData });
     }
 
-    // ─── 1. Search DB first (Device collection — scraped & stored devices) ───
+    // ─── 1. Search DB (Device collection — scraped & stored devices) ───
     const keywords = normalizedQuery.split(/\s+/).filter(Boolean);
 
     const dbDevices = await prisma.device.findMany({
@@ -158,12 +161,12 @@ export async function GET(req: NextRequest) {
 
     let results = merged;
 
-    // ─── 4. If no real-time scraped devices exist in database, try a live Flipkart scrape with a short timeout ───
+    // ─── 4. If no DB results, try live Flipkart scrape ───
     if (deviceResults.length === 0) {
       try {
         const { ScraperService } = await import('@/services/mobile/scraper.service');
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000); // 8 s max
+        const timeout = setTimeout(() => controller.abort(), 8000);
 
         const scrapedResults = await Promise.race([
           ScraperService.search(normalizedQuery, page),
@@ -175,9 +178,8 @@ export async function GET(req: NextRequest) {
         clearTimeout(timeout);
 
         if (scrapedResults && scrapedResults.length > 0) {
-          // Map results immediately for fast response
           results = scrapedResults.map((p: any) => ({
-            id:          p.id, // scraped ID as temporary fallback
+            id:          p.id,
             brand:       p.brand,
             model:       p.model,
             image:       p.image || getBrandImage(p.brand),
@@ -186,7 +188,7 @@ export async function GET(req: NextRequest) {
             mrp:         p.mrp,
           }));
 
-          // Trigger database registration in the background concurrently
+          // Background: register scraped devices in DB
           Promise.all(scrapedResults.map(async (p: any) => {
             const cleanStorage = p.model.match(/\b\d+\s*(?:gb|tb)\b/i)?.[0] || '128GB';
             const slug = `${p.brand}-${p.model}-${cleanStorage}`
@@ -217,50 +219,67 @@ export async function GET(req: NextRequest) {
                 });
               }
 
-              // Upsert Flipkart price
               await prisma.currentPrice.upsert({
-                where: {
-                  deviceId_seller: {
-                    deviceId: device.id,
-                    seller: 'Flipkart',
-                  }
-                },
-                update: {
-                  price: p.price,
-                  mrp: p.mrp,
-                  availability: p.availability || 'In Stock',
-                  productUrl: p.url,
-                  lastUpdated: new Date(),
-                },
-                create: {
-                  deviceId: device.id,
-                  seller: 'Flipkart',
-                  price: p.price,
-                  mrp: p.mrp,
-                  availability: p.availability || 'In Stock',
-                  productUrl: p.url,
-                  lastUpdated: new Date(),
-                }
+                where: { deviceId_seller: { deviceId: device.id, seller: 'Flipkart' } },
+                update: { price: p.price, mrp: p.mrp, availability: p.availability || 'In Stock', productUrl: p.url, lastUpdated: new Date() },
+                create: { deviceId: device.id, seller: 'Flipkart', price: p.price, mrp: p.mrp, availability: p.availability || 'In Stock', productUrl: p.url, lastUpdated: new Date() },
               });
 
-              // Add to price history
               await prisma.priceHistory.create({
-                data: {
-                  deviceId: device.id,
-                  seller: 'Flipkart',
-                  price: p.price,
-                  mrp: p.mrp,
-                }
+                data: { deviceId: device.id, seller: 'Flipkart', price: p.price, mrp: p.mrp },
               });
             } catch (err) {
-              console.error('Failed to register/upsert scraped device in DB:', err);
+              console.error('Failed to register scraped device in DB:', err);
             }
-          })).catch(err => {
-            console.error('Background device registration failed:', err);
-          });
+          })).catch(err => console.error('Background device registration failed:', err));
         }
       } catch {
-        // Scraper failed entirely
+        // Scraper failed entirely — results stays as merged DB results
+      }
+    }
+
+    // ─── 5. Enrich results with Cashify resale prices (parallel, 10s timeout) ───
+    if (results.length > 0) {
+      try {
+        const cashifyResults = await Promise.allSettled(
+          results.slice(0, 10).map(async (r) => {
+            // Strip storage from model string e.g. "POCO X8 Pro (256GB)" → "POCO X8 Pro"
+            const cleanModel = r.model
+              .replace(/\s*\(\d+\s*(?:GB|TB)\)/i, '')
+              .replace(/\s*\d+\s*(?:GB|TB)/i, '')
+              .trim();
+            const storage = r.model.match(/(\d+\s*(?:GB|TB))/i)?.[1] || '128GB';
+
+            const cashify = await Promise.race([
+              getCashifyPrice(r.brand, cleanModel, storage, 'good'),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+            ]);
+
+            return {
+              id: r.id,
+              cashifyResalePrice: (cashify && typeof cashify === 'object' && cashify.price) ? cashify.price : null,
+              cashifySource: (cashify && typeof cashify === 'object') ? cashify.source : null,
+            };
+          })
+        );
+
+        // Merge Cashify prices back into results
+        results = results.map((r) => {
+          const match = cashifyResults.find(
+            (cr) => cr.status === 'fulfilled' && (cr.value as any)?.id === r.id
+          );
+          if (match && match.status === 'fulfilled' && match.value) {
+            return {
+              ...r,
+              cashifyResalePrice: (match.value as any).cashifyResalePrice,
+              cashifySource:      (match.value as any).cashifySource,
+            };
+          }
+          return { ...r, cashifyResalePrice: null, cashifySource: null };
+        });
+      } catch (e) {
+        console.warn('[SearchAPI] Cashify enrichment failed:', e);
+        // results stay unchanged — cashifyResalePrice will just be null
       }
     }
 
