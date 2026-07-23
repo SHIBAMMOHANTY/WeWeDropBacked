@@ -56,10 +56,10 @@ export async function GET(req: NextRequest) {
           ram: `${ram}GB`,
           storage: `${storage}GB`,
         },
-        basePrice: valuation.valuationBreakdown.basePrice,
-        basePriceFormatted: `₹${valuation.valuationBreakdown.basePrice.toLocaleString('en-IN')}`,
+        basePrice: valuation.valuationBreakdown?.basePrice || 0,
+        basePriceFormatted: `₹${(valuation.valuationBreakdown?.basePrice ?? 0).toLocaleString('en-IN')}`,
         platformMatches: {
-          cashify: basePriceOverride || valuation.valuationBreakdown.basePrice,
+          cashify: basePriceOverride || valuation.valuationBreakdown?.basePrice || 0,
         },
         valuationBreakdown: valuation.valuationBreakdown,
       },
@@ -110,16 +110,19 @@ export async function POST(req: NextRequest) {
       basePriceOverride,
     });
 
+    const finalQuote = valuation.valuationBreakdown?.finalQuote ?? 0;
+    const basePrice = valuation.valuationBreakdown?.basePrice ?? 0;
+
     return jsonResponse(
       {
         success: true,
         exactValuation: {
-          finalQuote: valuation.valuationBreakdown.finalQuote,
-          formattedQuote: `₹${valuation.valuationBreakdown.finalQuote.toLocaleString('en-IN')}`,
-          basePrice: valuation.valuationBreakdown.basePrice,
+          finalQuote,
+          formattedQuote: `₹${finalQuote.toLocaleString('en-IN')}`,
+          basePrice,
         },
         platformComparisons: {
-          cashifyBaseline: basePriceOverride || valuation.valuationBreakdown.basePrice,
+          cashifyBaseline: basePriceOverride || basePrice,
         },
         ...valuation,
       },
