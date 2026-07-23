@@ -234,6 +234,5 @@ function estimateLaunchYear(model: string): number {
   if (m.includes('14') || m.includes('22') || m.includes('s22')) return currentYear - 2;
   return currentYear - 2;
 }
-}
 
 export { priceCache };
