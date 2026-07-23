@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     const valuation = calculateReCommerceValuation({
       modelCode: model,
       brand,
-      launchPrice: computedPrice ? computedPrice * 2 : 25000,
+      launchPrice: computedPrice ? Math.round(computedPrice * 2.2) : 0,
       launchDate: '2023-01-15',
       reportedRamBytes: ram,
       reportedRomBytes: storage,
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       basePriceOverride: computedPrice || undefined,
     });
 
-    const finalPrice = computedPrice || valuation.valuationBreakdown.finalCashQuote || 500;
+    const finalPrice = valuation.valuationBreakdown?.finalCashQuote || valuation.valuationBreakdown?.depreciatedBaseValue || 0;
 
     return jsonResponse(
       {
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     }
 
     const valuation = calculateReCommerceValuation({
-      launchPrice: body.launchPrice || (basePriceOverride ? basePriceOverride * 2 : 25000),
+      launchPrice: body.launchPrice || (basePriceOverride ? Math.round(basePriceOverride * 2.2) : 0),
       launchDate: body.launchDate || '2023-01-15',
       reportedRamBytes: body.reportedRamBytes || 6,
       reportedRomBytes: body.reportedRomBytes || 128,
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
       basePriceOverride,
     });
 
-    const finalPrice = basePriceOverride || valuation.valuationBreakdown.finalCashQuote || 500;
+    const finalPrice = valuation.valuationBreakdown?.finalCashQuote || valuation.valuationBreakdown?.depreciatedBaseValue || 0;
 
     return jsonResponse(
       {
