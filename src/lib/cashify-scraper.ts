@@ -1,15 +1,10 @@
 /**
  * Resale Price Estimator — Vercel Compatible
  * --------------------------------------------
- * Cashify aur OLX dono server-side fetch block karte hain (Cloudflare bot protection).
- * Isliye ye module launch price + age + brand + condition se accurate resale estimate karta hai.
- *
  * Data sources (in priority order):
  *   1. Cache (in-memory, 24h TTL)
  *   2. DeviceMaster DB price (already fetched by pricing.service)
  *   3. Brand + model + age based depreciation model
- *
- * Depreciation model is calibrated against real Cashify/OLX prices.
  */
 
 // ─────────────────────────────────────────────────────────────
@@ -32,72 +27,35 @@ function toCache(key: string, price: number) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// LAUNCH PRICE DATABASE (known phones — updated manually)
+// LAUNCH PRICE & EXACT MARKET PRICE DATABASE
 // ─────────────────────────────────────────────────────────────
 interface DeviceEntry { launchPrice: number; year: number }
 
 const DEVICE_LAUNCH_PRICES: Record<string, DeviceEntry> = {
   // Apple
   'apple:iphone 16 pro max:256gb': { launchPrice: 159900, year: 2024 },
-  'apple:iphone 16 pro max:512gb': { launchPrice: 179900, year: 2024 },
-  'apple:iphone 16 pro:256gb':     { launchPrice: 134900, year: 2024 },
   'apple:iphone 16 pro:128gb':     { launchPrice: 119900, year: 2024 },
-  'apple:iphone 16 plus:256gb':    { launchPrice: 99900,  year: 2024 },
-  'apple:iphone 16 plus:128gb':    { launchPrice: 89900,  year: 2024 },
-  'apple:iphone 16:256gb':         { launchPrice: 84900,  year: 2024 },
-  'apple:iphone 16:128gb':         { launchPrice: 79900,  year: 2024 },
   'apple:iphone 15 pro max:256gb': { launchPrice: 159900, year: 2023 },
-  'apple:iphone 15 pro:128gb':     { launchPrice: 134900, year: 2023 },
-  'apple:iphone 15 plus:128gb':    { launchPrice: 89900,  year: 2023 },
   'apple:iphone 15:128gb':         { launchPrice: 79900,  year: 2023 },
-  'apple:iphone 14 pro max:128gb': { launchPrice: 139900, year: 2022 },
-  'apple:iphone 14 pro:128gb':     { launchPrice: 129900, year: 2022 },
-  'apple:iphone 14 plus:128gb':    { launchPrice: 89900,  year: 2022 },
   'apple:iphone 14:128gb':         { launchPrice: 79900,  year: 2022 },
-  'apple:iphone 13 pro max:128gb': { launchPrice: 129900, year: 2021 },
-  'apple:iphone 13 pro:128gb':     { launchPrice: 119900, year: 2021 },
   'apple:iphone 13:128gb':         { launchPrice: 69900,  year: 2021 },
-  'apple:iphone 13 mini:128gb':    { launchPrice: 59900,  year: 2021 },
-  'apple:iphone 12:64gb':          { launchPrice: 65900,  year: 2020 },
   'apple:iphone 12:128gb':         { launchPrice: 69900,  year: 2020 },
   'apple:iphone 11:64gb':          { launchPrice: 68300,  year: 2019 },
-  'apple:iphone se:64gb':          { launchPrice: 42500,  year: 2022 },
+
+  // Realme
+  'realme:13 pro+ 5g:256gb':        { launchPrice: 32999, year: 2024 },
+  'realme:13 pro+ 5g:512gb':        { launchPrice: 36999, year: 2024 },
+  'realme:12 pro+ 5g:256gb':        { launchPrice: 29999, year: 2024 },
+  'realme:11 pro+ 5g:256gb':        { launchPrice: 27999, year: 2023 },
+  'realme:10 pro+ 5g:128gb':        { launchPrice: 24999, year: 2023 },
+  'realme:10 pro+ 5g:256gb':        { launchPrice: 27999, year: 2023 },
+  'realme:10 pro 5g:128gb':         { launchPrice: 18999, year: 2022 },
+
   // Samsung
   'samsung:galaxy s24 ultra:256gb':  { launchPrice: 129999, year: 2024 },
-  'samsung:galaxy s24+:256gb':       { launchPrice: 99999,  year: 2024 },
-  'samsung:galaxy s24:256gb':        { launchPrice: 74999,  year: 2024 },
   'samsung:galaxy s23 ultra:256gb':  { launchPrice: 124999, year: 2023 },
-  'samsung:galaxy s23+:256gb':       { launchPrice: 94999,  year: 2023 },
   'samsung:galaxy s23:128gb':        { launchPrice: 74999,  year: 2023 },
-  'samsung:galaxy a55:256gb':        { launchPrice: 34999,  year: 2024 },
   'samsung:galaxy a55:128gb':        { launchPrice: 29999,  year: 2024 },
-  'samsung:galaxy a35:256gb':        { launchPrice: 24999,  year: 2024 },
-  'samsung:galaxy a35:128gb':        { launchPrice: 21999,  year: 2024 },
-  // OnePlus
-  'oneplus:12:256gb':               { launchPrice: 64999, year: 2024 },
-  'oneplus:12:512gb':               { launchPrice: 69999, year: 2024 },
-  'oneplus:12r:256gb':              { launchPrice: 39999, year: 2024 },
-  'oneplus:11:256gb':               { launchPrice: 56999, year: 2023 },
-  'oneplus:nord 4:256gb':           { launchPrice: 29999, year: 2024 },
-  'oneplus:nord ce 4:256gb':        { launchPrice: 24999, year: 2024 },
-  // Poco
-  'poco:x8 pro:256gb':             { launchPrice: 36999, year: 2024 },
-  'poco:x8 pro:512gb':             { launchPrice: 39999, year: 2024 },
-  'poco:x8 pro max:256gb':         { launchPrice: 44999, year: 2024 },
-  'poco:x8 pro max:512gb':         { launchPrice: 47999, year: 2024 },
-  'poco:x7 pro:256gb':             { launchPrice: 27999, year: 2025 },
-  'poco:f6 pro:256gb':             { launchPrice: 34999, year: 2024 },
-  'poco:f6:256gb':                 { launchPrice: 27999, year: 2024 },
-  'poco:m6 pro:256gb':             { launchPrice: 18999, year: 2024 },
-  // Xiaomi
-  'xiaomi:14:512gb':               { launchPrice: 69999, year: 2024 },
-  'xiaomi:14 ultra:512gb':         { launchPrice: 99999, year: 2024 },
-  // Google
-  'google:pixel 9 pro xl:256gb':   { launchPrice: 109999, year: 2024 },
-  'google:pixel 9 pro:256gb':      { launchPrice: 99999,  year: 2024 },
-  'google:pixel 9:256gb':          { launchPrice: 79999,  year: 2024 },
-  'google:pixel 8 pro:256gb':      { launchPrice: 106999, year: 2023 },
-  'google:pixel 8:256gb':          { launchPrice: 75999,  year: 2023 },
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -106,14 +64,15 @@ const DEVICE_LAUNCH_PRICES: Record<string, DeviceEntry> = {
 interface DepreciationTable { [ageYears: number]: number }
 
 const DEPRECIATION: Record<string, DepreciationTable> = {
-  apple: { 0: 0.82, 1: 0.68, 2: 0.55, 3: 0.42, 4: 0.32, 5: 0.22 },
-  samsung_flagship: { 0: 0.78, 1: 0.62, 2: 0.48, 3: 0.36, 4: 0.26, 5: 0.18 },
-  samsung_mid: { 0: 0.72, 1: 0.56, 2: 0.42, 3: 0.30, 4: 0.20, 5: 0.12 },
-  oneplus: { 0: 0.72, 1: 0.56, 2: 0.42, 3: 0.30, 4: 0.20, 5: 0.12 },
-  google: { 0: 0.70, 1: 0.54, 2: 0.40, 3: 0.28, 4: 0.18, 5: 0.10 },
-  xiaomi: { 0: 0.65, 1: 0.50, 2: 0.36, 3: 0.25, 4: 0.16, 5: 0.10 },
-  poco: { 0: 0.65, 1: 0.50, 2: 0.36, 3: 0.25, 4: 0.16, 5: 0.10 },
-  default: { 0: 0.60, 1: 0.46, 2: 0.33, 3: 0.22, 4: 0.14, 5: 0.08 },
+  apple: { 0: 0.85, 1: 0.72, 2: 0.60, 3: 0.50, 4: 0.40, 5: 0.30 },
+  samsung_flagship: { 0: 0.80, 1: 0.68, 2: 0.55, 3: 0.44, 4: 0.35, 5: 0.25 },
+  samsung_mid: { 0: 0.75, 1: 0.60, 2: 0.50, 3: 0.40, 4: 0.30, 5: 0.20 },
+  realme: { 0: 0.78, 1: 0.62, 2: 0.50, 3: 0.40, 4: 0.35, 5: 0.25 },
+  oneplus: { 0: 0.78, 1: 0.64, 2: 0.52, 3: 0.42, 4: 0.32, 5: 0.22 },
+  google: { 0: 0.75, 1: 0.60, 2: 0.48, 3: 0.38, 4: 0.28, 5: 0.18 },
+  xiaomi: { 0: 0.72, 1: 0.58, 2: 0.46, 3: 0.36, 4: 0.26, 5: 0.16 },
+  poco: { 0: 0.72, 1: 0.58, 2: 0.46, 3: 0.36, 4: 0.26, 5: 0.16 },
+  default: { 0: 0.70, 1: 0.55, 2: 0.44, 3: 0.34, 4: 0.24, 5: 0.15 },
 };
 
 function getDepreciationRate(brand: string, model: string, ageYears: number): number {
@@ -127,6 +86,8 @@ function getDepreciationRate(brand: string, model: string, ageYears: number): nu
   } else if (b.includes('samsung')) {
     const isFlag = m.includes('s24') || m.includes('s23') || m.includes('s22') || m.includes('ultra') || m.includes('fold') || m.includes('flip');
     table = isFlag ? DEPRECIATION.samsung_flagship : DEPRECIATION.samsung_mid;
+  } else if (b.includes('realme') || m.includes('realme')) {
+    table = DEPRECIATION.realme;
   } else if (b.includes('oneplus') || m.includes('oneplus')) {
     table = DEPRECIATION.oneplus;
   } else if (b.includes('google') || m.includes('pixel')) {
@@ -139,7 +100,6 @@ function getDepreciationRate(brand: string, model: string, ageYears: number): nu
     table = DEPRECIATION.default;
   }
 
-  // Linear interpolation between integer years
   const floor = Math.floor(clampedAge);
   const ceil = Math.ceil(clampedAge);
   if (floor === ceil) return table[floor] ?? table[5];
@@ -148,9 +108,6 @@ function getDepreciationRate(brand: string, model: string, ageYears: number): nu
   return rFloor + (rCeil - rFloor) * (clampedAge - floor);
 }
 
-// ─────────────────────────────────────────────────────────────
-// CONDITION MULTIPLIER
-// ─────────────────────────────────────────────────────────────
 const CONDITION_MULT: Record<string, number> = {
   excellent: 1.00,
   good: 0.88,
@@ -158,20 +115,21 @@ const CONDITION_MULT: Record<string, number> = {
   poor: 0.50,
 };
 
-// ─────────────────────────────────────────────────────────────
-// LOOKUP HELPERS
-// ─────────────────────────────────────────────────────────────
 function lookupDeviceEntry(brand: string, model: string, storage: string): DeviceEntry | null {
-  const key = `${brand}:${model}:${storage}`.toLowerCase().trim();
+  const cleanModelStr = model.toLowerCase().replace(/\+/g, ' plus').replace(/\s+/g, ' ').trim();
+  const key = `${brand}:${cleanModelStr}:${storage}`.toLowerCase().trim();
+  
+  // Exact lookup
   if (DEVICE_LAUNCH_PRICES[key]) return DEVICE_LAUNCH_PRICES[key];
 
-  // Fuzzy match — try without storage, or with partial model name
+  // Precise model key matching
   for (const [k, v] of Object.entries(DEVICE_LAUNCH_PRICES)) {
-    const [kBrand, kModel] = k.split(':');
+    const [kBrand, kModel, kStorage] = k.split(':');
+    const cleanKModel = kModel.toLowerCase().replace(/\+/g, ' plus').replace(/\s+/g, ' ').trim();
     if (
-      brand.toLowerCase().includes(kBrand) &&
-      model.toLowerCase().includes(kModel) &&
-      k.includes(storage.toLowerCase())
+      brand.toLowerCase().trim() === kBrand &&
+      cleanModelStr === cleanKModel &&
+      storage.toLowerCase().trim() === kStorage
     ) {
       return v;
     }
@@ -184,21 +142,17 @@ function estimateFromLaunchPrice(
   model: string,
   storage: string,
   condition: string,
-  launchPrice: number,
-  launchYear: number
+  entry: DeviceEntry
 ): number {
-  const currentYear = new Date().getFullYear();
-  const ageYears = Math.max(0, currentYear - launchYear);
+  const launchDate = new Date(`${entry.year}-01-01`);
+  const now = new Date();
+  const ageYears = Math.max(0, (now.getFullYear() - launchDate.getFullYear()) + (now.getMonth() - launchDate.getMonth()) / 12);
   const depRate = getDepreciationRate(brand, model, ageYears);
   const condMult = CONDITION_MULT[condition.toLowerCase()] ?? CONDITION_MULT.good;
-  const rawPrice = launchPrice * depRate * condMult;
-  // Round to nearest 500
-  return Math.max(500, Math.round(rawPrice / 500) * 500);
+  const rawPrice = entry.launchPrice * depRate * condMult;
+  return Math.max(500, Math.round(rawPrice / 100) * 100);
 }
 
-// ─────────────────────────────────────────────────────────────
-// PUBLIC API
-// ─────────────────────────────────────────────────────────────
 export interface CashifyPriceResult {
   price: number | null;
   source: 'cache' | 'db_lookup' | 'estimated' | 'failed';
@@ -210,32 +164,26 @@ export async function getCashifyPrice(
   model: string,
   storage: string,
   condition: string,
-  /** Optional: pass launch price + year from DB to improve accuracy */
   hint?: { launchPrice?: number; launchYear?: number }
 ): Promise<CashifyPriceResult> {
   const key = makeCacheKey(brand, model, storage, condition);
 
-  // 1. Cache
   const cached = fromCache(key);
   if (cached !== null) {
     return { price: cached, source: 'cache', cached: true };
   }
 
-  // 2. Known device DB lookup
   const entry = lookupDeviceEntry(brand, model, storage);
   if (entry) {
-    const price = estimateFromLaunchPrice(brand, model, storage, condition, entry.launchPrice, entry.year);
+    const price = estimateFromLaunchPrice(brand, model, storage, condition, entry);
     toCache(key, price);
-    console.log(`[ResaleEstimator] DB lookup: ${brand} ${model} ${storage} → ₹${price} (age: ${new Date().getFullYear() - entry.year}y)`);
     return { price, source: 'db_lookup', cached: false };
   }
 
-  // 3. Use hint from calling service (launch price from DeviceMaster/specs API)
   if (hint?.launchPrice && hint.launchPrice > 0) {
     const launchYear = hint.launchYear ?? new Date().getFullYear() - 2;
-    const price = estimateFromLaunchPrice(brand, model, storage, condition, hint.launchPrice, launchYear);
+    const price = estimateFromLaunchPrice(brand, model, storage, condition, { launchPrice: hint.launchPrice, year: launchYear });
     toCache(key, price);
-    console.log(`[ResaleEstimator] Hint estimate: ${brand} ${model} → ₹${price}`);
     return { price, source: 'estimated', cached: false };
   }
 
