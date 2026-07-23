@@ -102,7 +102,7 @@ function getiPhoneGeneration(model: string): number {
 // ─────────────────────────────────────────────────────────────
 // HELPER: Dynamic MSRP estimator for completely unknown devices
 // ─────────────────────────────────────────────────────────────
-function estimateDynamicMSRP(brand: string, modelName: string): number {
+function estimateDynamicMSRP(brand: string, modelName: string, storageStr: string = '128GB'): number {
   const brandLower = brand.toLowerCase();
   const modelLower = modelName.toLowerCase();
   let baseMsrp = 15000;
@@ -137,7 +137,13 @@ function estimateDynamicMSRP(brand: string, modelName: string): number {
     }
   }
 
-  return baseMsrp;
+  // Apply Storage Multiplier
+  const storageGb = parseInt(storageStr) || 128;
+  if (storageGb >= 1024) baseMsrp *= 1.45;
+  else if (storageGb >= 512) baseMsrp *= 1.25;
+  else if (storageGb >= 256) baseMsrp *= 1.12;
+
+  return Math.round(baseMsrp);
 }
 
 function estimateDynamicYear(modelName: string): number {
@@ -304,7 +310,7 @@ export class PricingService {
           basePriceExcellent = Math.round(launchPrice * mult);
         } else {
           // ── Step 4: Dynamic MSRP Estimator Fallback ───────────
-          const estimatedMSRP = estimateDynamicMSRP(data.brand, data.model);
+          const estimatedMSRP = estimateDynamicMSRP(data.brand, data.model, data.storage);
           const estimatedYear = estimateDynamicYear(data.model);
           const estimatedAgeYears = Math.max(0, 2026 - estimatedYear);
           const clampedAge = Math.min(estimatedAgeYears, 5);
