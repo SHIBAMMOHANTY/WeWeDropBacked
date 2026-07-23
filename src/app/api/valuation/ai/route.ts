@@ -26,26 +26,22 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    let basePriceOverride: number | undefined = undefined;
-    try {
-      const cashifyRes = await getCashifyPrice(brand, model, `${storage}GB`, 'good');
-      if (cashifyRes.price && cashifyRes.price > 0) {
-        basePriceOverride = cashifyRes.price;
-      }
-    } catch (e) {
-      console.warn('Cashify price fetch warning:', e);
-    }
+    // Dynamic market lookup
+    const cashifyRes = await getCashifyPrice(brand, model, `${storage}GB`, 'good');
+    const computedPrice = cashifyRes.price;
 
     const valuation = calculateReCommerceValuation({
       modelCode: model,
       brand,
-      launchPrice: basePriceOverride ? basePriceOverride * 2 : 25000,
+      launchPrice: computedPrice ? computedPrice * 2 : 25000,
       launchDate: '2023-01-15',
       reportedRamBytes: ram,
       reportedRomBytes: storage,
       friendlyModelName: model,
-      basePriceOverride,
+      basePriceOverride: computedPrice || undefined,
     });
+
+    const finalPrice = computedPrice || valuation.valuationBreakdown.finalCashQuote || 500;
 
     return jsonResponse(
       {
@@ -56,10 +52,10 @@ export async function GET(req: NextRequest) {
           ram: `${ram}GB`,
           storage: `${storage}GB`,
         },
-        basePrice: valuation.valuationBreakdown?.basePrice || 0,
-        basePriceFormatted: `₹${(valuation.valuationBreakdown?.basePrice ?? 0).toLocaleString('en-IN')}`,
+        basePrice: finalPrice,
+        basePriceFormatted: `₹${finalPrice.toLocaleString('en-IN')}`,
         platformMatches: {
-          cashify: basePriceOverride || valuation.valuationBreakdown?.basePrice || 0,
+          cashify: finalPrice,
         },
         valuationBreakdown: valuation.valuationBreakdown,
       },
@@ -91,7 +87,7 @@ export async function POST(req: NextRequest) {
           body.brand,
           body.friendlyModelName || body.modelCode,
           `${body.reportedRomBytes || 128}GB`,
-          'excellent'
+          'good'
         );
         if (cashifyRes.price && cashifyRes.price > 0) {
           basePriceOverride = cashifyRes.price;
@@ -102,27 +98,26 @@ export async function POST(req: NextRequest) {
     }
 
     const valuation = calculateReCommerceValuation({
-      launchPrice: basePriceOverride ? basePriceOverride * 2 : 25000,
-      launchDate: '2023-01-15',
-      reportedRamBytes: 8,
-      reportedRomBytes: 128,
+      launchPrice: body.launchPrice || (basePriceOverride ? basePriceOverride * 2 : 25000),
+      launchDate: body.launchDate || '2023-01-15',
+      reportedRamBytes: body.reportedRamBytes || 6,
+      reportedRomBytes: body.reportedRomBytes || 128,
       ...body,
       basePriceOverride,
     });
 
-    const finalQuote = valuation.valuationBreakdown?.finalQuote ?? 0;
-    const basePrice = valuation.valuationBreakdown?.basePrice ?? 0;
+    const finalPrice = basePriceOverride || valuation.valuationBreakdown.finalCashQuote || 500;
 
     return jsonResponse(
       {
         success: true,
         exactValuation: {
-          finalQuote,
-          formattedQuote: `₹${finalQuote.toLocaleString('en-IN')}`,
-          basePrice,
+          finalQuote: finalPrice,
+          formattedQuote: `₹${finalPrice.toLocaleString('en-IN')}`,
+          basePrice: finalPrice,
         },
         platformComparisons: {
-          cashifyBaseline: basePriceOverride || basePrice,
+          cashifyBaseline: basePriceOverride || finalPrice,
         },
         ...valuation,
       },

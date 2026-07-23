@@ -180,14 +180,60 @@ export async function getCashifyPrice(
     return { price, source: 'db_lookup', cached: false };
   }
 
-  if (hint?.launchPrice && hint.launchPrice > 0) {
-    const launchYear = hint.launchYear ?? new Date().getFullYear() - 2;
-    const price = estimateFromLaunchPrice(brand, model, storage, condition, { launchPrice: hint.launchPrice, year: launchYear });
-    toCache(key, price);
-    return { price, source: 'estimated', cached: false };
+  // Dynamic automatic calculation for any device missing from launch catalog
+  const estimatedLaunchPrice = hint?.launchPrice && hint.launchPrice > 0 
+    ? hint.launchPrice 
+    : calculateDynamicLaunchPrice(brand, model, storage);
+
+  const estimatedYear = hint?.launchYear ?? estimateLaunchYear(model);
+  const price = estimateFromLaunchPrice(brand, model, storage, condition, { launchPrice: estimatedLaunchPrice, year: estimatedYear });
+  toCache(key, price);
+  return { price, source: 'estimated', cached: false };
+}
+
+function calculateDynamicLaunchPrice(brand: string, model: string, storage: string): number {
+  const b = brand.toLowerCase();
+  const m = model.toLowerCase();
+  let baseMsrp = 25000;
+
+  if (b.includes('apple') || m.includes('iphone')) {
+    if (m.includes('16')) baseMsrp = 79900;
+    else if (m.includes('15')) baseMsrp = 69900;
+    else if (m.includes('14')) baseMsrp = 59900;
+    else if (m.includes('13')) baseMsrp = 49900;
+    else baseMsrp = 39900;
+    if (m.includes('pro max')) baseMsrp *= 1.5;
+    else if (m.includes('pro')) baseMsrp *= 1.3;
+  } else if (b.includes('samsung')) {
+    if (m.includes('ultra')) baseMsrp = 124999;
+    else if (m.includes('fold')) baseMsrp = 154999;
+    else if (m.includes('flip')) baseMsrp = 89999;
+    else if (m.includes('s24') || m.includes('s23')) baseMsrp = 74999;
+    else baseMsrp = 24999;
+  } else if (b.includes('oneplus')) {
+    baseMsrp = m.includes('pro') || m.includes('12') || m.includes('13') ? 64999 : 34999;
+  } else if (b.includes('realme') || b.includes('xiaomi') || b.includes('vivo') || b.includes('oppo') || b.includes('poco')) {
+    if (m.includes('pro+') || m.includes('ultra') || m.includes('gt')) baseMsrp = 32999;
+    else if (m.includes('pro')) baseMsrp = 22999;
+    else baseMsrp = 14999;
   }
 
-  return { price: null, source: 'failed', cached: false };
+  // Storage multiplier
+  const storageGb = parseInt(storage) || 128;
+  if (storageGb >= 512) baseMsrp *= 1.25;
+  else if (storageGb >= 256) baseMsrp *= 1.12;
+
+  return Math.round(baseMsrp);
+}
+
+function estimateLaunchYear(model: string): number {
+  const m = model.toLowerCase();
+  const currentYear = new Date().getFullYear();
+  if (m.includes('16') || m.includes('24') || m.includes('s24') || m.includes('14 pro')) return currentYear;
+  if (m.includes('15') || m.includes('23') || m.includes('s23') || m.includes('13 pro') || m.includes('10 pro')) return currentYear - 1;
+  if (m.includes('14') || m.includes('22') || m.includes('s22')) return currentYear - 2;
+  return currentYear - 2;
+}
 }
 
 export { priceCache };
