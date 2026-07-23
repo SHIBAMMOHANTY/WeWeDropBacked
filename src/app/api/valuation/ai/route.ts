@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { jsonResponse } from '@/lib/api';
-import { calculateReCommerceValuation, ValuationEngineInput, normalizeRom } from '@/services/aiValuationEngine';
+import { calculateReCommerceValuation, ValuationEngineInput } from '@/services/aiValuationEngine';
 import { getCashifyPrice } from '@/lib/cashify-scraper';
 
 export const runtime = 'nodejs';
@@ -51,3 +51,7 @@ export async function POST(req: NextRequest) {
     return jsonResponse({ error: err.message || 'Internal server error' }, 500);
   }
 }
+function normalizeRom(reportedRomBytes: number) {
+  throw new Error('Function not implemented.');
+}
+
