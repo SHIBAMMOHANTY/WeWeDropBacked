@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { jsonResponse } from '@/lib/api';
 import { calculateReCommerceValuation, ValuationEngineInput } from '@/services/aiValuationEngine';
 import { getCashifyPrice } from '@/lib/cashify-scraper';
+import { calculateQuote } from '@/services/pricing.service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,8 @@ export async function GET(req: NextRequest) {
 
     const brand = searchParams.get('brand');
     const model = searchParams.get('model') || searchParams.get('q');
-    const storage = searchParams.get('storage') ? parseInt(searchParams.get('storage')!) : 128;
+    const storage = searchParams.get('storage') || '128GB';
+    const storageGb = parseInt(storage) || 128;
     const ram = searchParams.get('ram') ? parseInt(searchParams.get('ram')!) : 8;
 
     if (!brand || !model) {
@@ -26,22 +28,39 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Dynamic market lookup
-    const cashifyRes = await getCashifyPrice(brand, model, `${storage}GB`, 'good');
-    const computedPrice = cashifyRes.price;
+    // 1. Fetch from live scraper / database pricing pipeline
+    let resolvedBasePrice = 0;
+
+    const cashifyRes = await getCashifyPrice(brand, model, storage.endsWith('GB') ? storage : `${storage}GB`, 'good');
+    if (cashifyRes.price && cashifyRes.price > 0) {
+      resolvedBasePrice = cashifyRes.price;
+    } else {
+      // Direct pipeline query through pricing.service
+      const legacyCalc = await calculateQuote({
+        brand,
+        model,
+        storage: storage.endsWith('GB') ? storage : `${storage}GB`,
+        condition: 'good',
+      });
+      if (legacyCalc.estimatedPrice && legacyCalc.estimatedPrice > 0) {
+        resolvedBasePrice = legacyCalc.estimatedPrice;
+      }
+    }
 
     const valuation = calculateReCommerceValuation({
       modelCode: model,
       brand,
-      launchPrice: computedPrice ? Math.round(computedPrice * 2.2) : 0,
+      launchPrice: resolvedBasePrice > 0 ? Math.round(resolvedBasePrice * 2) : 25000,
       launchDate: '2023-01-15',
       reportedRamBytes: ram,
-      reportedRomBytes: storage,
+      reportedRomBytes: storageGb,
       friendlyModelName: model,
-      basePriceOverride: computedPrice || undefined,
+      basePriceOverride: resolvedBasePrice > 0 ? resolvedBasePrice : undefined,
     });
 
-    const finalPrice = valuation.valuationBreakdown?.finalCashQuote || valuation.valuationBreakdown?.depreciatedBaseValue || 0;
+    const finalPrice = resolvedBasePrice > 0 
+      ? resolvedBasePrice 
+      : (valuation.valuationBreakdown?.finalCashQuote || valuation.valuationBreakdown?.depreciatedBaseValue || 9500);
 
     return jsonResponse(
       {
@@ -50,7 +69,7 @@ export async function GET(req: NextRequest) {
           brand,
           model,
           ram: `${ram}GB`,
-          storage: `${storage}GB`,
+          storage: `${storageGb}GB`,
         },
         basePrice: finalPrice,
         basePriceFormatted: `₹${finalPrice.toLocaleString('en-IN')}`,
@@ -80,8 +99,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let basePriceOverride = body.basePriceOverride;
-    if (!basePriceOverride) {
+    let resolvedBasePrice = body.basePriceOverride;
+    if (!resolvedBasePrice) {
       try {
         const cashifyRes = await getCashifyPrice(
           body.brand,
@@ -90,23 +109,33 @@ export async function POST(req: NextRequest) {
           'good'
         );
         if (cashifyRes.price && cashifyRes.price > 0) {
-          basePriceOverride = cashifyRes.price;
+          resolvedBasePrice = cashifyRes.price;
+        } else {
+          const legacyCalc = await calculateQuote({
+            brand: body.brand,
+            model: body.friendlyModelName || body.modelCode,
+            storage: `${body.reportedRomBytes || 128}GB`,
+            condition: 'good',
+          });
+          if (legacyCalc.estimatedPrice && legacyCalc.estimatedPrice > 0) {
+            resolvedBasePrice = legacyCalc.estimatedPrice;
+          }
         }
       } catch (e) {
-        console.warn('Cashify price fetch warning:', e);
+        console.warn('Price resolution warning:', e);
       }
     }
 
     const valuation = calculateReCommerceValuation({
-      launchPrice: body.launchPrice || (basePriceOverride ? Math.round(basePriceOverride * 2.2) : 0),
+      launchPrice: resolvedBasePrice ? Math.round(resolvedBasePrice * 2) : 25000,
       launchDate: body.launchDate || '2023-01-15',
       reportedRamBytes: body.reportedRamBytes || 6,
       reportedRomBytes: body.reportedRomBytes || 128,
       ...body,
-      basePriceOverride,
+      basePriceOverride: resolvedBasePrice,
     });
 
-    const finalPrice = valuation.valuationBreakdown?.finalCashQuote || valuation.valuationBreakdown?.depreciatedBaseValue || 0;
+    const finalPrice = resolvedBasePrice || valuation.valuationBreakdown?.finalCashQuote || 9500;
 
     return jsonResponse(
       {
@@ -117,7 +146,7 @@ export async function POST(req: NextRequest) {
           basePrice: finalPrice,
         },
         platformComparisons: {
-          cashifyBaseline: basePriceOverride || finalPrice,
+          cashifyBaseline: finalPrice,
         },
         ...valuation,
       },
