@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DeviceRepository } from '@/repositories/mobile/device.repository';
 import { PriceService } from '@/services/mobile/price.service';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     // Optional basic API key authorization to secure the cron trigger in production

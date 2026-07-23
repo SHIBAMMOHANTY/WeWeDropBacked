@@ -54,7 +54,9 @@ const PENALTY_SCHEDULE: Record<string, number> = {
  * Rounds bytes to nearest standard RAM tier in GB
  */
 function normalizeRam(bytes: number): number {
-  const gb = bytes / (1024 * 1024 * 1024);
+  // Clients historically send this legacy field as either GB (for example, 8)
+  // or bytes. Treat small positive values as GB.
+  const gb = bytes > 64 ? bytes / (1024 * 1024 * 1024) : bytes;
   const tiers = [4, 6, 8, 12, 16, 24, 32];
   return tiers.reduce((prev, curr) => (Math.abs(curr - gb) < Math.abs(prev - gb) ? curr : prev));
 }
@@ -63,7 +65,8 @@ function normalizeRam(bytes: number): number {
  * Rounds bytes to standard ROM storage size in GB
  */
 export function normalizeRom(bytes: number): number {
-  const gb = bytes / (1024 * 1024 * 1024);
+  // Storage is commonly supplied as 128/256/512 GB despite the legacy name.
+  const gb = bytes > 2048 ? bytes / (1024 * 1024 * 1024) : bytes;
   const tiers = [32, 64, 128, 256, 512, 1024];
   return tiers.reduce((prev, curr) => (Math.abs(curr - gb) < Math.abs(prev - gb) ? curr : prev));
 }

@@ -20,6 +20,10 @@ export async function GET(req: NextRequest) {
     const storage = searchParams.get('storage') || '128GB';
     const storageGb = parseInt(storage) || 128;
     const ram = searchParams.get('ram') ? parseInt(searchParams.get('ram')!) : 8;
+    const defects = (searchParams.get('defects') || '')
+      .split(',')
+      .map((defect) => defect.trim())
+      .filter(Boolean);
 
     if (!brand || !model) {
       return jsonResponse(
@@ -30,10 +34,14 @@ export async function GET(req: NextRequest) {
 
     // 1. Fetch from live scraper / database pricing pipeline
     let resolvedBasePrice = 0;
+    let realLaunchPrice: number | undefined;
+    let priceSource = 'unresolved';
 
     const cashifyRes = await getCashifyPrice(brand, model, storage.endsWith('GB') ? storage : `${storage}GB`, 'good');
     if (cashifyRes.price && cashifyRes.price > 0) {
       resolvedBasePrice = cashifyRes.price;
+      realLaunchPrice = cashifyRes.launchPrice;
+      priceSource = cashifyRes.source;
     } else {
       // Direct pipeline query through pricing.service
       const legacyCalc = await PricingService.calculateQuote({
@@ -44,28 +52,26 @@ export async function GET(req: NextRequest) {
       });
       if (legacyCalc.estimatedPrice && legacyCalc.estimatedPrice > 0) {
         resolvedBasePrice = legacyCalc.estimatedPrice;
+        realLaunchPrice = legacyCalc.launchPrice;
+        priceSource = legacyCalc.priceSource;
       }
-    }
-
-    let realLaunchPrice = cashifyRes.launchPrice;
-    if (!realLaunchPrice && resolvedBasePrice > 0) {
-      realLaunchPrice = Math.round(resolvedBasePrice * 2);
     }
 
     const valuation = calculateReCommerceValuation({
       modelCode: model,
       brand,
-      launchPrice: realLaunchPrice || 25000,
-      launchDate: '2023-01-15',
+      launchPrice: realLaunchPrice || resolvedBasePrice,
+      // A market-base quote does not require a synthetic launch date. The
+      // date only affects the fallback depreciation calculation.
+      launchDate: new Date().toISOString().slice(0, 10),
       reportedRamBytes: ram,
       reportedRomBytes: storageGb,
       friendlyModelName: model,
       basePriceOverride: resolvedBasePrice > 0 ? resolvedBasePrice : undefined,
+      defects,
     });
 
-    const finalPrice = resolvedBasePrice > 0 
-      ? resolvedBasePrice 
-      : (valuation.valuationBreakdown?.finalCashQuote || valuation.valuationBreakdown?.depreciatedBaseValue || 9500);
+    const finalPrice = valuation.valuationBreakdown.finalCashQuote;
 
     return jsonResponse(
       {
@@ -76,10 +82,12 @@ export async function GET(req: NextRequest) {
           ram: `${ram}GB`,
           storage: `${storageGb}GB`,
         },
-        basePrice: finalPrice,
-        basePriceFormatted: `₹${finalPrice.toLocaleString('en-IN')}`,
+        basePrice: valuation.valuationBreakdown.depreciatedBaseValue,
+        finalQuote: finalPrice,
+        priceSource,
+        basePriceFormatted: `₹${valuation.valuationBreakdown.depreciatedBaseValue.toLocaleString('en-IN')}`,
         platformMatches: {
-          cashify: finalPrice,
+          cashify: resolvedBasePrice || null,
         },
         valuationBreakdown: valuation.valuationBreakdown,
       },
@@ -127,6 +135,7 @@ export async function POST(req: NextRequest) {
           });
           if (legacyCalc.estimatedPrice && legacyCalc.estimatedPrice > 0) {
             resolvedBasePrice = legacyCalc.estimatedPrice;
+            realLaunchPrice = legacyCalc.launchPrice;
           }
         }
       } catch (e) {
@@ -134,20 +143,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!realLaunchPrice && resolvedBasePrice) {
-      realLaunchPrice = Math.round(resolvedBasePrice * 2);
-    }
-
     const valuation = calculateReCommerceValuation({
-      launchPrice: realLaunchPrice || 25000,
-      launchDate: body.launchDate || '2023-01-15',
+      ...body,
+      launchPrice: realLaunchPrice || resolvedBasePrice || 0,
+      launchDate: body.launchDate || new Date().toISOString().slice(0, 10),
       reportedRamBytes: body.reportedRamBytes || 6,
       reportedRomBytes: body.reportedRomBytes || 128,
-      ...body,
       basePriceOverride: resolvedBasePrice,
     });
 
-    const finalPrice = resolvedBasePrice || valuation.valuationBreakdown?.finalCashQuote || 9500;
+    const finalPrice = valuation.valuationBreakdown.finalCashQuote;
 
     return jsonResponse(
       {
@@ -155,7 +160,7 @@ export async function POST(req: NextRequest) {
         exactValuation: {
           finalQuote: finalPrice,
           formattedQuote: `₹${finalPrice.toLocaleString('en-IN')}`,
-          basePrice: finalPrice,
+          basePrice: valuation.valuationBreakdown.depreciatedBaseValue,
         },
         platformComparisons: {
           cashifyBaseline: finalPrice,

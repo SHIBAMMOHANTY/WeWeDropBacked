@@ -251,6 +251,11 @@ export class PricingService {
     let launchPrice = 0;
     let releaseYear = 2026;
     let priceSource: 'database' | 'cashify' | 'api' | 'estimate' = 'estimate';
+    const condition = data.condition.trim().toLowerCase();
+    if (!['excellent', 'good', 'average'].includes(condition)) {
+      throw new Error(`Invalid condition: '${data.condition}'`);
+    }
+    let hasConditionSpecificDatabasePrice = false;
     const cleanedModel = cleanModelName(data.model, data.brand);
 
     // ── Step 1: DeviceMaster DB lookup ────────────────────────
@@ -268,7 +273,15 @@ export class PricingService {
     });
 
     if (device) {
-      basePriceExcellent = device.basePriceExcellent;
+      // DeviceMaster is the source of truth for admin-managed condition
+      // prices. Do not recalculate a good/average price from excellent here,
+      // otherwise edits to basePriceGood/basePriceAverage are ignored.
+      basePriceExcellent = condition === 'excellent'
+        ? device.basePriceExcellent
+        : condition === 'good'
+          ? device.basePriceGood
+          : device.basePriceAverage;
+      hasConditionSpecificDatabasePrice = true;
       launchPrice = data.launchPrice || device.launchPrice;
       priceSource = 'database';
       if (device.launchDate) {
@@ -326,12 +339,12 @@ export class PricingService {
 
     // Base price by condition
     let basePrice = basePriceExcellent;
-    const cond = data.condition.trim().toLowerCase();
-    if (cond === 'good') basePrice = Math.round(basePriceExcellent * 0.9);
-    else if (cond === 'average') basePrice = Math.round(basePriceExcellent * 0.78);
-    else if (cond !== 'excellent') throw new Error(`Invalid condition: '${data.condition}'`);
+    if (!hasConditionSpecificDatabasePrice) {
+      if (condition === 'good') basePrice = Math.round(basePriceExcellent * 0.9);
+      else if (condition === 'average') basePrice = Math.round(basePriceExcellent * 0.78);
+    }
 
-    console.log(`[PricingService] Final basePrice for condition '${cond}': ${basePrice}`);
+    console.log(`[PricingService] Final basePrice for condition '${condition}': ${basePrice}`);
 
     const isApple = data.brand.toLowerCase().includes('apple') || data.model.toLowerCase().includes('iphone');
     const iPhoneGen = isApple ? getiPhoneGeneration(data.model) : 0;
