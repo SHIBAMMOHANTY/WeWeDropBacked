@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     }
 
     const banners = await prisma.banner.findMany({
+      where: { isDeleted: false },
       orderBy: { createdAt: "desc" },
     });
 
@@ -99,8 +100,9 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Banner ID required" }, { status: 400, headers: corsHeaders });
     }
 
-    const deletedBanner = await prisma.banner.delete({
+    const deletedBanner = await prisma.banner.update({
       where: { id: bannerId },
+      data: { isDeleted: true },
     });
 
     return NextResponse.json(

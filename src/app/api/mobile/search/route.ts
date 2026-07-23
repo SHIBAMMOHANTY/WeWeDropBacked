@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
           ],
         })),
         isActive: true,
+        isDeleted: false,
       },
       take: 20,
     });
@@ -159,18 +160,20 @@ export async function GET(req: NextRequest) {
       mrp:         dm.launchPrice,
     }));
 
-    // ─── 3. Merge & deduplicate (Device entries take priority) ───
-    const merged: typeof deviceResults = [...deviceResults];
-    for (const mr of masterResults) {
-      const alreadyExists = merged.some(dr => {
+    // ─── 3. Merge & deduplicate (DeviceMaster entries take priority) ───
+    const merged: typeof deviceResults = [...masterResults];
+    for (const dr of deviceResults) {
+      const alreadyExists = merged.some(mr => {
         const drBrand = dr.brand.toLowerCase();
         const drModel = dr.model.toLowerCase();
         const mrBrand = mr.brand.toLowerCase();
         const mrModel = mr.model.toLowerCase();
-        return drBrand === mrBrand && (drModel.includes(mrModel) || mrModel.includes(drModel));
+        
+        // Match if they are the same brand and the base model name overlaps
+        return drBrand === mrBrand && (mrModel.includes(drModel) || drModel.includes(mrModel));
       });
       if (!alreadyExists) {
-        merged.push(mr);
+        merged.push(dr);
       }
     }
 

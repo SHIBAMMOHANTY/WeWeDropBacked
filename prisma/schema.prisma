@@ -419,6 +419,7 @@ model MembershipPricing {
 model Banner {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   url       String
+  isDeleted Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -438,11 +439,13 @@ model DeviceMaster {
   basePriceGood      Float
   basePriceAverage   Float
   isActive           Boolean  @default(true)
+  isDeleted          Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   @@unique([brand, model, storage])
   @@index([isActive])
+  @@index([isDeleted])
 }
 
 model PricingRule {
