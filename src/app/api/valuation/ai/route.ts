@@ -87,7 +87,8 @@ export async function GET(req: NextRequest) {
         priceSource,
         basePriceFormatted: `₹${valuation.valuationBreakdown.depreciatedBaseValue.toLocaleString('en-IN')}`,
         platformMatches: {
-          cashify: resolvedBasePrice || null,
+          // Do not label an internal fallback estimate as a Cashify price.
+          cashify: cashifyRes.price && cashifyRes.source !== 'failed' ? cashifyRes.price : null,
         },
         valuationBreakdown: valuation.valuationBreakdown,
       },

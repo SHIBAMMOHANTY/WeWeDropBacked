@@ -62,6 +62,19 @@ function capitalizeWords(str: string): string {
   }).join(' ');
 }
 
+// The scraped Device collection can contain marketplace accessories alongside
+// handsets. Never offer those records as devices eligible for valuation.
+const ACCESSORY_MODEL_TERMS = [
+  'back cover', 'case', 'tempered glass', 'screen guard', 'screen protector',
+  'camera protector', 'mobile holder', 'charger', 'charging cable', 'adapter',
+  'phone stand', 'skin', 'bumper', 'pouch', 'flip cover',
+];
+
+function isHandsetModel(model: string): boolean {
+  const normalizedModel = model.toLowerCase();
+  return !ACCESSORY_MODEL_TERMS.some((term) => normalizedModel.includes(term));
+}
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -80,7 +93,9 @@ export async function GET(req: NextRequest) {
     }
 
     const normalizedQuery = normalizeQuery(query);
-    const cacheKey = `search_${normalizedQuery}_page_${page}`;
+    // Versioned key prevents prior accessory-containing search results from
+    // being served until their old TTL expires.
+    const cacheKey = `mobile_handset_search_v2_${normalizedQuery}_page_${page}`;
     const cachedData = CacheService.get<any[]>(cacheKey);
 
     if (cachedData) {
@@ -119,7 +134,7 @@ export async function GET(req: NextRequest) {
     });
 
     // ─── Map Device results ───
-    const deviceResults = dbDevices.map(d => {
+    const deviceResults = dbDevices.filter((device) => isHandsetModel(device.model)).map(d => {
       const flipkartPrice = d.currentPrices.find(cp => cp.seller.toLowerCase() === 'flipkart');
       const fallbackPrice = d.currentPrices[0];
       return {
@@ -178,7 +193,7 @@ export async function GET(req: NextRequest) {
         clearTimeout(timeout);
 
         if (scrapedResults && scrapedResults.length > 0) {
-          results = scrapedResults.map((p: any) => ({
+          results = scrapedResults.filter((p: any) => isHandsetModel(p.model)).map((p: any) => ({
             id:          p.id,
             brand:       p.brand,
             model:       p.model,

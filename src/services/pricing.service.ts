@@ -168,6 +168,15 @@ function cleanModelName(model: string, brand: string): string {
   return m;
 }
 
+/**
+ * Prisma's MongoDB case-insensitive string filters are translated to regular
+ * expressions. Escape user/device names before using them in a filter so a
+ * literal model such as "10 Pro+ 5G" does not turn `+` into a regex operator.
+ */
+function escapeMongoRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ─────────────────────────────────────────────────────────────
 // HELPER: Fetch launch price from phone-specs-api
 // ─────────────────────────────────────────────────────────────
@@ -257,15 +266,19 @@ export class PricingService {
     }
     let hasConditionSpecificDatabasePrice = false;
     const cleanedModel = cleanModelName(data.model, data.brand);
+    const exactModel = escapeMongoRegex(data.model.trim());
+    const exactCleanedModel = escapeMongoRegex(cleanedModel);
+    const exactBrandPrefixedModel = escapeMongoRegex(`${data.brand.trim()} ${cleanedModel}`);
 
     // ── Step 1: DeviceMaster DB lookup ────────────────────────
     const device = await prisma.deviceMaster.findFirst({
       where: {
         brand: { equals: data.brand.trim(), mode: 'insensitive' },
         OR: [
-          { model: { equals: data.model.trim(), mode: 'insensitive' } },
-          { model: { equals: cleanedModel, mode: 'insensitive' } },
-          { model: { contains: cleanedModel, mode: 'insensitive' } },
+          { model: { equals: exactModel, mode: 'insensitive' } },
+          { model: { equals: exactCleanedModel, mode: 'insensitive' } },
+          { model: { equals: exactBrandPrefixedModel, mode: 'insensitive' } },
+          { model: { contains: exactCleanedModel, mode: 'insensitive' } },
         ],
         storage: { equals: data.storage.trim(), mode: 'insensitive' },
         isActive: true,
