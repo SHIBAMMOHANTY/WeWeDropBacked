@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { getCashifyPrice } from '@/lib/cashify-scraper';
+import { getCashifyPrice, getDepreciationRate } from '@/lib/cashify-scraper';
 
 // ─────────────────────────────────────────────────────────────
 // REQUEST / RESPONSE TYPES
@@ -100,87 +100,56 @@ function getiPhoneGeneration(model: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────
-// HELPER: fallback base price estimator
+// HELPER: Dynamic MSRP estimator for completely unknown devices
 // ─────────────────────────────────────────────────────────────
-function estimateFallbackBasePrice(brand: string, modelName: string): { excellent: number; good: number; average: number } {
+function estimateDynamicMSRP(brand: string, modelName: string): number {
   const brandLower = brand.toLowerCase();
   const modelLower = modelName.toLowerCase();
-  let excellentPrice = 12000;
+  let baseMsrp = 15000;
 
   if (brandLower.includes('apple') || modelLower.includes('iphone')) {
-    let yearBase = 32000;
-    if (modelLower.includes('17')) yearBase = 82000;
-    else if (modelLower.includes('16')) yearBase = 68000;
-    else if (modelLower.includes('15')) yearBase = 52000;
-    else if (modelLower.includes('14')) yearBase = 42000;
-    else if (modelLower.includes('13')) yearBase = 32000;
-    else if (modelLower.includes('12')) yearBase = 24000;
-    else if (modelLower.includes('11')) yearBase = 18000;
-    else if (modelLower.includes('xs') || modelLower.includes('xr')) yearBase = 12000;
-    else if (modelLower.includes('se')) yearBase = 10000;
-    else if (modelLower.includes('8') || modelLower.includes('7') || modelLower.includes('6')) yearBase = 6000;
-
-    let tierMultiplier = 1.0;
-    if (modelLower.includes('pro max')) tierMultiplier = 1.6;
-    else if (modelLower.includes('pro')) tierMultiplier = 1.4;
-    else if (modelLower.includes('plus')) tierMultiplier = 1.2;
-    else if (modelLower.includes('mini')) tierMultiplier = 0.85;
-
-    excellentPrice = Math.round(yearBase * tierMultiplier);
+    baseMsrp = 75000;
+    if (modelLower.includes('pro max')) baseMsrp *= 1.8;
+    else if (modelLower.includes('pro')) baseMsrp *= 1.5;
+    else if (modelLower.includes('plus')) baseMsrp *= 1.2;
   } else if (brandLower.includes('samsung')) {
-    if (modelLower.includes('ultra')) {
-      if (modelLower.includes('s24')) excellentPrice = 82000;
-      else if (modelLower.includes('s23')) excellentPrice = 62000;
-      else if (modelLower.includes('s22')) excellentPrice = 45000;
-      else if (modelLower.includes('s21')) excellentPrice = 32000;
-      else excellentPrice = 28000;
-    } else if (modelLower.includes('fold')) {
-      if (modelLower.includes('6')) excellentPrice = 75000;
-      else if (modelLower.includes('5')) excellentPrice = 58000;
-      else if (modelLower.includes('4')) excellentPrice = 42000;
-      else excellentPrice = 30000;
-    } else if (modelLower.includes('flip')) {
-      if (modelLower.includes('6')) excellentPrice = 45000;
-      else if (modelLower.includes('5')) excellentPrice = 36000;
-      else if (modelLower.includes('4')) excellentPrice = 26000;
-      else excellentPrice = 18000;
-    } else if (modelLower.includes('s24')) excellentPrice = 48000;
-    else if (modelLower.includes('s23')) excellentPrice = 38000;
-    else if (modelLower.includes('s22')) excellentPrice = 28000;
-    else if (modelLower.includes('s21')) excellentPrice = 18000;
-    else if (modelLower.includes('a55') || modelLower.includes('a54')) excellentPrice = 20000;
-    else if (modelLower.includes('a35') || modelLower.includes('a34')) excellentPrice = 14000;
-    else if (modelLower.includes('a25') || modelLower.includes('a15')) excellentPrice = 9500;
-    else excellentPrice = 8000;
+    if (modelLower.includes('ultra') || modelLower.includes('fold')) baseMsrp = 120000;
+    else if (modelLower.includes('flip')) baseMsrp = 85000;
+    else if (modelLower.match(/\bs\d+\b/)) baseMsrp = 70000;
+    else if (modelLower.match(/\ba\d+\b/)) baseMsrp = 25000;
+    else baseMsrp = 15000;
   } else if (brandLower.includes('oneplus')) {
-    if (modelLower.includes('12')) excellentPrice = 46000;
-    else if (modelLower.includes('11')) excellentPrice = 34000;
-    else if (modelLower.includes('10')) excellentPrice = 24000;
-    else if (modelLower.includes('9')) excellentPrice = 16000;
-    else if (modelLower.includes('nord')) {
-      if (modelLower.includes('ce')) excellentPrice = 9000;
-      else excellentPrice = 13000;
-    } else excellentPrice = 14000;
+    if (modelLower.includes('nord') || modelLower.includes('ce')) baseMsrp = 25000;
+    else if (modelLower.includes('r')) baseMsrp = 40000;
+    else baseMsrp = 55000;
   } else if (brandLower.includes('google') || modelLower.includes('pixel')) {
-    excellentPrice = 15000;
-    if (modelLower.includes('8 pro')) excellentPrice = 56000;
-    else if (modelLower.includes('8')) excellentPrice = 38000;
-    else if (modelLower.includes('7 pro')) excellentPrice = 38000;
-    else if (modelLower.includes('7')) excellentPrice = 25000;
-    else if (modelLower.includes('6 pro')) excellentPrice = 24000;
-    else if (modelLower.includes('6')) excellentPrice = 18000;
+    if (modelLower.includes('pro')) baseMsrp = 80000;
+    else if (modelLower.includes('a')) baseMsrp = 40000;
+    else baseMsrp = 60000;
   } else {
-    if (modelLower.includes('pro plus') || modelLower.includes('pro+')) excellentPrice = 15000;
-    else if (modelLower.includes('pro') || modelLower.includes('ultra')) excellentPrice = 12500;
-    else if (modelLower.includes('neo') || modelLower.includes('gt')) excellentPrice = 11000;
-    else excellentPrice = 7500;
+    // Realme, Xiaomi, Vivo, Oppo, Poco generic mid-range tiers
+    if (modelLower.includes('pro plus') || modelLower.includes('pro+') || modelLower.includes('ultra')) {
+      baseMsrp = 25000;
+    } else if (modelLower.includes('pro') || modelLower.includes('gt')) {
+      baseMsrp = 18000;
+    } else {
+      baseMsrp = 12000;
+    }
   }
 
-  return {
-    excellent: excellentPrice,
-    good: Math.round(excellentPrice * 0.9),
-    average: Math.round(excellentPrice * 0.78),
-  };
+  return baseMsrp;
+}
+
+function estimateDynamicYear(modelName: string): number {
+  const m = modelName.toLowerCase();
+  const currentYear = new Date().getFullYear();
+  if (m.includes('17') || m.includes('25') || m.includes('s25') || m.includes('15 pro')) return currentYear;
+  if (m.includes('16') || m.includes('24') || m.includes('s24') || m.includes('14 pro')) return currentYear - 1;
+  if (m.includes('15') || m.includes('23') || m.includes('s23') || m.includes('13 pro') || m.includes('13')) return currentYear - 2;
+  if (m.includes('14') || m.includes('22') || m.includes('s22') || m.includes('12')) return currentYear - 3;
+  if (m.includes('10 pro')) return currentYear - 3; // Realme 10 series was late 2022 / early 2023
+  if (m.includes('11 pro')) return currentYear - 2;
+  return currentYear - 3; // safe fallback for most traded-in models
 }
 
 function cleanModelName(model: string, brand: string): string {
@@ -331,33 +300,20 @@ export class PricingService {
         if (launchPrice > 0) {
           const ageYears = Math.max(0, 2026 - releaseYear);
           const brandLower = data.brand.toLowerCase();
-          let mult = 0.55;
-          if (brandLower.includes('apple') || data.model.toLowerCase().includes('iphone')) {
-            if (ageYears <= 1) mult = 0.68;
-            else if (ageYears === 2) mult = 0.55;
-            else if (ageYears === 3) mult = 0.42;
-            else if (ageYears === 4) mult = 0.32;
-            else mult = 0.22;
-          } else if (brandLower.includes('samsung')) {
-            if (ageYears <= 1) mult = 0.60;
-            else if (ageYears === 2) mult = 0.48;
-            else if (ageYears === 3) mult = 0.36;
-            else if (ageYears === 4) mult = 0.26;
-            else mult = 0.16;
-          } else {
-            if (ageYears <= 1) mult = 0.52;
-            else if (ageYears === 2) mult = 0.40;
-            else if (ageYears === 3) mult = 0.30;
-            else if (ageYears === 4) mult = 0.20;
-            else mult = 0.12;
-          }
+          const mult = getDepreciationRate(data.brand, data.model, ageYears);
           basePriceExcellent = Math.round(launchPrice * mult);
         } else {
-          // ── Step 4: Static fallback estimator ─────────────────
-          const est = estimateFallbackBasePrice(data.brand, data.model);
-          basePriceExcellent = est.excellent;
-          launchPrice = Math.round(est.excellent * 1.55);
+          // ── Step 4: Dynamic MSRP Estimator Fallback ───────────
+          const estimatedMSRP = estimateDynamicMSRP(data.brand, data.model);
+          const estimatedYear = estimateDynamicYear(data.model);
+          const estimatedAgeYears = Math.max(0, 2026 - estimatedYear);
+          const clampedAge = Math.min(estimatedAgeYears, 5);
+          const mult = getDepreciationRate(data.brand, data.model, clampedAge);
+          
+          basePriceExcellent = Math.round(estimatedMSRP * mult);
+          launchPrice = estimatedMSRP;
           priceSource = 'estimate';
+          console.log(`[PricingService] Fallback values: MSRP=${estimatedMSRP}, Year=${estimatedYear}, Age=${clampedAge}, Mult=${mult}, Excellent=${basePriceExcellent}`);
         }
       }
     }
@@ -368,6 +324,8 @@ export class PricingService {
     if (cond === 'good') basePrice = Math.round(basePriceExcellent * 0.9);
     else if (cond === 'average') basePrice = Math.round(basePriceExcellent * 0.78);
     else if (cond !== 'excellent') throw new Error(`Invalid condition: '${data.condition}'`);
+
+    console.log(`[PricingService] Final basePrice for condition '${cond}': ${basePrice}`);
 
     const isApple = data.brand.toLowerCase().includes('apple') || data.model.toLowerCase().includes('iphone');
     const iPhoneGen = isApple ? getiPhoneGeneration(data.model) : 0;

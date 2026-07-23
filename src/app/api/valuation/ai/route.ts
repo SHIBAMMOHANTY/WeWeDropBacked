@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { jsonResponse } from '@/lib/api';
 import { calculateReCommerceValuation, ValuationEngineInput } from '@/services/aiValuationEngine';
 import { getCashifyPrice } from '@/lib/cashify-scraper';
-import { calculateQuote } from '@/services/pricing.service';
+import { PricingService } from '@/services/pricing.service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       resolvedBasePrice = cashifyRes.price;
     } else {
       // Direct pipeline query through pricing.service
-      const legacyCalc = await calculateQuote({
+      const legacyCalc = await PricingService.calculateQuote({
         brand,
         model,
         storage: storage.endsWith('GB') ? storage : `${storage}GB`,
@@ -47,10 +47,15 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    let realLaunchPrice = cashifyRes.launchPrice;
+    if (!realLaunchPrice && resolvedBasePrice > 0) {
+      realLaunchPrice = Math.round(resolvedBasePrice * 2);
+    }
+
     const valuation = calculateReCommerceValuation({
       modelCode: model,
       brand,
-      launchPrice: resolvedBasePrice > 0 ? Math.round(resolvedBasePrice * 2) : 25000,
+      launchPrice: realLaunchPrice || 25000,
       launchDate: '2023-01-15',
       reportedRamBytes: ram,
       reportedRomBytes: storageGb,
@@ -100,6 +105,8 @@ export async function POST(req: NextRequest) {
     }
 
     let resolvedBasePrice = body.basePriceOverride;
+    let realLaunchPrice: number | undefined = undefined;
+
     if (!resolvedBasePrice) {
       try {
         const cashifyRes = await getCashifyPrice(
@@ -110,8 +117,9 @@ export async function POST(req: NextRequest) {
         );
         if (cashifyRes.price && cashifyRes.price > 0) {
           resolvedBasePrice = cashifyRes.price;
+          realLaunchPrice = cashifyRes.launchPrice;
         } else {
-          const legacyCalc = await calculateQuote({
+          const legacyCalc = await PricingService.calculateQuote({
             brand: body.brand,
             model: body.friendlyModelName || body.modelCode,
             storage: `${body.reportedRomBytes || 128}GB`,
@@ -126,8 +134,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (!realLaunchPrice && resolvedBasePrice) {
+      realLaunchPrice = Math.round(resolvedBasePrice * 2);
+    }
+
     const valuation = calculateReCommerceValuation({
-      launchPrice: resolvedBasePrice ? Math.round(resolvedBasePrice * 2) : 25000,
+      launchPrice: realLaunchPrice || 25000,
       launchDate: body.launchDate || '2023-01-15',
       reportedRamBytes: body.reportedRamBytes || 6,
       reportedRomBytes: body.reportedRomBytes || 128,

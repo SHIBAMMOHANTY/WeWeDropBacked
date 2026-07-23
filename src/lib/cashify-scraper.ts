@@ -31,32 +31,7 @@ function toCache(key: string, price: number) {
 // ─────────────────────────────────────────────────────────────
 interface DeviceEntry { launchPrice: number; year: number }
 
-const DEVICE_LAUNCH_PRICES: Record<string, DeviceEntry> = {
-  // Apple
-  'apple:iphone 16 pro max:256gb': { launchPrice: 159900, year: 2024 },
-  'apple:iphone 16 pro:128gb':     { launchPrice: 119900, year: 2024 },
-  'apple:iphone 15 pro max:256gb': { launchPrice: 159900, year: 2023 },
-  'apple:iphone 15:128gb':         { launchPrice: 79900,  year: 2023 },
-  'apple:iphone 14:128gb':         { launchPrice: 79900,  year: 2022 },
-  'apple:iphone 13:128gb':         { launchPrice: 69900,  year: 2021 },
-  'apple:iphone 12:128gb':         { launchPrice: 69900,  year: 2020 },
-  'apple:iphone 11:64gb':          { launchPrice: 68300,  year: 2019 },
-
-  // Realme
-  'realme:13 pro+ 5g:256gb':        { launchPrice: 32999, year: 2024 },
-  'realme:13 pro+ 5g:512gb':        { launchPrice: 36999, year: 2024 },
-  'realme:12 pro+ 5g:256gb':        { launchPrice: 29999, year: 2024 },
-  'realme:11 pro+ 5g:256gb':        { launchPrice: 27999, year: 2023 },
-  'realme:10 pro+ 5g:128gb':        { launchPrice: 24999, year: 2023 },
-  'realme:10 pro+ 5g:256gb':        { launchPrice: 27999, year: 2023 },
-  'realme:10 pro 5g:128gb':         { launchPrice: 18999, year: 2022 },
-
-  // Samsung
-  'samsung:galaxy s24 ultra:256gb':  { launchPrice: 129999, year: 2024 },
-  'samsung:galaxy s23 ultra:256gb':  { launchPrice: 124999, year: 2023 },
-  'samsung:galaxy s23:128gb':        { launchPrice: 74999,  year: 2023 },
-  'samsung:galaxy a55:128gb':        { launchPrice: 29999,  year: 2024 },
-};
+const DEVICE_LAUNCH_PRICES: Record<string, DeviceEntry> = {};
 
 // ─────────────────────────────────────────────────────────────
 // DEPRECIATION RATES (calibrated against Cashify/OLX real data)
@@ -64,18 +39,18 @@ const DEVICE_LAUNCH_PRICES: Record<string, DeviceEntry> = {
 interface DepreciationTable { [ageYears: number]: number }
 
 const DEPRECIATION: Record<string, DepreciationTable> = {
-  apple: { 0: 0.85, 1: 0.72, 2: 0.60, 3: 0.50, 4: 0.40, 5: 0.30 },
-  samsung_flagship: { 0: 0.80, 1: 0.68, 2: 0.55, 3: 0.44, 4: 0.35, 5: 0.25 },
-  samsung_mid: { 0: 0.75, 1: 0.60, 2: 0.50, 3: 0.40, 4: 0.30, 5: 0.20 },
-  realme: { 0: 0.78, 1: 0.62, 2: 0.50, 3: 0.40, 4: 0.35, 5: 0.25 },
-  oneplus: { 0: 0.78, 1: 0.64, 2: 0.52, 3: 0.42, 4: 0.32, 5: 0.22 },
-  google: { 0: 0.75, 1: 0.60, 2: 0.48, 3: 0.38, 4: 0.28, 5: 0.18 },
-  xiaomi: { 0: 0.72, 1: 0.58, 2: 0.46, 3: 0.36, 4: 0.26, 5: 0.16 },
-  poco: { 0: 0.72, 1: 0.58, 2: 0.46, 3: 0.36, 4: 0.26, 5: 0.16 },
-  default: { 0: 0.70, 1: 0.55, 2: 0.44, 3: 0.34, 4: 0.24, 5: 0.15 },
+  apple: { 0: 0.85, 1: 0.75, 2: 0.65, 3: 0.56, 4: 0.48, 5: 0.40 },
+  samsung_flagship: { 0: 0.80, 1: 0.70, 2: 0.60, 3: 0.50, 4: 0.42, 5: 0.32 },
+  samsung_mid: { 0: 0.75, 1: 0.62, 2: 0.52, 3: 0.44, 4: 0.35, 5: 0.25 },
+  realme: { 0: 0.78, 1: 0.65, 2: 0.55, 3: 0.42, 4: 0.34, 5: 0.25 },
+  oneplus: { 0: 0.78, 1: 0.66, 2: 0.56, 3: 0.48, 4: 0.40, 5: 0.30 },
+  google: { 0: 0.75, 1: 0.62, 2: 0.52, 3: 0.42, 4: 0.34, 5: 0.25 },
+  xiaomi: { 0: 0.72, 1: 0.60, 2: 0.50, 3: 0.42, 4: 0.34, 5: 0.25 },
+  poco: { 0: 0.72, 1: 0.60, 2: 0.50, 3: 0.42, 4: 0.34, 5: 0.25 },
+  default: { 0: 0.70, 1: 0.58, 2: 0.48, 3: 0.40, 4: 0.30, 5: 0.22 },
 };
 
-function getDepreciationRate(brand: string, model: string, ageYears: number): number {
+export function getDepreciationRate(brand: string, model: string, ageYears: number): number {
   const b = brand.toLowerCase();
   const m = model.toLowerCase();
   const clampedAge = Math.min(ageYears, 5);
@@ -116,8 +91,11 @@ const CONDITION_MULT: Record<string, number> = {
 };
 
 function lookupDeviceEntry(brand: string, model: string, storage: string): DeviceEntry | null {
-  const cleanModelStr = model.toLowerCase().replace(/\+/g, ' plus').replace(/\s+/g, ' ').trim();
-  const key = `${brand}:${cleanModelStr}:${storage}`.toLowerCase().trim();
+  const bLow = brand.toLowerCase().trim();
+  let mLow = model.toLowerCase().trim();
+  if (mLow.startsWith(bLow)) mLow = mLow.slice(bLow.length).trim();
+  const cleanModelStr = mLow.replace(/\+/g, ' plus').replace(/\s+/g, ' ').trim();
+  const key = `${bLow}:${cleanModelStr}:${storage}`.toLowerCase().trim();
   
   // Exact lookup
   if (DEVICE_LAUNCH_PRICES[key]) return DEVICE_LAUNCH_PRICES[key];
@@ -155,6 +133,7 @@ function estimateFromLaunchPrice(
 
 export interface CashifyPriceResult {
   price: number | null;
+  launchPrice?: number;
   source: 'cache' | 'db_lookup' | 'estimated' | 'failed';
   cached: boolean;
 }
@@ -170,6 +149,7 @@ export async function getCashifyPrice(
 
   const cached = fromCache(key);
   if (cached !== null) {
+    // Note: cache doesn't store launchPrice, but it's fine for now, or we can just fetch it again if needed.
     return { price: cached, source: 'cache', cached: true };
   }
 
@@ -177,62 +157,17 @@ export async function getCashifyPrice(
   if (entry) {
     const price = estimateFromLaunchPrice(brand, model, storage, condition, entry);
     toCache(key, price);
-    return { price, source: 'db_lookup', cached: false };
+    return { price, launchPrice: entry.launchPrice, source: 'db_lookup', cached: false };
   }
 
-  // Dynamic automatic calculation for any device missing from launch catalog
-  const estimatedLaunchPrice = hint?.launchPrice && hint.launchPrice > 0 
-    ? hint.launchPrice 
-    : calculateDynamicLaunchPrice(brand, model, storage);
-
-  const estimatedYear = hint?.launchYear ?? estimateLaunchYear(model);
-  const price = estimateFromLaunchPrice(brand, model, storage, condition, { launchPrice: estimatedLaunchPrice, year: estimatedYear });
-  toCache(key, price);
-  return { price, source: 'estimated', cached: false };
-}
-
-function calculateDynamicLaunchPrice(brand: string, model: string, storage: string): number {
-  const b = brand.toLowerCase();
-  const m = model.toLowerCase();
-  let baseMsrp = 25000;
-
-  if (b.includes('apple') || m.includes('iphone')) {
-    if (m.includes('16')) baseMsrp = 79900;
-    else if (m.includes('15')) baseMsrp = 69900;
-    else if (m.includes('14')) baseMsrp = 59900;
-    else if (m.includes('13')) baseMsrp = 49900;
-    else baseMsrp = 39900;
-    if (m.includes('pro max')) baseMsrp *= 1.5;
-    else if (m.includes('pro')) baseMsrp *= 1.3;
-  } else if (b.includes('samsung')) {
-    if (m.includes('ultra')) baseMsrp = 124999;
-    else if (m.includes('fold')) baseMsrp = 154999;
-    else if (m.includes('flip')) baseMsrp = 89999;
-    else if (m.includes('s24') || m.includes('s23')) baseMsrp = 74999;
-    else baseMsrp = 24999;
-  } else if (b.includes('oneplus')) {
-    baseMsrp = m.includes('pro') || m.includes('12') || m.includes('13') ? 64999 : 34999;
-  } else if (b.includes('realme') || b.includes('xiaomi') || b.includes('vivo') || b.includes('oppo') || b.includes('poco')) {
-    if (m.includes('pro+') || m.includes('ultra') || m.includes('gt')) baseMsrp = 32999;
-    else if (m.includes('pro')) baseMsrp = 22999;
-    else baseMsrp = 14999;
+  if (hint?.launchPrice && hint.launchPrice > 0) {
+    const estimatedYear = hint?.launchYear ?? new Date().getFullYear() - 2;
+    const price = estimateFromLaunchPrice(brand, model, storage, condition, { launchPrice: hint.launchPrice, year: estimatedYear });
+    toCache(key, price);
+    return { price, launchPrice: hint.launchPrice, source: 'estimated', cached: false };
   }
 
-  // Storage multiplier
-  const storageGb = parseInt(storage) || 128;
-  if (storageGb >= 512) baseMsrp *= 1.25;
-  else if (storageGb >= 256) baseMsrp *= 1.12;
-
-  return Math.round(baseMsrp);
-}
-
-function estimateLaunchYear(model: string): number {
-  const m = model.toLowerCase();
-  const currentYear = new Date().getFullYear();
-  if (m.includes('16') || m.includes('24') || m.includes('s24') || m.includes('14 pro')) return currentYear;
-  if (m.includes('15') || m.includes('23') || m.includes('s23') || m.includes('13 pro') || m.includes('10 pro')) return currentYear - 1;
-  if (m.includes('14') || m.includes('22') || m.includes('s22')) return currentYear - 2;
-  return currentYear - 2;
+  return { price: null, source: 'failed', cached: false };
 }
 
 export { priceCache };
