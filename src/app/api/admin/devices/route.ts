@@ -11,7 +11,7 @@ async function requireAdmin(req: Request) { const session = await getAuthSession
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin(req); const { searchParams } = new URL(req.url); const brand = searchParams.get('brand')?.trim();
+    const { searchParams } = new URL(req.url); const brand = searchParams.get('brand')?.trim();
     if (searchParams.get('view') === 'brands') {
       const rows = await prisma.deviceMaster.findMany({ where: { isDeleted: false }, select: { brand: true } });
       const counts = new Map<string, number>();
