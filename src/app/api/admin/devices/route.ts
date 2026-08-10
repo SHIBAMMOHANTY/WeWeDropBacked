@@ -7,9 +7,32 @@ export const dynamic = 'force-dynamic';
 
 const noStoreHeaders = { 'Cache-Control': 'no-store' };
 
-const deviceSchema = z.object({ brand: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(200), storage: z.string().trim().min(1).max(30), launchPrice: z.number().nonnegative(), launchDate: z.string().trim().max(30).optional().nullable(), basePriceExcellent: z.number().nonnegative(), basePriceGood: z.number().nonnegative(), basePriceAverage: z.number().nonnegative(), isActive: z.boolean().optional() });
+const deviceSchema = z.object({
+  brand: z.string().trim().min(1).max(100),
+  model: z.string().trim().min(1).max(200),
+  name: z.string().trim().min(1).max(240).optional().nullable(),
+  storage: z.string().trim().min(1).max(30),
+  launchPrice: z.number().nonnegative(),
+  launchDate: z.string().trim().max(30).optional().nullable(),
+  basePriceExcellent: z.number().nonnegative(),
+  basePriceGood: z.number().nonnegative(),
+  basePriceAverage: z.number().nonnegative(),
+  isActive: z.boolean().optional()
+});
 const updateSchema = deviceSchema.partial().extend({ id: z.string().min(1) });
 async function requireAdmin(req: Request) { const session = await getAuthSession(req); if (session.role !== 'SUPER_ADMIN') throw new Error('Forbidden'); }
+
+function normalizeDeviceName(brand: string, model: string, existingName?: string | null) {
+  const brandValue = String(brand || '').trim();
+  const modelValue = String(model || '').trim();
+  const requestedName = String(existingName || '').trim();
+
+  if (requestedName) return requestedName;
+  if (!brandValue || !modelValue) return '';
+
+  const alreadyPrefixed = modelValue.toLowerCase().startsWith(brandValue.toLowerCase());
+  return alreadyPrefixed ? modelValue : `${brandValue} ${modelValue}`;
+}
 
 export async function GET(req: Request) {
   try {
@@ -18,19 +41,23 @@ export async function GET(req: Request) {
       const rows = await prisma.deviceMaster.findMany({ where: { isDeleted: false }, select: { brand: true } });
       const counts = new Map<string, number>();
       for (const row of rows) counts.set(row.brand, (counts.get(row.brand) || 0) + 1);
-      const brands = [...counts.entries()].map(([brand, deviceCount]) => ({ brand, deviceCount })).sort((a, b) => a.brand.localeCompare(b.brand));
+      const brands = [...counts.entries()]
+        .map(([brand, deviceCount]) => ({ brand, deviceCount }))
+        .filter((item) => Number(item.deviceCount) > 0)
+        .sort((a, b) => a.brand.localeCompare(b.brand));
       return jsonResponse({ success: true, brands }, 200, noStoreHeaders);
     }
     const page = Math.max(1, Number(searchParams.get('page')) || 1); const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 25));
     const where: any = { isDeleted: false };
     if (brand) where.brand = { equals: brand, mode: 'insensitive' as const };
-    const [total, devices] = await Promise.all([prisma.deviceMaster.count({ where }), prisma.deviceMaster.findMany({ where, orderBy: [{ model: 'asc' }, { storage: 'asc' }], skip: (page - 1) * limit, take: limit })]);
+    const [total, devices] = await Promise.all([prisma.deviceMaster.count({ where }), prisma.deviceMaster.findMany({ where, orderBy: [{ name: 'asc' }, { storage: 'asc' }, { model: 'asc' }], skip: (page - 1) * limit, take: limit })]);
     return jsonResponse({ success: true, devices, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }, 200, noStoreHeaders);
   } catch (error: any) { return jsonResponse({ error: error.message || 'Failed to load devices' }, error.message === 'Forbidden' ? 403 : 500, noStoreHeaders); }
 }
 
 export async function POST(req: Request) {
-  try { await requireAdmin(req); const input = deviceSchema.parse(await req.json()); const device = await prisma.deviceMaster.create({ data: { ...input, isActive: input.isActive ?? true } }); return jsonResponse({ success: true, device }, 201, noStoreHeaders); }
+  try { await requireAdmin(req); const input = deviceSchema.parse(await req.json()); const normalizedName = normalizeDeviceName(input.brand, input.model, input.name);
+    const device = await prisma.deviceMaster.create({ data: { ...input, name: normalizedName, isActive: input.isActive ?? true } }); return jsonResponse({ success: true, device }, 201, noStoreHeaders); }
   catch (error: any) { if (error instanceof z.ZodError) return jsonResponse({ error: 'Validation failed', details: error.errors }, 400, noStoreHeaders); if (error.code === 'P2002') return jsonResponse({ error: 'A device with this brand, model, and storage already exists' }, 409, noStoreHeaders); return jsonResponse({ error: error.message || 'Failed to create device' }, error.message === 'Forbidden' ? 403 : 500, noStoreHeaders); }
 }
 
@@ -67,7 +94,8 @@ export async function PATCH(req: Request) {
       return jsonResponse({ error: 'A device with this brand, model, and storage already exists' }, 409, noStoreHeaders);
     }
 
-    const device = await prisma.deviceMaster.update({ where: { id }, data });
+    const nextName = normalizeDeviceName(nextBrand, nextModel, data.name ?? undefined);
+    const device = await prisma.deviceMaster.update({ where: { id }, data: { ...data, name: nextName } });
     return jsonResponse({ success: true, device }, 200, noStoreHeaders);
   } catch (error: any) {
     if (error instanceof z.ZodError) return jsonResponse({ error: 'Validation failed', details: error.errors }, 400, noStoreHeaders);

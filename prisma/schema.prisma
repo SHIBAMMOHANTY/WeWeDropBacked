@@ -432,6 +432,7 @@ model DeviceMaster {
   id                 String   @id @default(auto()) @map("_id") @db.ObjectId
   brand              String
   model              String
+  name               String?  // Friendly brand + model display key, e.g. "iQOO Z7 5G", "Apple iPhone 11"
   storage            String
   launchPrice        Float
   launchDate         String?
@@ -444,6 +445,8 @@ model DeviceMaster {
   updatedAt          DateTime @updatedAt
 
   @@unique([brand, model, storage])
+  @@index([brand, model])
+  @@index([name])
   @@index([isActive])
   @@index([isDeleted])
 }
