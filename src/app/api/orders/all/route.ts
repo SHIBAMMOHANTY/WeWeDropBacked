@@ -1,51 +1,28 @@
-export const runtime = "nodejs";
+﻿export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-// OPTIONS handler for CORS preflight
 export async function OPTIONS() {
-  const response = new Response(null, { status: 204 });
+  const response = new NextResponse(null, { status: 200 });
   response.headers.set('Access-Control-Allow-Origin', '*');
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   return response;
 }
 
-function mapPaymentStatus(status: unknown) {
-  switch (Number(status)) {
-    case -1:
-      return 'REJECTED';
-    case 0:
-      return 'PENDING';
-    case 1:
-      return 'VERIFY';
-    default:
-      return 'UNKNOWN';
-  }
+function mapPaymentStatus(status: number | null | undefined): string {
+  if (status === 1) return "VERIFIED";
+  if (status === -1) return "REJECTED";
+  return "PENDING";
 }
 
-// GET /api/orders/all
 export async function GET(req: NextRequest) {
-  console.log("GET /api/orders/all called");
   try {
-    // Get year filter from query parameters (optional)
     const { searchParams } = new URL(req.url);
-    const yearFilter = searchParams.get("year");
-    
-    const isLowPriorityServiceDate = (value: Date | string | null | undefined) => {
-      if (!value) return false;
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return false;
+    const yearFilter = searchParams.get('year');
 
-      const year = date.getUTCFullYear();
-      const day = date.getUTCDate();
-
-      return year >= 2023 && year <= 2025 && day < 10;
-    };
-
-    // Fetch orders without the business include (to avoid invalid ObjectID errors)
     const orders = await prisma.order.findMany({
       where: { deleted: false },
       orderBy: [
@@ -54,7 +31,6 @@ export async function GET(req: NextRequest) {
       ]
     });
     
-    // Filter by year if provided
     let filteredOrders = orders;
     if (yearFilter) {
       const targetYear = parseInt(yearFilter, 10);
@@ -64,35 +40,8 @@ export async function GET(req: NextRequest) {
           const date = new Date(order.serviceDate);
           return date.getUTCFullYear() === targetYear;
         });
-        console.log(`Filtered orders by year ${targetYear}: ${filteredOrders.length} orders`);
       }
     }
-
-    filteredOrders.sort((left, right) => {
-      const leftLowPriority = isLowPriorityServiceDate(left.serviceDate);
-      const rightLowPriority = isLowPriorityServiceDate(right.serviceDate);
-
-      if (leftLowPriority !== rightLowPriority) {
-        return leftLowPriority ? 1 : -1;
-      }
-
-      // Sort by serviceDate year (descending - newest year first)
-      const leftServiceYear = left.serviceDate ? new Date(left.serviceDate).getUTCFullYear() : 0;
-      const rightServiceYear = right.serviceDate ? new Date(right.serviceDate).getUTCFullYear() : 0;
-
-      if (rightServiceYear !== leftServiceYear) {
-        return rightServiceYear - leftServiceYear;
-      }
-
-      const leftCreatedAt = new Date(left.createdAt).getTime();
-      const rightCreatedAt = new Date(right.createdAt).getTime();
-
-      if (rightCreatedAt !== leftCreatedAt) {
-        return rightCreatedAt - leftCreatedAt;
-      }
-
-      return right.id.localeCompare(left.id);
-    });
 
     const orderIds = filteredOrders.map(order => order.id);
     const payments = orderIds.length > 0
@@ -118,41 +67,33 @@ export async function GET(req: NextRequest) {
       }
     }
     
-    // Fetch all businesses and users
     const businesses = await prisma.business.findMany();
     const users = await prisma.user.findMany();
     
     const businessMap = new Map(businesses.map(b => [b.id, b]));
     const userMap = new Map(users.map(u => [u.id, u]));
-    
-    // Create a map by dealerName as fallback for invalid IDs
     const businessByNameMap = new Map(businesses.map(b => [b.dealerName.toLowerCase(), b]));
     
     const totalCount = yearFilter 
       ? filteredOrders.length 
       : await prisma.order.count({ where: { deleted: false } });
-    console.log(`Fetched ${filteredOrders.length} filtered orders from /all, totalCount: ${totalCount}`);
-    console.log('First order status:', filteredOrders[0]?.orderStatus);
 
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
       '-1': 'REJECTED',
-      2: 'READY_FOR_PICKUP',
+      2: 'PICKUP_SUCCESSFUL',
       3: 'REPAIRING',
-      4: 'DELIVERED'
+      4: 'OUT_FOR_DELIVERY',
+      5: 'DELIVERED'
     };
 
     const ordersWithStatus = filteredOrders.map(order => {
-      // Try to find business by ID first
       let business = order.businessId ? businessMap.get(order.businessId) : null;
-      
-      // If not found by ID and businessId is a string (not ObjectID), try to find by name
       if (!business && order.businessId && typeof order.businessId === 'string') {
         business = businessByNameMap.get(order.businessId.toLowerCase());
       }
       
-      // Get user details
       const user = order.userId ? userMap.get(order.userId) : null;
       
       return {
@@ -204,20 +145,12 @@ export async function GET(req: NextRequest) {
           role: user.role,
           isActive: user.isActive,
           avatar: user.avatar,
-          gstName: user.gstName || null,
-          gstNumber: user.gstNumber || null,
-          gstAddress: user.gstAddress || null
         } : null,
         business: business ? {
           id: business.id,
           dealerName: business.dealerName,
           contactNumber: business.contactNumber,
           email: business.email,
-          gstName: business.gstName,
-          gstNumber: business.gstNumber,
-          gstAddress: business.gstAddress,
-          approved: business.approved,
-          isActive: business.isActive
         } : null,
         businessPhone: business?.contactNumber || null,
         status: statusMap[order.orderStatus] || 'UNKNOWN'
