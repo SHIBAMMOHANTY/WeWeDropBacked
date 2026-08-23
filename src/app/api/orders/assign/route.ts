@@ -1,4 +1,4 @@
-﻿export const runtime = "nodejs";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
@@ -20,6 +20,35 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   return handleAssign(req);
+}
+
+async function updateOrderAgent(ordId: string, targetAgentId: string | null, nextStatus: number, statusText: string) {
+  const updatePayload: any = {
+    orderStatus: nextStatus,
+    status: statusText,
+  };
+
+  // Try updating with relation connect/disconnect
+  if (targetAgentId) {
+    updatePayload.deliveryAgent = { connect: { id: targetAgentId } };
+  } else {
+    updatePayload.deliveryAgent = { disconnect: true };
+  }
+
+  try {
+    return await prisma.order.update({
+      where: { id: ordId },
+      data: updatePayload,
+    });
+  } catch (err: any) {
+    // Fallback to scalar deliveryAgentId if relation connect is not defined in schema
+    delete updatePayload.deliveryAgent;
+    updatePayload.deliveryAgentId = targetAgentId;
+    return await prisma.order.update({
+      where: { id: ordId },
+      data: updatePayload,
+    });
+  }
 }
 
 async function handleAssign(req: NextRequest) {
@@ -53,7 +82,6 @@ async function handleAssign(req: NextRequest) {
       const stringOrderIds = orderIds.map((id: any) => String(id));
       const validObjectIds = stringOrderIds.filter((id: string) => /^[a-fA-F0-9]{24}$/.test(id));
 
-      // Find orders to check if any are in REPAIRING (3) phase
       const ordersToUpdate = await prisma.order.findMany({
         where: {
           OR: [
@@ -65,18 +93,10 @@ async function handleAssign(req: NextRequest) {
 
       let updatedCount = 0;
       for (const ord of ordersToUpdate) {
-        // If order status is 3 (REPAIRING) or 2, reassigning agent advances status to 4 (OUT_FOR_DELIVERY)
-        const nextStatus = (ord.orderStatus === 3 || ord.orderStatus === 2) ? 4 : ord.orderStatus;
-        const statusText = nextStatus === 4 ? "OUT_FOR_DELIVERY" : ord.status;
+        const nextStatus = (ord.orderStatus === 3 || ord.orderStatus === 2) ? 4 : (ord.orderStatus || 1);
+        const statusText = nextStatus === 4 ? "OUT_FOR_DELIVERY" : (ord.status || "PICKUP_REQUESTED");
 
-        await prisma.order.update({
-          where: { id: ord.id },
-          data: { 
-            deliveryAgentId: targetAgentId,
-            orderStatus: nextStatus,
-            status: statusText,
-          },
-        });
+        await updateOrderAgent(ord.id, targetAgentId, nextStatus, statusText);
         updatedCount++;
       }
 
@@ -118,33 +138,16 @@ async function handleAssign(req: NextRequest) {
       );
     }
 
-    // If order is currently in status 3 (REPAIRING) or 2, reassigning agent automatically advances to status 4 (OUT_FOR_DELIVERY)
-    const newOrderStatus = (existingOrder.orderStatus === 3 || existingOrder.orderStatus === 2) ? 4 : existingOrder.orderStatus;
-    const newStatusText = newOrderStatus === 4 ? "OUT_FOR_DELIVERY" : existingOrder.status;
+    const newOrderStatus = (existingOrder.orderStatus === 3 || existingOrder.orderStatus === 2) ? 4 : (existingOrder.orderStatus || 1);
+    const newStatusText = newOrderStatus === 4 ? "OUT_FOR_DELIVERY" : (existingOrder.status || "PICKUP_REQUESTED");
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: existingOrder.id },
-      data: { 
-        deliveryAgentId: targetAgentId,
-        orderStatus: newOrderStatus,
-        status: newStatusText,
-      },
-      select: {
-        id: true,
-        orderId: true,
-        deliveryAgentId: true,
-        orderStatus: true,
-        status: true,
-        customerName: true,
-        productName: true,
-      },
-    });
+    const updatedOrder = await updateOrderAgent(existingOrder.id, targetAgentId, newOrderStatus, newStatusText);
 
     return NextResponse.json(
       {
         success: true,
         message: newOrderStatus === 4 
-          ? "Order assigned for delivery and status updated to OUT FOR DELIVERY (4)" 
+          ? "Order assigned for delivery and status updated to OUT FOR DELIVERY" 
           : "Order agent assignment updated",
         updatedOrder,
         updatedCount: 1,
