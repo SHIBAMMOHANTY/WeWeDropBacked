@@ -91,6 +91,19 @@ model User {
   // Avatar image URL with default empty string
   avatar String @default("")
 
+  address     String?
+  city        String?
+  state       String?
+  pincode     String?
+  serviceArea String?
+
+  aadharNumber String?
+  aadharFront  String?
+  aadharBack   String?
+  dlNumber     String?
+  dlPhoto      String?
+  otherDoc     String?
+
   numericId Int?
 }
 
@@ -353,7 +366,7 @@ model OrderHistory {
   paymentStatus  Int      @default(0) // -1 = REJECTED, 0 = PENDING, 1 = VERIFY
   createdAt      DateTime @default(now())
 
-  // ⚡ PERFORMANCE: Indexes for common queries
+  // âš¡ PERFORMANCE: Indexes for common queries
   @@index([orderId])
   @@index([userId])
   @@index([createdAt])
@@ -593,5 +606,6 @@ model PriceHistory {
   @@index([deviceId])
   @@index([recordedAt])
 }
+
 
 
