@@ -22,17 +22,13 @@ export async function PATCH(req: NextRequest) {
   return handleAssign(req);
 }
 
-async function updateOrderAgent(ordId: string, targetAgentId: string | null, nextStatus: number, statusText: string) {
+async function updateOrderAgent(ordId: string, targetAgentId: string | null, nextStatus: number) {
   const updatePayload: any = {
     orderStatus: nextStatus,
-    status: statusText,
   };
 
-  // Try updating with relation connect/disconnect
   if (targetAgentId) {
-    updatePayload.deliveryAgent = { connect: { id: targetAgentId } };
-  } else {
-    updatePayload.deliveryAgent = { disconnect: true };
+    updatePayload.deliveryAgentId = targetAgentId;
   }
 
   try {
@@ -41,13 +37,16 @@ async function updateOrderAgent(ordId: string, targetAgentId: string | null, nex
       data: updatePayload,
     });
   } catch (err: any) {
-    // Fallback to scalar deliveryAgentId if relation connect is not defined in schema
-    delete updatePayload.deliveryAgent;
-    updatePayload.deliveryAgentId = targetAgentId;
-    return await prisma.order.update({
-      where: { id: ordId },
-      data: updatePayload,
-    });
+    // If relation update is needed
+    if (targetAgentId) {
+      updatePayload.deliveryAgent = { connect: { id: targetAgentId } };
+      delete updatePayload.deliveryAgentId;
+      return await prisma.order.update({
+        where: { id: ordId },
+        data: updatePayload,
+      });
+    }
+    throw err;
   }
 }
 
@@ -94,9 +93,7 @@ async function handleAssign(req: NextRequest) {
       let updatedCount = 0;
       for (const ord of ordersToUpdate) {
         const nextStatus = (ord.orderStatus === 3 || ord.orderStatus === 2) ? 4 : (ord.orderStatus || 1);
-        const statusText = nextStatus === 4 ? "OUT_FOR_DELIVERY" : (ord.status || "PICKUP_REQUESTED");
-
-        await updateOrderAgent(ord.id, targetAgentId, nextStatus, statusText);
+        await updateOrderAgent(ord.id, targetAgentId, nextStatus);
         updatedCount++;
       }
 
@@ -139,9 +136,7 @@ async function handleAssign(req: NextRequest) {
     }
 
     const newOrderStatus = (existingOrder.orderStatus === 3 || existingOrder.orderStatus === 2) ? 4 : (existingOrder.orderStatus || 1);
-    const newStatusText = newOrderStatus === 4 ? "OUT_FOR_DELIVERY" : (existingOrder.status || "PICKUP_REQUESTED");
-
-    const updatedOrder = await updateOrderAgent(existingOrder.id, targetAgentId, newOrderStatus, newStatusText);
+    const updatedOrder = await updateOrderAgent(existingOrder.id, targetAgentId, newOrderStatus);
 
     return NextResponse.json(
       {

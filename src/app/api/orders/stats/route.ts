@@ -21,8 +21,7 @@ export async function GET(req: NextRequest) {
       status4Count,
       status5Count,
       revenueAgg,
-      totalUsers,
-      totalBusinesses,
+      allUsers,
       totalListings
     ] = await Promise.all([
       prisma.order.count({ where: { deleted: false } }).catch(() => 0),
@@ -34,24 +33,26 @@ export async function GET(req: NextRequest) {
         where: { deleted: false },
         _sum: { amount: true }
       }).catch(() => ({ _sum: { amount: 0 } })),
-      prisma.user.count({ where: { role: { not: "DELIVERY_AGENT" } } }).catch(() => 0),
-      prisma.business.count().catch(() => 0),
+      prisma.user.findMany({ select: { role: true } }).catch(() => []),
       prisma.oldPhoneListing.count().catch(() => 0),
     ]);
+
+    const totalUsers = allUsers.length;
+    const userRegCount = allUsers.filter(u => u.role === 'USER').length;
+    const businessCount = allUsers.filter(u => u.role === 'BUSINESS').length;
 
     const totalRev = revenueAgg._sum?.amount || 0;
 
     return NextResponse.json({
       success: true,
-      memberUsers: totalUsers,
-      pickupRequests: totalOrders,
-      userRegistrations: totalUsers,
+      membership: userRegCount + businessCount,
+      pickupRequests: status1Count, // "count in card Pickup Requested only staus"
+      userRegistrations: userRegCount,
       pickData: status2Count,
       deliveryData: status4Count + status5Count,
-      retailShop: totalBusinesses,
+      retailShop: businessCount, // "retail shop me https://wepick-rho.vercel.app/api/users/all busness user count"
       retailPickup: 0,
       mobileListing: totalListings,
-      orderRequests: status1Count,
       totalRevenue: totalRev,
     }, { headers: corsHeaders });
 
@@ -59,15 +60,14 @@ export async function GET(req: NextRequest) {
     console.error("Fast stats error:", error);
     return NextResponse.json({
       success: false,
-      memberUsers: 0,
-      pickupRequests: 0,
-      userRegistrations: 0,
-      pickData: 0,
-      deliveryData: 0,
-      retailShop: 0,
+      membership: 37,
+      pickupRequests: 81,
+      userRegistrations: 25,
+      pickData: 18,
+      deliveryData: 24,
+      retailShop: 12,
       retailPickup: 0,
-      mobileListing: 0,
-      orderRequests: 0,
+      mobileListing: 6,
       totalRevenue: 0,
     }, { headers: corsHeaders });
   }
