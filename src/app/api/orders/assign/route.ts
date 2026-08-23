@@ -3,7 +3,6 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { verifyToken } from "@/lib/auth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,7 +31,7 @@ async function handleAssign(req: NextRequest) {
     try {
       body = await req.json();
     } catch (e) {
-      // Body might be empty if query parameters used
+      // Body might be empty
     }
 
     const { deliveryAgentId, orderId: bodyOrderId, orderIds } = body;
@@ -51,15 +50,23 @@ async function handleAssign(req: NextRequest) {
 
     // 1. Bulk Assignment if orderIds array is provided
     if (Array.isArray(orderIds) && orderIds.length > 0) {
+      const stringOrderIds = orderIds.map((id: any) => String(id));
+      const validObjectIds = stringOrderIds.filter((id: string) => /^[a-fA-F0-9]{24}$/.test(id));
+
       const result = await prisma.order.updateMany({
-        where: { id: { in: orderIds } },
+        where: {
+          OR: [
+            ...(validObjectIds.length > 0 ? [{ id: { in: validObjectIds } }] : []),
+            { orderId: { in: stringOrderIds } },
+          ],
+        },
         data: { deliveryAgentId: targetAgentId },
       });
 
       return NextResponse.json(
         {
           success: true,
-          message: `Successfully assigned ${result.count} orders to agent`,
+          message: `Successfully assigned ${result.count} order(s) to agent`,
           updatedCount: result.count,
         },
         { headers: corsHeaders }
@@ -75,11 +82,31 @@ async function handleAssign(req: NextRequest) {
       );
     }
 
+    const cleanSingleId = String(singleOrderId);
+    const isObjectId = /^[a-fA-F0-9]{24}$/.test(cleanSingleId);
+
+    const existingOrder = await prisma.order.findFirst({
+      where: {
+        OR: [
+          ...(isObjectId ? [{ id: cleanSingleId }] : []),
+          { orderId: cleanSingleId },
+        ],
+      },
+    });
+
+    if (!existingOrder) {
+      return NextResponse.json(
+        { success: false, error: "Order not found for assignment" },
+        { status: 404, headers: corsHeaders }
+      );
+    }
+
     const updatedOrder = await prisma.order.update({
-      where: { id: singleOrderId },
+      where: { id: existingOrder.id },
       data: { deliveryAgentId: targetAgentId },
       select: {
         id: true,
+        orderId: true,
         deliveryAgentId: true,
         customerName: true,
         productName: true,
