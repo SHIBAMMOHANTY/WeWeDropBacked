@@ -26,43 +26,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const yearFilter = searchParams.get('year');
 
-    // OPTIMIZED QUERY: Direct relational fetches with lean projections
+    // SAFE FETCH: Avoid Prisma relation joins on businessId to prevent Malformed ObjectID errors when businessId is a plain string
     const orders = await prisma.order.findMany({
       where: { deleted: false },
       orderBy: [
         { createdAt: "desc" },
         { id: "desc" }
-      ],
-      include: {
-        user: {
-          select: {
-            id: true,
-            phone: true,
-            username: true,
-            email: true,
-            role: true,
-            isActive: true,
-            avatar: true,
-          }
-        },
-        deliveryAgent: {
-          select: {
-            id: true,
-            phone: true,
-            username: true,
-            email: true,
-            serviceArea: true,
-          }
-        },
-        business: {
-          select: {
-            id: true,
-            dealerName: true,
-            contactNumber: true,
-            email: true,
-          }
-        }
-      }
+      ]
     });
 
     let filteredOrders = orders;
@@ -77,6 +47,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Safely load businesses and users for manual map lookup
+    const [businesses, users] = await Promise.all([
+      prisma.business.findMany().catch(() => []),
+      prisma.user.findMany().catch(() => []),
+    ]);
+
+    const businessMap = new Map(businesses.map(b => [String(b.id), b]));
+    const userMap = new Map(users.map(u => [String(u.id), u]));
+    const businessByNameMap = new Map(businesses.map(b => [b.dealerName.toLowerCase().trim(), b]));
+
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
@@ -88,7 +68,16 @@ export async function GET(req: NextRequest) {
     };
 
     const ordersWithStatus = filteredOrders.map(order => {
-      const stCode = order.orderStatus;
+      let business = order.businessId ? businessMap.get(String(order.businessId)) : null;
+      if (!business && order.businessId && typeof order.businessId === 'string') {
+        business = businessByNameMap.get(order.businessId.toLowerCase().trim());
+      }
+      
+      const user = order.userId ? userMap.get(String(order.userId)) : null;
+      const deliveryAgent = order.deliveryAgentId ? userMap.get(String(order.deliveryAgentId)) : null;
+
+      const stCode = Number(order.orderStatus !== undefined ? order.orderStatus : 1);
+
       return {
         id: order.id,
         orderId: order.orderId,
@@ -102,9 +91,9 @@ export async function GET(req: NextRequest) {
         billImage: order.billImage,
         utrScreenshot: order.utrScreenshot,
         invoicePdf: order.invoicePdf,
-        serviceDate: order.serviceDate ? new Date(order.serviceDate).toISOString().slice(0, 10) : null,
-        deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0, 10) : null,
-        serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0, 10) : null,
+        serviceDate: order.serviceDate ? new Date(order.serviceDate).toISOString().slice(0,10) : null,
+        deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : null,
+        serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0,10) : null,
         billingDate: order.billingDate,
         orderDate: order.createdAt,
         customerName: order.customerName,
@@ -130,10 +119,29 @@ export async function GET(req: NextRequest) {
         expireDate: order.expireDate,
         createdAt: order.createdAt,
         deleted: order.deleted,
-        user: order.user || null,
-        deliveryAgent: order.deliveryAgent || null,
-        business: order.business || null,
-        businessPhone: order.business?.contactNumber || null,
+        user: user ? {
+          id: user.id,
+          phone: user.phone,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          isActive: user.isActive,
+          avatar: user.avatar,
+        } : null,
+        deliveryAgent: deliveryAgent ? {
+          id: deliveryAgent.id,
+          phone: deliveryAgent.phone,
+          username: deliveryAgent.username,
+          email: deliveryAgent.email,
+          serviceArea: deliveryAgent.serviceArea,
+        } : null,
+        business: business ? {
+          id: business.id,
+          dealerName: business.dealerName,
+          contactNumber: business.contactNumber,
+          email: business.email,
+        } : null,
+        businessPhone: business?.contactNumber || null,
         status: statusMap[stCode] || 'UNKNOWN'
       };
     });

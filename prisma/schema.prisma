@@ -135,7 +135,6 @@ model Business {
 
   createdAt DateTime @default(now())
 
-  orders           Order[]
   oldPhoneListings OldPhoneListing[]
   notifications    Notification[]
 }
@@ -150,12 +149,12 @@ model Order {
 
   // Relations
   userId          String
-  businessId      String?
   deliveryAgentId String?
 
   user          User?     @relation("OrderUser", fields: [userId], references: [id])
   deliveryAgent User?     @relation("OrderDeliveryAgent", fields: [deliveryAgentId], references: [id])
-  business      Business? @relation(fields: [businessId], references: [id])
+  // Flexible businessId string (allows both ObjectId and dealer name strings)
+  businessId      String?
 
   // Service Details
   membershipType    MembershipType
