@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       dlNumber,
       dlPhoto,
       otherDoc,
+      isActive, // optional override by admin
     } = body;
 
     if (!phone || !password) {
@@ -49,6 +50,9 @@ export async function POST(req: NextRequest) {
     const cleanPhone = String(phone).trim();
     const cleanPassword = String(password).trim();
     const agentName = username || name || `Agent-${cleanPhone.slice(-4)}`;
+
+    // Default isActive to false (Disabled / Pending Approval) unless specified by admin
+    const defaultIsActive = typeof isActive === "boolean" ? isActive : false;
 
     // Check if user with this phone already exists
     const existingUser = await prisma.user.findUnique({
@@ -73,7 +77,7 @@ export async function POST(req: NextRequest) {
           password: hashedPassword,
           username: agentName,
           email: email || existingUser.email,
-          isActive: true,
+          isActive: defaultIsActive, // Default Disabled until admin activates
           address: address || existingUser.address,
           city: city || existingUser.city,
           state: state || existingUser.state,
@@ -93,14 +97,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          message: "Account enabled as Delivery Agent successfully",
+          message: "Account registered as Delivery Agent (Pending Admin Activation)",
           agent: agentData,
         },
         { status: 200, headers: corsHeaders }
       );
     }
 
-    // Create new Agent user if phone does not exist in DB
+    // Create new Agent user if phone does not exist in DB (Default Disabled: false)
     const agent = await prisma.user.create({
       data: {
         phone: cleanPhone,
@@ -108,7 +112,7 @@ export async function POST(req: NextRequest) {
         username: agentName,
         email: email || null,
         role: "DELIVERY_AGENT",
-        isActive: true,
+        isActive: defaultIsActive, // Default Disabled until admin activates
         // Location & Address
         address: address || null,
         city: city || null,
@@ -130,7 +134,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: "Delivery Agent registered successfully",
+        message: "Delivery Agent registered successfully (Pending Admin Activation)",
         agent: agentData,
       },
       { status: 201, headers: corsHeaders }
