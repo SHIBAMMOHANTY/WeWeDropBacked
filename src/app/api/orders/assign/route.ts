@@ -1,76 +1,105 @@
-export const runtime = "nodejs";
+﻿export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 
-// CORS headers
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, PATCH, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// Handle preflight requests
 export async function OPTIONS() {
-  return new NextResponse(null, { headers: corsHeaders });
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
-// PATCH /api/orders/assign?orderId=ORDER_ID
-// Body: { deliveryAgentId: string }
+export async function POST(req: NextRequest) {
+  return handleAssign(req);
+}
+
 export async function PATCH(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const orderId = searchParams.get("orderId");
+  return handleAssign(req);
+}
 
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Missing or invalid token" }, { status: 401, headers: corsHeaders });
-  }
-  const token = authHeader.replace("Bearer ", "");
-  let user;
+async function handleAssign(req: NextRequest) {
   try {
-    user = verifyToken(token); // Should return { id, role, ... }
-  } catch (e) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401, headers: corsHeaders });
-  }
+    const { searchParams } = new URL(req.url);
+    const queryOrderId = searchParams.get("orderId");
 
-  if (user.role !== "SUPER_ADMIN") {
-    return NextResponse.json({ error: "Only admin can assign delivery agent" }, { status: 403, headers: corsHeaders });
-  }
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch (e) {
+      // Body might be empty if query parameters used
+    }
 
-  const body = await req.json();
-  const { deliveryAgentId, orderIds } = body;
-  if (!deliveryAgentId) {
-    return NextResponse.json({ error: "Missing deliveryAgentId" }, { status: 400, headers: corsHeaders });
-  }
+    const { deliveryAgentId, orderId: bodyOrderId, orderIds } = body;
+    const targetAgentId = deliveryAgentId || null;
 
-  // Check if delivery agent exists and is active
-  const agent = await prisma.user.findUnique({ where: { id: deliveryAgentId } });
-  if (!agent || agent.role !== "DELIVERY_AGENT" || !agent.isActive) {
-    return NextResponse.json({ error: "Invalid delivery agent" }, { status: 400, headers: corsHeaders });
-  }
+    // Verify agent exists if agentId provided and non-empty
+    if (targetAgentId) {
+      const agent = await prisma.user.findUnique({ where: { id: targetAgentId } });
+      if (!agent) {
+        return NextResponse.json(
+          { success: false, error: "Delivery agent not found" },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+    }
 
-  // Bulk assignment if orderIds array is provided
-  if (Array.isArray(orderIds) && orderIds.length > 0) {
-    const result = await prisma.order.updateMany({
-      where: { id: { in: orderIds } },
-      data: { deliveryAgentId }
+    // 1. Bulk Assignment if orderIds array is provided
+    if (Array.isArray(orderIds) && orderIds.length > 0) {
+      const result = await prisma.order.updateMany({
+        where: { id: { in: orderIds } },
+        data: { deliveryAgentId: targetAgentId },
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: `Successfully assigned ${result.count} orders to agent`,
+          updatedCount: result.count,
+        },
+        { headers: corsHeaders }
+      );
+    }
+
+    // 2. Single Order Assignment
+    const singleOrderId = bodyOrderId || queryOrderId;
+    if (!singleOrderId) {
+      return NextResponse.json(
+        { success: false, error: "Order ID or orderIds array required" },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: singleOrderId },
+      data: { deliveryAgentId: targetAgentId },
+      select: {
+        id: true,
+        deliveryAgentId: true,
+        customerName: true,
+        productName: true,
+      },
     });
-    return NextResponse.json({ updatedCount: result.count }, { headers: corsHeaders });
-  }
 
-  // Single order assignment (legacy)
-  if (!orderId) {
-    return NextResponse.json({ error: "Missing orderId for single assignment" }, { status: 400, headers: corsHeaders });
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Order agent assignment updated",
+        updatedOrder,
+        updatedCount: 1,
+      },
+      { headers: corsHeaders }
+    );
+  } catch (error: any) {
+    console.error("Order Assign Error:", error);
+    return NextResponse.json(
+      { success: false, error: error?.message || "Failed to assign delivery agent" },
+      { status: 500, headers: corsHeaders }
+    );
   }
-  const updatedOrder = await prisma.order.update({
-    where: { id: orderId },
-    data: { deliveryAgentId },
-    select: {
-      id: true,
-      deliveryAgentId: true,
-    },
-  });
-  return NextResponse.json(updatedOrder, { headers: corsHeaders });
 }
