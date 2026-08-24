@@ -1,4 +1,4 @@
-﻿export const runtime = "nodejs";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -65,6 +65,12 @@ export async function POST(req: NextRequest) {
       if (existingUser.role === "DELIVERY_AGENT") {
         return NextResponse.json(
           { success: false, error: "A delivery agent account with this phone number already exists" },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+      if (existingUser.role === "SUPER_ADMIN" || existingUser.role === "BUSINESS") {
+        return NextResponse.json(
+          { success: false, error: "This phone number is registered with an Admin or Business account and cannot be converted." },
           { status: 400, headers: corsHeaders }
         );
       }
