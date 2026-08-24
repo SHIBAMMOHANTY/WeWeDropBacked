@@ -70,10 +70,21 @@ export async function POST(req: Request) {
     let tokenPayload: any = null;
 
     if (typeCanonical === 'user') {
+      const emailTrim = typeof email === 'string' ? email.trim() : '';
+      const usernameTrim = typeof username === 'string' ? username.trim() : '';
+      const phoneTrim = typeof phone === 'string' ? phone.trim() : '';
+
       const orConditions: any[] = [];
+      if (emailTrim) {
+        orConditions.push({ email: emailTrim });
+        orConditions.push({ email: emailTrim.toLowerCase() });
+      }
+      if (usernameTrim) orConditions.push({ username: usernameTrim });
+      if (phoneTrim) orConditions.push({ phone: phoneTrim });
       if (username) orConditions.push({ username });
       if (phone) orConditions.push({ phone });
       if (email) orConditions.push({ email });
+
       found = await prisma.user.findFirst({ where: orConditions.length > 0 ? { OR: orConditions } : {} });
 
       if (!found) {
