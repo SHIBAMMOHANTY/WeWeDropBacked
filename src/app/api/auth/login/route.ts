@@ -84,7 +84,12 @@ export async function POST(req: Request) {
         return new NextResponse(JSON.stringify({ error: "Business users must log in with type 'business'" }), { status: 403, headers: corsHeaders });
       }
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
-      let match = await bcrypt.compare(password, found.password);
+      let match = false;
+      try {
+        match = await bcrypt.compare(password, found.password);
+      } catch (e) {
+        match = false;
+      }
       // If password stored in plain-text (legacy), migrate to hashed password
       if (!match && found.password === password) {
         try {
@@ -146,7 +151,12 @@ export async function POST(req: Request) {
                 if (Object.prototype.hasOwnProperty.call(userFound, 'isActive') && userFound.isActive === false) {
                   return new NextResponse(JSON.stringify({ error: 'Account is inactive' }), { status: 403, headers: corsHeaders });
                 }
-                let match = await bcrypt.compare(password, userFound.password);
+                let match = false;
+                try {
+                  match = await bcrypt.compare(password, userFound.password);
+                } catch (e) {
+                  match = false;
+                }
                 if (!match && userFound.password === password) {
                   try {
                     const hashed = await bcrypt.hash(password, 10);
@@ -197,7 +207,12 @@ export async function POST(req: Request) {
           return new NextResponse(JSON.stringify({ error: "Business not found" }), { status: 404, headers: corsHeaders });
         }
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
-      let match = await bcrypt.compare(password, found.password);
+      let match = false;
+      try {
+        match = await bcrypt.compare(password, found.password);
+      } catch (e) {
+        match = false;
+      }
       // If password stored in plain-text (legacy), migrate to hashed password
       if (!match && found.password === password) {
         try {
@@ -212,54 +227,91 @@ export async function POST(req: Request) {
       if (!match) return invalidCreds();
       tokenPayload = { id: found.id, role: 'BUSINESS' };
     } else if (typeCanonical === 'admin') {
-      // Admin login uses email
-      if (!email) {
-        return new NextResponse(JSON.stringify({ error: "Admin login requires email" }), { status: 400, headers: corsHeaders });
+      const emailTrim = typeof email === 'string' ? email.trim() : '';
+      const usernameTrim = typeof username === 'string' ? username.trim() : '';
+      const phoneTrim = typeof phone === 'string' ? phone.trim() : '';
+
+      if (!emailTrim && !usernameTrim && !phoneTrim) {
+        return new NextResponse(JSON.stringify({ error: "Email, username, or phone required for admin login" }), { status: 400, headers: corsHeaders });
       }
-      found = await prisma.admin.findFirst({ where: { email } });
-      // Fallback: check `User` table for SUPER_ADMIN role
-      if (!found) {
+
+      let isUserModel = false;
+
+      // 1. Try finding in `Admin` model
+      const adminOr: any[] = [];
+      if (emailTrim) {
+        adminOr.push({ email: emailTrim });
+        adminOr.push({ email: emailTrim.toLowerCase() });
+      }
+      if (usernameTrim) adminOr.push({ email: usernameTrim });
+
+      if (adminOr.length > 0) {
         try {
-          const userFound = await prisma.user.findFirst({ where: { AND: [{ role: 'SUPER_ADMIN' }, { email }] } });
-          if (userFound) {
-            if (!userFound.password || typeof userFound.password !== 'string') return invalidCreds();
-            if (Object.prototype.hasOwnProperty.call(userFound, 'isActive') && userFound.isActive === false) {
-              return new NextResponse(JSON.stringify({ error: 'Account is inactive' }), { status: 403, headers: corsHeaders });
-            }
-            let match = await bcrypt.compare(password, userFound.password);
-            if (!match && userFound.password === password) {
-              try {
-                const hashed = await bcrypt.hash(password, 10);
-                await prisma.user.update({ where: { id: userFound.id }, data: { password: hashed } });
-                match = true;
-              } catch (e) {
-                match = true;
-              }
-            }
-            if (!match) return invalidCreds();
-            const token = signToken({ id: userFound.id, role: userFound.role });
-            const { password: __, ...safe } = userFound as any;
-            return new NextResponse(JSON.stringify({ user: safe, token }), { status: 200, headers: corsHeaders });
-          }
+          found = await prisma.admin.findFirst({ where: { OR: adminOr } });
         } catch (e) {
-          // ignore
+          // ignore query error
         }
       }
+
+      // 2. Fallback: check `User` table for SUPER_ADMIN role
+      if (!found) {
+        const userOr: any[] = [];
+        if (emailTrim) {
+          userOr.push({ email: emailTrim });
+          userOr.push({ email: emailTrim.toLowerCase() });
+        }
+        if (usernameTrim) userOr.push({ username: usernameTrim });
+        if (phoneTrim) userOr.push({ phone: phoneTrim });
+
+        if (userOr.length > 0) {
+          try {
+            found = await prisma.user.findFirst({
+              where: {
+                AND: [
+                  { role: 'SUPER_ADMIN' },
+                  { OR: userOr }
+                ]
+              }
+            });
+            if (found) {
+              isUserModel = true;
+            }
+          } catch (e) {
+            // ignore query error
+          }
+        }
+      }
+
       if (!found) {
         return new NextResponse(JSON.stringify({ error: "Admin not found" }), { status: 404, headers: corsHeaders });
       }
+
       if (!found.password || typeof found.password !== 'string') return invalidCreds();
-      let match = await bcrypt.compare(password, found.password);
+
+      let match = false;
+      try {
+        match = await bcrypt.compare(password, found.password);
+      } catch (e) {
+        match = false;
+      }
+
+      // If password stored in plain-text (legacy), migrate to hashed password
       if (!match && found.password === password) {
         try {
           const hashed = await bcrypt.hash(password, 10);
-          await prisma.admin.update({ where: { id: found.id }, data: { password: hashed } });
+          if (isUserModel) {
+            await prisma.user.update({ where: { id: found.id }, data: { password: hashed } });
+          } else {
+            await prisma.admin.update({ where: { id: found.id }, data: { password: hashed } });
+          }
           match = true;
         } catch (e) {
           match = true;
         }
       }
+
       if (!match) return invalidCreds();
+
       tokenPayload = { id: found.id, role: found.role || 'SUPER_ADMIN' };
     } else {
       return new NextResponse(JSON.stringify({ error: "Invalid login type" }), { status: 400, headers: corsHeaders });

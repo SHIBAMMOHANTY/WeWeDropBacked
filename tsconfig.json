@@ -31,7 +31,6 @@
         "src/*"
       ]
     },
-    "ignoreDeprecations": "6.0",
     /* ---------- Next.js ---------- */
     "plugins": [
       {
