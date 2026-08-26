@@ -94,7 +94,7 @@ export async function POST(req: Request) {
         chargingPortIssue: quoteData.chargingPortIssue,
         estimatedPrice: calculation.estimatedPrice,
         finalPrice: quoteData.finalPrice ?? calculation.estimatedPrice,
-        status: quoteData.customerName ? 'ordered' : 'submitted',
+        status: quoteData.customerName ? 'requested' : 'submitted',
         images: quoteData.images,
         customerName: quoteData.customerName,
         customerAddress: quoteData.customerAddress,
@@ -132,9 +132,11 @@ export async function GET(req: Request) {
 
     // 3. Only return quotes that were formally submitted
     //    (created via POST /quote/create with booking details).
-    const query = {
+    const query: any = {
       userId: session.id,
-      status: 'ordered',
+      status: {
+        in: ['ordered', 'requested', 'accepted', 'pickup_scheduled', 'pickup_successful', 'payment_processing', 'payment_completed', 'cancelled', 'rejected']
+      }
     };
     
     const total = await prisma.quote.count({ where: query });

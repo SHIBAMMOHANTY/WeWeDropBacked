@@ -550,11 +550,14 @@ model Quote {
   contactNumber     String?
   paymentMode       String?
   description       String?
+  pickupDate        DateTime?
+  agentId           String?  @db.ObjectId
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   @@index([userId])
+  @@index([agentId])
   @@index([status])
   @@index([createdAt])
 }

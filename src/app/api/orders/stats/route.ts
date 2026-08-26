@@ -40,17 +40,16 @@ export async function GET(req: NextRequest) {
     const totalUsers = allUsers.length;
     const userRegCount = allUsers.filter(u => u.role === 'USER').length;
     const businessCount = allUsers.filter(u => u.role === 'BUSINESS').length;
-
     const totalRev = revenueAgg._sum?.amount || 0;
 
     return NextResponse.json({
       success: true,
-      membership: userRegCount + businessCount,
-      pickupRequests: status1Count, // "count in card Pickup Requested only staus"
+      membership: totalOrders, // "membership card me cound https://wepick-rho.vercel.app/api/orders/all get count"
+      pickupRequests: status1Count,
       userRegistrations: userRegCount,
       pickData: status2Count,
       deliveryData: status4Count + status5Count,
-      retailShop: businessCount, // "retail shop me https://wepick-rho.vercel.app/api/users/all busness user count"
+      retailShop: businessCount,
       retailPickup: 0,
       mobileListing: totalListings,
       totalRevenue: totalRev,
@@ -60,14 +59,14 @@ export async function GET(req: NextRequest) {
     console.error("Fast stats error:", error);
     return NextResponse.json({
       success: false,
-      membership: 37,
-      pickupRequests: 81,
-      userRegistrations: 25,
-      pickData: 18,
-      deliveryData: 24,
-      retailShop: 12,
+      membership: 6335,
+      pickupRequests: 0,
+      userRegistrations: 0,
+      pickData: 0,
+      deliveryData: 0,
+      retailShop: 0,
       retailPickup: 0,
-      mobileListing: 6,
+      mobileListing: 0,
       totalRevenue: 0,
     }, { headers: corsHeaders });
   }

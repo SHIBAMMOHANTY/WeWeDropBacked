@@ -7,11 +7,25 @@ export const dynamic = 'force-dynamic';
 
 const updateQuoteSchema = z.object({
   finalPrice: z.number().min(0, 'Final price cannot be negative').optional(),
-  status: z.enum(['pending', 'completed', 'cancelled'], {
-    errorMap: () => ({ message: "Status must be 'pending', 'completed', or 'cancelled'" }),
+  status: z.enum([
+    'pending',
+    'requested',
+    'accepted',
+    'pickup_scheduled',
+    'pickup_successful',
+    'payment_processing',
+    'payment_completed',
+    'cancelled',
+    'rejected',
+    'ordered',
+    'submitted'
+  ], {
+    errorMap: () => ({ message: "Status must be one of: pending, requested, accepted, pickup_scheduled, pickup_successful, payment_processing, payment_completed, cancelled, rejected, ordered, submitted" }),
   }).optional(),
-}).refine(data => data.finalPrice !== undefined || data.status !== undefined, {
-  message: "At least one of 'finalPrice' or 'status' is required for update",
+  pickupDate: z.string().optional().nullable(),
+  agentId: z.string().optional().nullable(),
+}).refine(data => data.finalPrice !== undefined || data.status !== undefined || data.pickupDate !== undefined || data.agentId !== undefined, {
+  message: "At least one of 'finalPrice', 'status', 'pickupDate', or 'agentId' is required for update",
 });
 
 export async function OPTIONS() {
@@ -23,14 +37,14 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    // 1. Authenticate user and verify role is SUPER_ADMIN
+    // 1. Authenticate user and verify role
     const session = await getAuthSession(req);
     if (!session || !session.id) {
       return jsonResponse({ error: 'Unauthorized: Authentication required' }, 401);
     }
     
-    if (session.role !== 'SUPER_ADMIN') {
-      return jsonResponse({ error: 'Forbidden: Admin role required' }, 403);
+    if (session.role !== 'SUPER_ADMIN' && session.role !== 'DELIVERY_AGENT') {
+      return jsonResponse({ error: 'Forbidden: Admin or Agent role required' }, 403);
     }
 
     const { id } = params;
@@ -55,7 +69,7 @@ export async function PUT(
       );
     }
 
-    const { finalPrice, status } = parseResult.data;
+    const { finalPrice, status, pickupDate, agentId } = parseResult.data;
 
     // 3. Look up the Quote using Prisma
     let quote = null;
@@ -77,6 +91,11 @@ export async function PUT(
       return jsonResponse({ error: 'Quote not found' }, 404);
     }
 
+    // Check if agent is updating their own assigned quote
+    if (session.role === 'DELIVERY_AGENT' && quote.agentId !== session.id) {
+      return jsonResponse({ error: 'Forbidden: This quote is not assigned to you' }, 403);
+    }
+
     // 4. Update the quote
     const updateData: any = {};
     if (finalPrice !== undefined) {
@@ -84,6 +103,12 @@ export async function PUT(
     }
     if (status !== undefined) {
       updateData.status = status;
+    }
+    if (pickupDate !== undefined) {
+      updateData.pickupDate = pickupDate ? new Date(pickupDate) : null;
+    }
+    if (agentId !== undefined) {
+      updateData.agentId = agentId;
     }
 
     const updatedQuote = await prisma.quote.update({

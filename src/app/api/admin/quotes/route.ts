@@ -27,7 +27,19 @@ export async function GET(req: Request) {
 
     const query: any = {};
     if (status) {
-      const validStatuses = ['pending', 'completed', 'cancelled'];
+      const validStatuses = [
+        'pending',
+        'requested',
+        'accepted',
+        'pickup_scheduled',
+        'pickup_successful',
+        'payment_processing',
+        'payment_completed',
+        'cancelled',
+        'rejected',
+        'ordered',
+        'submitted'
+      ];
       const normalizedStatus = status.toLowerCase().trim();
       if (validStatuses.includes(normalizedStatus)) {
         query.status = normalizedStatus;

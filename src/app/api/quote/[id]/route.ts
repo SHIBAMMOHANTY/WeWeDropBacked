@@ -109,7 +109,7 @@ export async function PATCH(
         paymentMode: body.paymentMode !== undefined ? body.paymentMode : undefined,
         description: body.description !== undefined ? body.description : undefined,
         finalPrice: body.finalPrice !== undefined ? body.finalPrice : undefined,
-        status: body.customerName ? 'ordered' : quote.status,
+        status: body.customerName ? 'requested' : quote.status,
       },
     });
 
