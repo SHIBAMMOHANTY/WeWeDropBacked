@@ -553,6 +553,17 @@ model Quote {
   pickupDate        DateTime?
   agentId           String?  @db.ObjectId
 
+  paymentMethod     String?
+  payoutDetails     Json?
+  payoutMethod      String?
+  upiId             String?
+  bankAccount       String?
+  bankIfsc          String?
+  bankAccountHolder String?
+  isDelayed         Boolean? @default(false)
+  delayReason       String?
+  invoicePdf        String?
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

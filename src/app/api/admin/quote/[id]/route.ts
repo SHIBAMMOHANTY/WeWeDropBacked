@@ -24,8 +24,10 @@ const updateQuoteSchema = z.object({
   }).optional(),
   pickupDate: z.string().optional().nullable(),
   agentId: z.string().optional().nullable(),
-}).refine(data => data.finalPrice !== undefined || data.status !== undefined || data.pickupDate !== undefined || data.agentId !== undefined, {
-  message: "At least one of 'finalPrice', 'status', 'pickupDate', or 'agentId' is required for update",
+  paymentMethod: z.string().optional().nullable(),
+  payoutDetails: z.any().optional().nullable(),
+}).refine(data => data.finalPrice !== undefined || data.status !== undefined || data.pickupDate !== undefined || data.agentId !== undefined || data.paymentMethod !== undefined || data.payoutDetails !== undefined, {
+  message: "At least one of 'finalPrice', 'status', 'pickupDate', 'agentId', 'paymentMethod', or 'payoutDetails' is required for update",
 });
 
 export async function OPTIONS() {
@@ -69,7 +71,7 @@ export async function PUT(
       );
     }
 
-    const { finalPrice, status, pickupDate, agentId } = parseResult.data;
+    const { finalPrice, status, pickupDate, agentId, paymentMethod, payoutDetails } = parseResult.data;
 
     // 3. Look up the Quote using Prisma
     let quote = null;
@@ -109,6 +111,12 @@ export async function PUT(
     }
     if (agentId !== undefined) {
       updateData.agentId = agentId;
+    }
+    if (paymentMethod !== undefined) {
+      updateData.paymentMethod = paymentMethod;
+    }
+    if (payoutDetails !== undefined) {
+      updateData.payoutDetails = payoutDetails;
     }
 
     const updatedQuote = await prisma.quote.update({
