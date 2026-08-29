@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { jsonResponse, getAuthSession } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
+import { sendInvoiceWhatsApp } from '@/lib/invoice';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -123,6 +124,12 @@ export async function PUT(
       where: { id: quote.id },
       data: updateData,
     });
+
+    if (updateData.status === 'payment_completed') {
+      sendInvoiceWhatsApp(updatedQuote).catch((err) => {
+        console.error('[MSG91] Background invoice WhatsApp dispatch failed:', err);
+      });
+    }
 
     return jsonResponse({
       success: true,
