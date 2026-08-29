@@ -1,7 +1,8 @@
-﻿export const runtime = "nodejs";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
+import { getAuthSession } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 
 const corsHeaders = {
@@ -29,7 +30,40 @@ function derivePaymentStatus(numericStatus: number): number {
 // GET /api/orders/status
 export async function GET(req: NextRequest) {
   try {
-    const orders = await prisma.order.findMany({ orderBy: { createdAt: "desc" } });
+    const { searchParams } = new URL(req.url);
+    const limitParam = searchParams.get('limit');
+    const allParam = searchParams.get('all');
+    const reqUserId = searchParams.get('userId');
+
+    const session = await getAuthSession(req as any);
+    const isAdmin = session?.role === 'SUPER_ADMIN';
+
+    let take: number | undefined = 50; // Default to 50 recent orders
+    if (allParam === 'true' && isAdmin) {
+      take = undefined; // Fetch all if explicitly requested by admin
+    } else if (limitParam) {
+      const parsedLimit = parseInt(limitParam, 10);
+      if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        take = parsedLimit;
+      }
+    }
+
+    // Build user scope query: regular users only see their own orders
+    const queryWhere: any = { deleted: false };
+    if (!isAdmin) {
+      const activeUserId = session?.id || reqUserId;
+      if (activeUserId) {
+        queryWhere.userId = activeUserId;
+      }
+    } else if (reqUserId) {
+      queryWhere.userId = reqUserId;
+    }
+
+    const orders = await prisma.order.findMany({
+      where: queryWhere,
+      orderBy: { createdAt: "desc" },
+      ...(take ? { take } : {}),
+    });
 
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
@@ -41,9 +75,7 @@ export async function GET(req: NextRequest) {
       5: 'DELIVERED'
     };
 
-    const filteredOrders = orders.filter(order => !order.deleted);
-
-    const ordersWithStatus = filteredOrders.map(order => ({
+    const ordersWithStatus = orders.map(order => ({
       ...order,
       status: statusMap[order.orderStatus] || 'UNKNOWN',
       paymentStatus: order.paymentStatus ?? null,

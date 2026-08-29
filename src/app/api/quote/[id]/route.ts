@@ -109,7 +109,14 @@ export async function PATCH(
         paymentMode: body.paymentMode !== undefined ? body.paymentMode : undefined,
         description: body.description !== undefined ? body.description : undefined,
         finalPrice: body.finalPrice !== undefined ? body.finalPrice : undefined,
-        status: body.customerName ? 'requested' : quote.status,
+        status: body.status !== undefined ? body.status : (body.customerName ? 'booked' : quote.status),
+        payoutMethod: body.payoutMethod !== undefined ? body.payoutMethod : undefined,
+        upiId: body.upiId !== undefined ? body.upiId : undefined,
+        bankAccount: body.bankAccount !== undefined ? body.bankAccount : undefined,
+        bankIfsc: body.bankIfsc !== undefined ? body.bankIfsc : undefined,
+        bankAccountHolder: body.bankAccountHolder !== undefined ? body.bankAccountHolder : undefined,
+        isDelayed: body.isDelayed !== undefined ? body.isDelayed : undefined,
+        delayReason: body.delayReason !== undefined ? body.delayReason : undefined,
       },
     });
 

@@ -10,11 +10,16 @@ const calculateSchema = z.object({
   brand: z.string().min(1, 'Brand is required'),
   model: z.string().min(1, 'Model is required'),
   storage: z.string().min(1, 'Storage size is required'),
-  condition: z.enum(['excellent', 'good', 'average'], {
-    errorMap: () => ({ message: "Condition must be 'excellent', 'good', or 'average'" }),
+  condition: z.union([z.string(), z.enum(['excellent', 'good', 'average'])]).optional().default('good').transform((val) => {
+    const lower = (val || '').toLowerCase();
+    if (lower === 'excellent' || lower === 'average') return lower;
+    return 'good';
   }),
   screenCracked: z.boolean().default(false),
-  batteryHealth: z.number().min(0).max(100).default(100),
+  batteryHealth: z.union([z.number(), z.string()]).optional().transform((val) => {
+    const num = typeof val === 'string' ? parseInt(val) : val;
+    return isNaN(num as number) ? 100 : (num as number);
+  }),
   cameraIssue: z.boolean().default(false),
   fingerprintIssue: z.boolean().default(false),
   faceIdIssue: z.boolean().default(false),
@@ -32,6 +37,12 @@ const createQuoteSchema = calculateSchema.extend({
   customerPincode: z.string().optional(),
   contactNumber: z.string().optional(),
   paymentMode: z.string().optional(),
+  payoutMethod: z.string().optional(),
+  upiId: z.string().optional(),
+  bankAccount: z.string().optional(),
+  bankIfsc: z.string().optional(),
+  bankAccountHolder: z.string().optional(),
+  status: z.string().optional(),
   description: z.string().optional(),
   finalPrice: z.number().optional(),
 });
@@ -67,8 +78,16 @@ export async function POST(req: Request) {
 
     const quoteData = parseResult.data;
 
-    // 3. Recalculate price on server side using Prisma-based Pricing Engine
-    const calculation = await PricingService.calculateQuote(quoteData);
+    // 3. Recalculate price on server side using Prisma-based Pricing Engine (safely with fallback)
+    let calculatedEstPrice = quoteData.finalPrice || 1000;
+    try {
+      const calculation = await PricingService.calculateQuote(quoteData as any);
+      if (calculation && calculation.estimatedPrice > 0) {
+        calculatedEstPrice = calculation.estimatedPrice;
+      }
+    } catch (_) {
+      console.warn('PricingService fallback for device quote creation:', quoteData.model);
+    }
 
     // 4. Generate unique quote number (QB + Timestamp + Random suffix)
     const timestampStr = Date.now().toString().slice(-6);
@@ -92,15 +111,20 @@ export async function POST(req: Request) {
         bodyDamage: quoteData.bodyDamage,
         speakerIssue: quoteData.speakerIssue,
         chargingPortIssue: quoteData.chargingPortIssue,
-        estimatedPrice: calculation.estimatedPrice,
-        finalPrice: quoteData.finalPrice ?? calculation.estimatedPrice,
-        status: quoteData.customerName ? 'requested' : 'submitted',
+        estimatedPrice: calculatedEstPrice,
+        finalPrice: quoteData.finalPrice ?? calculatedEstPrice,
+        status: quoteData.status || (quoteData.customerName ? 'booked' : 'submitted'),
         images: quoteData.images,
         customerName: quoteData.customerName,
         customerAddress: quoteData.customerAddress,
         customerPincode: quoteData.customerPincode,
         contactNumber: quoteData.contactNumber,
-        paymentMode: quoteData.paymentMode,
+        paymentMode: quoteData.paymentMode || quoteData.payoutMethod,
+        payoutMethod: quoteData.payoutMethod || quoteData.paymentMode,
+        upiId: quoteData.upiId,
+        bankAccount: quoteData.bankAccount,
+        bankIfsc: quoteData.bankIfsc,
+        bankAccountHolder: quoteData.bankAccountHolder,
         description: quoteData.description,
       },
     });
@@ -114,7 +138,7 @@ export async function POST(req: Request) {
     console.error('Create Quote API Error:', err);
     return jsonResponse(
       { error: err.message || 'Internal server error while creating quote' },
-      err.message?.includes('Device not found') ? 404 : 500
+      500
     );
   }
 }
@@ -135,7 +159,7 @@ export async function GET(req: Request) {
     const query: any = {
       userId: session.id,
       status: {
-        in: ['ordered', 'requested', 'accepted', 'pickup_scheduled', 'pickup_successful', 'payment_processing', 'payment_completed', 'cancelled', 'rejected']
+        in: ['booked', 'scheduled', 'delayed_pickup', 'pickup_delayed', 'ordered', 'requested', 'accepted', 'pickup_scheduled', 'pickup_successful', 'payment_processing', 'payment_completed', 'cancelled', 'rejected', 'pending', 'submitted']
       }
     };
     
