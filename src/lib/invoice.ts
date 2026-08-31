@@ -209,11 +209,11 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
 }
 
 /**
- * Generates purchase receipt PDF, uploads to Cloudinary, links to Quote in database,
- * and dispatches outbound template WhatsApp message via MSG91 API.
+ * Generates purchase receipt PDF, uploads to Cloudinary/Storage, links to Quote in database,
+ * and dispatches outbound template WhatsApp message via MSG91 API (invoice_sent template).
  */
 export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
-  const customerPhone = quote.contactNumber || '';
+  const customerPhone = quote.contactNumber || quote.phone || '';
   if (!customerPhone) {
     throw new Error('Customer phone number is missing.');
   }
@@ -221,29 +221,31 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   // 1. Generate PDF buffer
   const pdfBuffer = await generateInvoicePDF(quote);
 
-  // 2. Upload to Cloudinary
-  const uploadRes = await uploadToCloudinary(pdfBuffer, {
-    folder: 'invoices',
-    public_id: `invoice_${quote.quoteNumber || quote.id}`
-  });
+  let invoiceUrl = '';
+  // 2. Upload to Cloudinary / Storage
+  try {
+    const uploadRes = await uploadToCloudinary(pdfBuffer, {
+      folder: 'invoices',
+      public_id: `invoice_${quote.quoteNumber || quote.id}`
+    });
+    invoiceUrl = uploadRes?.secure_url || '';
 
-  const invoiceUrl = uploadRes.secure_url;
-
-  // Save the URL to the quote database record
-  await prisma.quote.update({
-    where: { id: quote.id },
-    data: { invoicePdf: invoiceUrl }
-  });
-
-  // 3. Dispatch WhatsApp via MSG91 Template
-  const authKey = process.env.MSG91_AUTH_KEY;
-  const intNumber = process.env.MSG91_INTEGRATED_NUMBER;
-  const namespace = process.env.MSG91_NAMESPACE || 'e67365fb_e80f_4118_a3da_6701091246fa';
-
-  if (!authKey || !intNumber) {
-    console.warn('[MSG91] Auth Key or Integrated Number missing in .env - Skipping WhatsApp dispatch.');
-    return invoiceUrl;
+    if (invoiceUrl && quote.id) {
+      // Save the URL to the quote database record
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: { invoicePdf: invoiceUrl }
+      }).catch((e) => console.warn('[Invoice] DB update warning:', e?.message));
+    }
+  } catch (err) {
+    console.warn('[Invoice] Cloudinary upload warning (falling back to generated link):', err);
+    invoiceUrl = `https://wepick-rho.vercel.app/api/invoice/pdf/${quote.id || 'receipt'}`;
   }
+
+  // 3. Dispatch WhatsApp via MSG91 Template (invoice_sent)
+  const authKey = process.env.MSG91_AUTH_KEY;
+  const intNumber = process.env.MSG91_INTEGRATED_NUMBER || '919318411796';
+  const namespace = process.env.MSG91_NAMESPACE || 'e67365fb_e80f_4118_a3da_6701091246fa';
 
   // Normalize phone number (adds 91 prefix if it's 10-digits)
   let mobileNumber = customerPhone.replace(/\D/g, '');
@@ -251,10 +253,10 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
     mobileNumber = `91${mobileNumber}`;
   }
 
-  const filename = `Invoice-${quote.quoteNumber || quote.id}.pdf`;
-  const customerName = quote.customerName || 'Customer';
-  const deviceModel = `${quote.brand || ''} ${quote.model || ''}`.trim() || 'Device';
-  const totalAmount = `Rs. ${quote.finalPrice || quote.estimatedPrice || 0}`;
+  const filename = `Used_Mobile_Purchase_Receipt_${quote.quoteNumber || quote.id || 'WWP'}.pdf`;
+  const customerName = quote.customerName || quote.name || 'Customer';
+  const deviceModel = `${quote.brand || ''} ${quote.model || ''}`.trim() || quote.deviceModel || 'Mobile Device';
+  const totalAmount = `Rs. ${quote.finalPrice || quote.estimatedPrice || quote.amount || 0}`;
 
   const payload = {
     integrated_number: intNumber,
@@ -298,24 +300,29 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   };
 
   console.log('[MSG91] Sending WhatsApp Invoice to:', mobileNumber);
+  console.log('[MSG91] Payload:', JSON.stringify(payload, null, 2));
 
-  try {
-    const res = await fetch(
-      'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
-      {
-        method: 'POST',
-        headers: {
-          authkey: authKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      }
-    );
+  if (authKey && authKey !== 'your_msg91_authkey_here') {
+    try {
+      const res = await fetch(
+        'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
+        {
+          method: 'POST',
+          headers: {
+            authkey: authKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        }
+      );
 
-    const responseText = await res.text();
-    console.log('[MSG91] Payout Invoice WhatsApp Status:', res.status, '| Response:', responseText);
-  } catch (err) {
-    console.error('[MSG91] WhatsApp Invoice Dispatch Failed:', err);
+      const responseText = await res.text();
+      console.log('[MSG91] Payout Invoice WhatsApp Status:', res.status, '| Response:', responseText);
+    } catch (err) {
+      console.error('[MSG91] WhatsApp Invoice Dispatch Failed:', err);
+    }
+  } else {
+    console.warn('[MSG91] Auth Key missing or placeholder in .env - WhatsApp dispatch payload ready.');
   }
 
   return invoiceUrl;
