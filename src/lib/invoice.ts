@@ -260,31 +260,30 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   // 1. Generate PDF buffer
   const pdfBuffer = await generateInvoicePDF(quote);
 
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wepick-rho.vercel.app';
+  const targetId = quote.id || quote.quoteNumber || quote.orderId || 'receipt';
   let invoiceUrl = '';
-  // 2. Upload to Cloudinary / Storage
+
   try {
     const uploadRes = await uploadToCloudinary(pdfBuffer, {
       folder: 'invoices',
-      public_id: `invoice_${quote.quoteNumber || quote.id}`
+      public_id: `invoice_${targetId}`
     });
     invoiceUrl = uploadRes?.secure_url || '';
-
-    if (invoiceUrl && quote.id) {
-      // Save the URL to the quote database record
-      await prisma.quote.update({
-        where: { id: quote.id },
-        data: { invoicePdf: invoiceUrl }
-      }).catch((e) => console.warn('[Invoice] DB update warning:', e?.message));
-    }
   } catch (err) {
-    console.warn('[Invoice] Cloudinary upload warning (falling back to generated link):', err);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wepick-rho.vercel.app';
-    invoiceUrl = `${baseUrl}/api/invoice/pdf/${quote.id || 'receipt'}`;
+    console.warn('[Invoice] Cloudinary upload warning (falling back to live route link):', err);
+    invoiceUrl = `${baseUrl}/api/invoice/pdf/${targetId}`;
   }
 
   if (!invoiceUrl) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wepick-rho.vercel.app';
-    invoiceUrl = `${baseUrl}/api/invoice/pdf/${quote.id || 'receipt'}`;
+    invoiceUrl = `${baseUrl}/api/invoice/pdf/${targetId}`;
+  }
+
+  if (quote.id) {
+    await prisma.quote.update({
+      where: { id: quote.id },
+      data: { invoicePdf: invoiceUrl }
+    }).catch((e) => console.warn('[Invoice] DB update warning:', e?.message));
   }
 
   // 3. Dispatch WhatsApp via MSG91 Template (invoice_sent)
@@ -298,10 +297,10 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
     mobileNumber = `91${mobileNumber}`;
   }
 
-  const filename = `Used_Mobile_Purchase_Receipt_${quote.quoteNumber || quote.id || 'WWP'}.pdf`;
-  const customerName = quote.customerName || quote.name || 'Customer';
-  const deviceModel = `${quote.brand || ''} ${quote.model || ''}`.trim() || quote.deviceModel || 'Mobile Device';
-  const totalAmount = `Rs. ${quote.finalPrice || quote.estimatedPrice || quote.amount || 0}`;
+  const orderId = quote.quoteNumber || quote.orderId || (quote.id ? quote.id.slice(-6).toUpperCase() : '') || 'WWP';
+  const customerName = quote.personName || quote.beneficiaryName || quote.customerName || quote.name || '';
+  const totalAmount = `Rs. ${quote.finalPrice || quote.agreedPrice || quote.amount || quote.estimatedPrice || 0}`;
+  const filename = `Used_Mobile_Purchase_Receipt_${orderId}.pdf`;
 
   const payload = {
     integrated_number: intNumber,
@@ -330,7 +329,7 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
               },
               body_2: {
                 type: 'text',
-                value: deviceModel
+                value: orderId
               },
               body_3: {
                 type: 'text',

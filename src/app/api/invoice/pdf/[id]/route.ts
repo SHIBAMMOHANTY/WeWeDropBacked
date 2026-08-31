@@ -10,9 +10,33 @@ import { generateInvoicePDF } from '@/lib/invoice';
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
-    const quote = await prisma.quote.findUnique({
-      where: { id },
-    });
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    let quote = null;
+
+    if (isObjectId) {
+      quote = await prisma.quote.findUnique({
+        where: { id },
+      });
+    }
+
+    if (!quote) {
+      quote = await prisma.quote.findUnique({
+        where: { quoteNumber: id },
+      });
+    }
+
+    if (!quote) {
+      // Fallback lookup by ID string
+      quote = await prisma.quote.findFirst({
+        where: {
+          OR: [
+            { id },
+            { quoteNumber: id },
+            { orderId: id }
+          ]
+        }
+      });
+    }
 
     if (!quote) {
       return NextResponse.json({ error: 'Quote record not found' }, { status: 404 });
