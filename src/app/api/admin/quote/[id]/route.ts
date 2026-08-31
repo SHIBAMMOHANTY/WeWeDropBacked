@@ -8,27 +8,11 @@ export const dynamic = 'force-dynamic';
 
 const updateQuoteSchema = z.object({
   finalPrice: z.number().min(0, 'Final price cannot be negative').optional(),
-  status: z.enum([
-    'pending',
-    'requested',
-    'accepted',
-    'pickup_scheduled',
-    'pickup_successful',
-    'payment_processing',
-    'payment_completed',
-    'cancelled',
-    'rejected',
-    'ordered',
-    'submitted'
-  ], {
-    errorMap: () => ({ message: "Status must be one of: pending, requested, accepted, pickup_scheduled, pickup_successful, payment_processing, payment_completed, cancelled, rejected, ordered, submitted" }),
-  }).optional(),
+  status: z.string().optional(),
   pickupDate: z.string().optional().nullable(),
   agentId: z.string().optional().nullable(),
   paymentMethod: z.string().optional().nullable(),
   payoutDetails: z.any().optional().nullable(),
-}).refine(data => data.finalPrice !== undefined || data.status !== undefined || data.pickupDate !== undefined || data.agentId !== undefined || data.paymentMethod !== undefined || data.payoutDetails !== undefined, {
-  message: "At least one of 'finalPrice', 'status', 'pickupDate', 'agentId', 'paymentMethod', or 'payoutDetails' is required for update",
 });
 
 export async function OPTIONS() {
@@ -105,7 +89,11 @@ export async function PUT(
       updateData.finalPrice = finalPrice;
     }
     if (status !== undefined) {
-      updateData.status = status;
+      let mappedStatus = status.toLowerCase();
+      if (status === 'PAID') mappedStatus = 'payment_completed';
+      if (status === 'DELIVERED') mappedStatus = 'pickup_successful';
+      if (status === 'CANCELLED') mappedStatus = 'cancelled';
+      updateData.status = mappedStatus;
     }
     if (pickupDate !== undefined) {
       updateData.pickupDate = pickupDate ? new Date(pickupDate) : null;
