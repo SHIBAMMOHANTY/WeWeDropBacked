@@ -257,27 +257,29 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
     throw new Error('Customer phone number is missing.');
   }
 
-  // 1. Generate PDF buffer
-  const pdfBuffer = await generateInvoicePDF(quote);
-
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wepick-rho.vercel.app';
   const targetId = quote.id || quote.quoteNumber || quote.orderId || 'receipt';
-  let invoiceUrl = '';
+  let invoiceUrl = `${baseUrl}/api/invoice/pdf/${targetId}`;
 
+  // 1. Generate PDF buffer safely with fallback
   try {
-    const uploadRes = await uploadToCloudinary(pdfBuffer, {
-      folder: 'invoices',
-      public_id: `invoice_${targetId}`
-    });
-    invoiceUrl = uploadRes?.secure_url || '';
-  } catch (err) {
-    console.warn('[Invoice] Cloudinary upload warning (falling back to live route link):', err);
-    invoiceUrl = `${baseUrl}/api/invoice/pdf/${targetId}`;
+    const pdfBuffer = await generateInvoicePDF(quote);
+    try {
+      const uploadRes = await uploadToCloudinary(pdfBuffer, {
+        folder: 'invoices',
+        public_id: `invoice_${targetId}`
+      });
+      if (uploadRes?.secure_url) {
+        invoiceUrl = uploadRes.secure_url;
+      }
+    } catch (uploadErr) {
+      console.warn('[Invoice Cloudinary Upload Warning] (using live stream route URL):', uploadErr);
+    }
+  } catch (pdfErr) {
+    console.warn('[Invoice PDF Generation Warning] (using live stream route URL):', pdfErr);
   }
 
-  if (!invoiceUrl) {
-    invoiceUrl = `${baseUrl}/api/invoice/pdf/${targetId}`;
-  }
+  console.log('📄 [Generated Invoice PDF Link]:', invoiceUrl);
 
   if (quote.id) {
     await prisma.quote.update({
