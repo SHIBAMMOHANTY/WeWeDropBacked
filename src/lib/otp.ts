@@ -86,7 +86,7 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
       type: 'template',
       template: {
         name: template,
-        language: { code: langCode, policy: 'deterministic' },
+        language: { code: langCode },
         namespace: namespace,
         to_and_components: [
           {

@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import PDFDocument from 'pdfkit/js/pdfkit.standalone';
 import { uploadToCloudinary } from './upload';
 import { prisma } from './prisma';
@@ -276,7 +278,13 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
     }
   } catch (err) {
     console.warn('[Invoice] Cloudinary upload warning (falling back to generated link):', err);
-    invoiceUrl = `https://wepick-rho.vercel.app/api/invoice/pdf/${quote.id || 'receipt'}`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wepick-rho.vercel.app';
+    invoiceUrl = `${baseUrl}/api/invoice/pdf/${quote.id || 'receipt'}`;
+  }
+
+  if (!invoiceUrl) {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wepick-rho.vercel.app';
+    invoiceUrl = `${baseUrl}/api/invoice/pdf/${quote.id || 'receipt'}`;
   }
 
   // 3. Dispatch WhatsApp via MSG91 Template (invoice_sent)
@@ -304,8 +312,7 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
       template: {
         name: 'invoice_sent',
         language: {
-          code: 'en',
-          policy: 'deterministic'
+          code: 'en'
         },
         namespace: namespace,
         to_and_components: [
