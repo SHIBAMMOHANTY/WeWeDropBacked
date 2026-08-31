@@ -1,4 +1,4 @@
-import PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit/js/pdfkit.standalone';
 import { uploadToCloudinary } from './upload';
 import { prisma } from './prisma';
 
@@ -18,13 +18,25 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     const grayColor = '#475569';
     const lightGray = '#E2E8F0';
 
+    const setFont = (fontName: string) => {
+      try {
+        doc.font(fontName);
+      } catch (e) {
+        // Fallback silently if font file loading fails in bundler
+      }
+    };
+
     // Header Title and Logo
-    doc.fillColor(darkColor).font('Helvetica-Bold').fontSize(16).text('USED MOBILE PURCHASE RECEIPT', 40, 40);
-    doc.fillColor(cyanColor).font('Helvetica-Bold').fontSize(16).text('WEPICK WEDROP', 400, 40, { align: 'right' });
+    setFont('Helvetica-Bold');
+    doc.fillColor(darkColor).fontSize(16).text('USED MOBILE PURCHASE RECEIPT', 40, 40);
+    setFont('Helvetica-Bold');
+    doc.fillColor(cyanColor).fontSize(16).text('WEPICK WEDROP', 400, 40, { align: 'right' });
     
     // Sub-header details
-    doc.fillColor(cyanColor).font('Helvetica-Bold').fontSize(9).text('DYVOLOOP LOGISTIC PRIVATE LIMITED', 40, 65);
-    doc.fillColor(grayColor).font('Helvetica').fontSize(8).text(
+    setFont('Helvetica-Bold');
+    doc.fillColor(cyanColor).fontSize(9).text('DYVOLOOP LOGISTIC PRIVATE LIMITED', 40, 65);
+    setFont('Helvetica');
+    doc.fillColor(grayColor).fontSize(8).text(
       'Registered Office: Budh Vihar, Phase 1,\nBlock A1, House No. 3/A, Delhi - 110086\nGSTIN: 07AALCD8950C1ZJ\nEmail: support@wepickwedrop.com',
       40, 78,
       { lineGap: 2 }
@@ -41,17 +53,20 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     doc.moveTo(boxX, boxY + 34).lineTo(boxX + boxW, boxY + 34).stroke();
     doc.moveTo(boxX + 70, boxY).lineTo(boxX + 70, boxY + boxH).stroke();
 
-    const receiptNo = `WWP/PR/25-26/${quote.quoteNumber || quote.id.slice(-6).toUpperCase()}`;
+    const receiptNo = `WWP/PR/25-26/${quote.quoteNumber || (quote.id ? quote.id.slice(-6).toUpperCase() : '000000')}`;
     const dateStr = quote.payoutDetails?.date || (quote.updatedAt ? new Date(quote.updatedAt).toLocaleString('en-IN') : new Date().toLocaleString('en-IN'));
 
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(grayColor);
+    setFont('Helvetica-Bold');
+    doc.fontSize(7.5).fillColor(grayColor);
     doc.text('RECEIPT NO.', boxX + 6, boxY + 5);
     doc.text('DATE & TIME', boxX + 6, boxY + 22);
     doc.text('PLACE', boxX + 6, boxY + 39);
 
-    doc.font('Helvetica-Bold').fontSize(8).fillColor(cyanColor);
+    setFont('Helvetica-Bold');
+    doc.fontSize(8).fillColor(cyanColor);
     doc.text(receiptNo, boxX + 76, boxY + 5);
-    doc.font('Helvetica').fontSize(7.5).fillColor(darkColor);
+    setFont('Helvetica');
+    doc.fontSize(7.5).fillColor(darkColor);
     doc.text(dateStr, boxX + 76, boxY + 22);
     doc.text('Delhi, India', boxX + 76, boxY + 39);
 
@@ -60,7 +75,8 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     // Banner draw helper
     function drawSectionBanner(title: string, y: number) {
       doc.fillColor(cyanColor).rect(40, y, 520, 15).fill();
-      doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(8.5).text(title, 46, y + 3.5);
+      setFont('Helvetica-Bold');
+      doc.fillColor('#FFFFFF').fontSize(8.5).text(title, 46, y + 3.5);
       return y + 20;
     }
 
@@ -74,12 +90,16 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
       doc.moveTo(40 + colW * 3, y).lineTo(40 + colW * 3, y + heights).stroke();
 
       // Col 1 label and value
-      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(grayColor).text(labels[0], 46, y + 6);
-      doc.font('Helvetica').fontSize(7.5).fillColor(darkColor).text(values[0], 176, y + 6, { width: 110, height: heights - 8 });
+      setFont('Helvetica-Bold');
+      doc.fontSize(7.5).fillColor(grayColor).text(labels[0], 46, y + 6);
+      setFont('Helvetica');
+      doc.fontSize(7.5).fillColor(darkColor).text(values[0], 176, y + 6, { width: 110, height: heights - 8 });
 
       // Col 2 label and value
-      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(grayColor).text(labels[1], 306, y + 6);
-      doc.font('Helvetica').fontSize(7.5).fillColor(darkColor).text(values[1], 436, y + 6, { width: 110, height: heights - 8 });
+      setFont('Helvetica-Bold');
+      doc.fontSize(7.5).fillColor(grayColor).text(labels[1], 306, y + 6);
+      setFont('Helvetica');
+      doc.fontSize(7.5).fillColor(darkColor).text(values[1], 436, y + 6, { width: 110, height: heights - 8 });
 
       return y + heights;
     }
@@ -93,15 +113,17 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     );
     currentY = drawGridRow(
       ['MOBILE NO.', 'KYC REF'],
-      [quote.contactNumber || 'N/A', 'Verified (Aadhar/PAN)'],
+      [quote.contactNumber || quote.phone || 'N/A', 'Verified (Aadhar/PAN)'],
       currentY
     );
     
     // Address block
     doc.strokeColor(lightGray).rect(40, currentY, 520, 20).stroke();
     doc.moveTo(170, currentY).lineTo(170, currentY + 20).stroke();
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(grayColor).text('ADDRESS', 46, currentY + 6);
-    doc.font('Helvetica').fontSize(7.5).fillColor(darkColor).text(quote.customerAddress || 'N/A', 176, currentY + 6, { width: 370 });
+    setFont('Helvetica-Bold');
+    doc.fontSize(7.5).fillColor(grayColor).text('ADDRESS', 46, currentY + 6);
+    setFont('Helvetica');
+    doc.fontSize(7.5).fillColor(darkColor).text(quote.customerAddress || 'N/A', 176, currentY + 6, { width: 370 });
     currentY += 20;
 
     // Payment Mode
@@ -110,12 +132,16 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     doc.moveTo(300, currentY).lineTo(300, currentY + 20).stroke();
     doc.moveTo(430, currentY).lineTo(430, currentY + 20).stroke();
 
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(grayColor).text('PAYMENT MODE', 46, currentY + 6);
+    setFont('Helvetica-Bold');
+    doc.fontSize(7.5).fillColor(grayColor).text('PAYMENT MODE', 46, currentY + 6);
     const methodStr = `${quote.paymentMethod === 'CASH' ? '[x] Cash' : '[ ] Cash'}  ${quote.paymentMethod === 'UPI' ? '[x] UPI' : '[ ] UPI'}  ${quote.paymentMethod === 'BANK' ? '[x] Bank' : '[ ] Bank'}`;
-    doc.font('Helvetica').fontSize(7.5).fillColor(darkColor).text(methodStr, 176, currentY + 6);
+    setFont('Helvetica');
+    doc.fontSize(7.5).fillColor(darkColor).text(methodStr, 176, currentY + 6);
 
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(grayColor).text('TXN ID / UTR', 306, currentY + 6);
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(cyanColor).text(quote.payoutDetails?.utr || 'CASH_PAYMENT', 436, currentY + 6, { width: 110 });
+    setFont('Helvetica-Bold');
+    doc.fontSize(7.5).fillColor(grayColor).text('TXN ID / UTR', 306, currentY + 6);
+    setFont('Helvetica-Bold');
+    doc.fontSize(7.5).fillColor(cyanColor).text(quote.payoutDetails?.utr || 'CASH_PAYMENT', 436, currentY + 6, { width: 110 });
     currentY += 20;
 
     // 2. Customer Details
@@ -135,8 +161,10 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     // Address block
     doc.strokeColor(lightGray).rect(40, currentY, 520, 20).stroke();
     doc.moveTo(170, currentY).lineTo(170, currentY + 20).stroke();
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(grayColor).text('ADDRESS', 46, currentY + 6);
-    doc.font('Helvetica').fontSize(7.5).fillColor(darkColor).text('Flat no. 90/25, A1/3A Budh Vihar Phase I, Delhi - 110086', 176, currentY + 6, { width: 370 });
+    setFont('Helvetica-Bold');
+    doc.fontSize(7.5).fillColor(grayColor).text('ADDRESS', 46, currentY + 6);
+    setFont('Helvetica');
+    doc.fontSize(7.5).fillColor(darkColor).text('Flat no. 90/25, A1/3A Budh Vihar Phase I, Delhi - 110086', 176, currentY + 6, { width: 370 });
     currentY += 20;
 
     // 3. Device Details
@@ -156,9 +184,11 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     // Device Condition checkboxes
     doc.strokeColor(lightGray).rect(40, currentY, 520, 20).stroke();
     doc.moveTo(170, currentY).lineTo(170, currentY + 20).stroke();
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(grayColor).text('DEVICE CONDITION', 46, currentY + 6);
+    setFont('Helvetica-Bold');
+    doc.fontSize(7.5).fillColor(grayColor).text('DEVICE CONDITION', 46, currentY + 6);
     const condStr = `[x] Working    [ ] Minor Issues    [ ] Damaged    [ ] Dead`;
-    doc.font('Helvetica').fontSize(7.5).fillColor(darkColor).text(condStr, 176, currentY + 6);
+    setFont('Helvetica');
+    doc.fontSize(7.5).fillColor(darkColor).text(condStr, 176, currentY + 6);
     currentY += 20;
 
     // 4. Purchase Details
@@ -166,14 +196,17 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     currentY = drawSectionBanner('4. PURCHASE DETAILS', currentY);
     doc.strokeColor(lightGray).rect(40, currentY, 520, 22).stroke();
     doc.moveTo(300, currentY).lineTo(300, currentY + 22).stroke();
-    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(grayColor).text('AMOUNT PAID TO SELLER / CUSTOMER (₹)', 46, currentY + 7);
-    doc.font('Helvetica-Bold').fontSize(11).fillColor(cyanColor).text(`₹ ${quote.finalPrice || quote.estimatedPrice || 0}`, 306, currentY + 6);
+    setFont('Helvetica-Bold');
+    doc.fontSize(8.5).fillColor(grayColor).text('AMOUNT PAID TO SELLER / CUSTOMER (₹)', 46, currentY + 7);
+    setFont('Helvetica-Bold');
+    doc.fontSize(11).fillColor(cyanColor).text(`₹ ${quote.finalPrice || quote.estimatedPrice || 0}`, 306, currentY + 6);
     currentY += 22;
 
     // 5. Seller Declaration
     currentY += 8;
     currentY = drawSectionBanner('5. SELLER DECLARATION', currentY);
-    doc.font('Helvetica-Oblique').fontSize(8).fillColor(grayColor).text(
+    setFont('Helvetica-Oblique');
+    doc.fontSize(8).fillColor(grayColor).text(
       'I hereby declare that I am the lawful owner / authorised seller of the above mobile device and have the legal right to sell it. The device is not stolen, lost, pledged or subject to any police/court dispute. The IMEI/serial details provided by me are true. I agree to cooperate with WEPICK WEDROP and law-enforcement authorities if any ownership dispute arises.',
       40, currentY, { width: 520, align: 'justify', lineGap: 1.5 }
     );
@@ -185,21 +218,25 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
     doc.strokeColor(grayColor).lineWidth(0.5).moveTo(320, sigY).lineTo(520, sigY).stroke();
     doc.undash();
 
-    doc.font('Helvetica-Bold').fontSize(8).fillColor(grayColor);
+    setFont('Helvetica-Bold');
+    doc.fontSize(8).fillColor(grayColor);
     doc.text('SELLER SIGNATURE', 40, sigY + 5, { width: 200, align: 'center' });
     doc.text('WEPICK WEDROP REPRESENTATIVE', 320, sigY + 5, { width: 200, align: 'center' });
 
-    doc.font('Helvetica').fontSize(7.5).fillColor(grayColor);
+    setFont('Helvetica');
+    doc.fontSize(7.5).fillColor(grayColor);
     doc.text(`Name: ${quote.customerName || ''}`, 40, sigY + 15, { width: 200, align: 'center' });
     doc.text('Authorized Signatory', 320, sigY + 15, { width: 200, align: 'center' });
 
     // Footer note
     doc.strokeColor(lightGray).lineWidth(1).moveTo(40, 520).lineTo(560, 520).stroke();
-    doc.font('Helvetica').fontSize(7.5).fillColor(grayColor).text(
+    setFont('Helvetica');
+    doc.fontSize(7.5).fillColor(grayColor).text(
       'Note: This is a purchase record from the seller. It is not a GST tax invoice.',
       40, 530
     );
-    doc.font('Helvetica-Bold').fontSize(8).fillColor(cyanColor).text(
+    setFont('Helvetica-Bold');
+    doc.fontSize(8).fillColor(cyanColor).text(
       'THANK YOU FOR CHOOSING WEPICK WEDROP',
       350, 530, { align: 'right' }
     );

@@ -142,9 +142,15 @@ export async function PUT(
     });
 
     if (updateData.status === 'payment_completed') {
-      sendInvoiceWhatsApp(updatedQuote).catch((err) => {
-        console.error('[MSG91] Background invoice WhatsApp dispatch failed:', err);
-      });
+      try {
+        sendInvoiceWhatsApp(updatedQuote).then((url) => {
+          console.log('[MSG91] Background WhatsApp Invoice sent successfully. PDF URL:', url);
+        }).catch((err) => {
+          console.error('[MSG91] Background invoice WhatsApp dispatch promise failed:', err);
+        });
+      } catch (e) {
+        console.error('[MSG91] Background invoice dispatch init error:', e);
+      }
     }
 
     return jsonResponse({
