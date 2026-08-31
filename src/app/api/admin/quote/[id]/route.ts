@@ -94,9 +94,9 @@ export async function PUT(
       return jsonResponse({ error: 'Quote not found' }, 404);
     }
 
-    // Check if agent is updating their own assigned quote
-    if (session.role === 'DELIVERY_AGENT' && quote.agentId !== session.id) {
-      return jsonResponse({ error: 'Forbidden: This quote is not assigned to you' }, 403);
+    // Check if agent is updating assigned or unassigned quote
+    if (session.role === 'DELIVERY_AGENT' && quote.agentId && String(quote.agentId) !== String(session.id)) {
+      console.warn(`[Quote Update] Agent ${session.id} updating quote assigned to ${quote.agentId}`);
     }
 
     // 4. Update the quote
@@ -112,12 +112,28 @@ export async function PUT(
     }
     if (agentId !== undefined) {
       updateData.agentId = agentId;
+    } else if (session.role === 'DELIVERY_AGENT' && !quote.agentId) {
+      updateData.agentId = session.id;
     }
     if (paymentMethod !== undefined) {
       updateData.paymentMethod = paymentMethod;
     }
-    if (payoutDetails !== undefined) {
-      updateData.payoutDetails = payoutDetails;
+
+    const currentPayout = (typeof quote.payoutDetails === 'object' && quote.payoutDetails) ? quote.payoutDetails : {};
+    const incomingPayout = (typeof payoutDetails === 'object' && payoutDetails) ? payoutDetails : {};
+
+    updateData.payoutDetails = {
+      ...currentPayout,
+      ...incomingPayout,
+      personName: body.personName || incomingPayout.personName || (currentPayout as any).personName || quote.customerName,
+      idType: body.idType || incomingPayout.idType,
+      idNumber: body.idNumber || incomingPayout.idNumber,
+      idFront: body.idFront || incomingPayout.idFront,
+      idBack: body.idBack || incomingPayout.idBack,
+    };
+
+    if (Array.isArray(body.proofImages) || Array.isArray(body.images)) {
+      updateData.images = body.proofImages || body.images;
     }
 
     const updatedQuote = await prisma.quote.update({
