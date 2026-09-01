@@ -301,6 +301,17 @@ export async function GET(req: NextRequest) {
     const roundedFinalPrice =
       Math.round(finalPrice / 100) * 100;
 
+    if (roundedFinalPrice <= 0 && resolvedBasePrice <= 0) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'Device not found',
+          message: `Device valuation not found for ${brand} ${model}`,
+        },
+        404
+      );
+    }
+
     return jsonResponse(
       {
         success: true,
@@ -355,10 +366,11 @@ export async function GET(req: NextRequest) {
 
     return jsonResponse(
       {
-        error:
-          err?.message || 'Internal server error',
+        success: false,
+        error: 'Device not found',
+        message: err?.message || 'Device not found',
       },
-      500
+      404
     );
   }
 }
@@ -505,6 +517,17 @@ export async function POST(req: NextRequest) {
     const roundedFinalPrice =
       Math.round(finalPrice / 100) * 100;
 
+    if (roundedFinalPrice <= 0 && resolvedBasePrice <= 0) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'Device not found',
+          message: `Device valuation not found for ${body.brand} ${body.friendlyModelName || body.modelCode}`,
+        },
+        404
+      );
+    }
+
     return jsonResponse(
       {
         success: true,
@@ -563,11 +586,11 @@ export async function POST(req: NextRequest) {
 
     return jsonResponse(
       {
-        error:
-          err?.message ||
-          'Internal server error',
+        success: false,
+        error: 'Device not found',
+        message: err?.message || 'Device not found',
       },
-      500
+      404
     );
   }
 }
