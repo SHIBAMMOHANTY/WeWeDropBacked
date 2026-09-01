@@ -231,31 +231,41 @@ export async function GET(req: NextRequest) {
     }
 
     /**
-     * 2. Fallback to PricingService.
+     * 2. Fallback to PricingService with + / Plus variant search.
      */
     if (resolvedBasePrice <= 0) {
-      try {
-        const legacyCalc = await PricingService.calculateQuote({
-          brand,
-          model,
-          storage: storageString,
-          condition: 'good',
-        });
+      const cleanBrandStr = brand || '';
+      const rawModelTitle = model || '';
+      const modelWithoutBrand = rawModelTitle.toLowerCase().startsWith(cleanBrandStr.toLowerCase())
+        ? rawModelTitle.substring(cleanBrandStr.length).trim()
+        : rawModelTitle;
 
-        if (
-          legacyCalc.estimatedPrice &&
-          legacyCalc.estimatedPrice > 0
-        ) {
-          resolvedBasePrice = legacyCalc.estimatedPrice;
-          realLaunchPrice = legacyCalc.launchPrice;
-          priceSource =
-            legacyCalc.priceSource || 'pricing-service';
+      const modelVariants = Array.from(new Set([
+        rawModelTitle,
+        modelWithoutBrand,
+        modelWithoutBrand.replace(/\+/g, ' Plus ').replace(/\s+/g, ' ').trim(),
+        modelWithoutBrand.replace(/\bplus\b/gi, '+').replace(/\s+/g, ' ').trim(),
+      ])).filter(Boolean);
+
+      for (const variantModel of modelVariants) {
+        if (resolvedBasePrice > 0) break;
+        try {
+          const legacyCalc = await PricingService.calculateQuote({
+            brand: cleanBrandStr,
+            model: variantModel,
+            storage: storageString,
+            condition: 'good',
+          });
+
+          if (legacyCalc.estimatedPrice && legacyCalc.estimatedPrice > 0) {
+            resolvedBasePrice = legacyCalc.estimatedPrice;
+            realLaunchPrice = legacyCalc.launchPrice;
+            priceSource = legacyCalc.priceSource || 'pricing-service';
+            break;
+          }
+        } catch (error) {
+          console.warn(`PricingService lookup failed for variant '${variantModel}':`, error);
         }
-      } catch (error) {
-        console.warn(
-          'PricingService price resolution failed:',
-          error
-        );
       }
     }
 
@@ -301,12 +311,16 @@ export async function GET(req: NextRequest) {
     const roundedFinalPrice =
       Math.round(finalPrice / 100) * 100;
 
+    const displayDeviceTitle = model.toLowerCase().startsWith(brand.toLowerCase())
+      ? model
+      : `${brand} ${model}`;
+
     if (resolvedBasePrice <= 0 && (!realLaunchPrice || realLaunchPrice <= 0 || roundedFinalPrice <= 500)) {
       return jsonResponse(
         {
           success: false,
           error: 'Device not found',
-          message: `Device valuation not found for ${brand} ${model}`,
+          message: `Device valuation not found for ${displayDeviceTitle}`,
         },
         404
       );
@@ -440,39 +454,41 @@ export async function POST(req: NextRequest) {
     }
 
     /**
-     * PricingService fallback.
+     * PricingService fallback with + / Plus variant search.
      */
     if (resolvedBasePrice <= 0) {
-      try {
-        const legacyCalc =
-          await PricingService.calculateQuote({
-            brand: body.brand,
-            model:
-              body.friendlyModelName ||
-              body.modelCode,
+      const cleanBrandStr = body.brand || '';
+      const rawModelTitle = body.friendlyModelName || body.modelCode || '';
+      const modelWithoutBrand = rawModelTitle.toLowerCase().startsWith(cleanBrandStr.toLowerCase())
+        ? rawModelTitle.substring(cleanBrandStr.length).trim()
+        : rawModelTitle;
+
+      const modelVariants = Array.from(new Set([
+        rawModelTitle,
+        modelWithoutBrand,
+        modelWithoutBrand.replace(/\+/g, ' Plus ').replace(/\s+/g, ' ').trim(),
+        modelWithoutBrand.replace(/\bplus\b/gi, '+').replace(/\s+/g, ' ').trim(),
+      ])).filter(Boolean);
+
+      for (const variantModel of modelVariants) {
+        if (resolvedBasePrice > 0) break;
+        try {
+          const legacyCalc = await PricingService.calculateQuote({
+            brand: cleanBrandStr,
+            model: variantModel,
             storage: `${storageGb}GB`,
             condition: 'good',
           });
 
-        if (
-          legacyCalc.estimatedPrice &&
-          legacyCalc.estimatedPrice > 0
-        ) {
-          resolvedBasePrice =
-            legacyCalc.estimatedPrice;
-
-          realLaunchPrice =
-            legacyCalc.launchPrice;
-
-          priceSource =
-            legacyCalc.priceSource ||
-            'pricing-service';
+          if (legacyCalc.estimatedPrice && legacyCalc.estimatedPrice > 0) {
+            resolvedBasePrice = legacyCalc.estimatedPrice;
+            realLaunchPrice = legacyCalc.launchPrice;
+            priceSource = legacyCalc.priceSource || 'pricing-service';
+            break;
+          }
+        } catch (error) {
+          console.warn(`PricingService POST lookup failed for variant '${variantModel}':`, error);
         }
-      } catch (error) {
-        console.warn(
-          'PricingService POST lookup failed:',
-          error
-        );
       }
     }
 
@@ -517,12 +533,17 @@ export async function POST(req: NextRequest) {
     const roundedFinalPrice =
       Math.round(finalPrice / 100) * 100;
 
+    const targetModelTitle = body.friendlyModelName || body.modelCode || '';
+    const displayDeviceTitle = targetModelTitle.toLowerCase().startsWith(body.brand.toLowerCase())
+      ? targetModelTitle
+      : `${body.brand} ${targetModelTitle}`;
+
     if (resolvedBasePrice <= 0 && (!realLaunchPrice || realLaunchPrice <= 0 || roundedFinalPrice <= 500)) {
       return jsonResponse(
         {
           success: false,
           error: 'Device not found',
-          message: `Device valuation not found for ${body.brand} ${body.friendlyModelName || body.modelCode}`,
+          message: `Device valuation not found for ${displayDeviceTitle}`,
         },
         404
       );

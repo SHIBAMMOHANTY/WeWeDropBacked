@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
     const normalizedQuery = normalizeQuery(query);
     // Versioned key prevents prior accessory-containing search results from
     // being served until their old TTL expires.
-    const cacheKey = `mobile_handset_search_v2_${normalizedQuery}_page_${page}`;
+    const cacheKey = `mobile_handset_search_v3_${normalizedQuery}_page_${page}`;
     const cachedData = CacheService.get<any[]>(cacheKey);
 
     if (cachedData) {
@@ -114,16 +114,42 @@ export async function GET(req: NextRequest) {
     // ─── 1. Search DB (Device collection — scraped & stored devices) ───
     const keywords = normalizedQuery.split(/\s+/).filter(Boolean);
 
+    // Expand search keywords so '+' matches both '+' and 'Plus' (e.g. Realme 10 Pro+ vs Realme 10 Pro Plus)
+    const keywordFiltersDevice = keywords.map(kw => {
+      const kwClean = kw.toLowerCase();
+      const kwPlusVariant = kwClean.includes('+')
+        ? kwClean.replace(/\+/g, 'plus')
+        : kwClean.replace(/\bplus\b/gi, '+');
+
+      const terms = Array.from(new Set([kwClean, kwPlusVariant, kwClean.replace(/\+/g, '')])).filter(Boolean);
+
+      return {
+        OR: terms.flatMap(term => [
+          { brand: { contains: term, mode: 'insensitive' as const } },
+          { model: { contains: term, mode: 'insensitive' as const } },
+          { slug:  { contains: term, mode: 'insensitive' as const } },
+        ]),
+      };
+    });
+
+    const keywordFiltersMaster = keywords.map(kw => {
+      const kwClean = kw.toLowerCase();
+      const kwPlusVariant = kwClean.includes('+')
+        ? kwClean.replace(/\+/g, 'plus')
+        : kwClean.replace(/\bplus\b/gi, '+');
+
+      const terms = Array.from(new Set([kwClean, kwPlusVariant, kwClean.replace(/\+/g, '')])).filter(Boolean);
+
+      return {
+        OR: terms.flatMap(term => [
+          { brand: { contains: term, mode: 'insensitive' as const } },
+          { model: { contains: term, mode: 'insensitive' as const } },
+        ]),
+      };
+    });
+
     const dbDevices = await prisma.device.findMany({
-      where: {
-        AND: keywords.map(kw => ({
-          OR: [
-            { brand: { contains: kw, mode: 'insensitive' } },
-            { model: { contains: kw, mode: 'insensitive' } },
-            { slug:  { contains: kw, mode: 'insensitive' } },
-          ],
-        })),
-      },
+      where: { AND: keywordFiltersDevice },
       include: { currentPrices: true },
       take: 20,
     });
@@ -131,12 +157,7 @@ export async function GET(req: NextRequest) {
     // ─── 2. Search DeviceMaster (buyback catalog) ───
     const dbDeviceMasters = await prisma.deviceMaster.findMany({
       where: {
-        AND: keywords.map(kw => ({
-          OR: [
-            { brand: { contains: kw, mode: 'insensitive' } },
-            { model: { contains: kw, mode: 'insensitive' } },
-          ],
-        })),
+        AND: keywordFiltersMaster,
         isActive: true,
         isDeleted: false,
       },
