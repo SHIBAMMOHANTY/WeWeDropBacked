@@ -68,11 +68,20 @@ const ACCESSORY_MODEL_TERMS = [
   'back cover', 'case', 'tempered glass', 'screen guard', 'screen protector',
   'camera protector', 'mobile holder', 'charger', 'charging cable', 'adapter',
   'phone stand', 'skin', 'bumper', 'pouch', 'flip cover',
+  'tworld', 'kapaver', 'robotok', 'ringholder', 'strap', 'lanyard',
+  'screen replacement', 'battery replacement', 'display assembly', 'back panel',
+  'cover', 'glass', 'guard', 'protector',
 ];
 
-function isHandsetModel(model: string): boolean {
-  const normalizedModel = model.toLowerCase();
-  return !ACCESSORY_MODEL_TERMS.some((term) => normalizedModel.includes(term));
+function isHandsetModel(model: string, price?: number): boolean {
+  const normalizedModel = (model || '').toLowerCase();
+  if (ACCESSORY_MODEL_TERMS.some((term) => normalizedModel.includes(term))) {
+    return false;
+  }
+  if (typeof price === 'number' && price > 0 && price < 1000) {
+    return false;
+  }
+  return true;
 }
 
 export const runtime = 'nodejs';
@@ -196,7 +205,7 @@ export async function GET(req: NextRequest) {
         clearTimeout(timeout);
 
         if (scrapedResults && scrapedResults.length > 0) {
-          results = scrapedResults.filter((p: any) => isHandsetModel(p.model)).map((p: any) => ({
+          results = scrapedResults.filter((p: any) => isHandsetModel(p.model, p.price)).map((p: any) => ({
             id:          p.id,
             brand:       p.brand,
             model:       p.model,
