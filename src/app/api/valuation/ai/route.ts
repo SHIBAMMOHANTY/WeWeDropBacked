@@ -301,7 +301,7 @@ export async function GET(req: NextRequest) {
     const roundedFinalPrice =
       Math.round(finalPrice / 100) * 100;
 
-    if (roundedFinalPrice <= 0 && resolvedBasePrice <= 0) {
+    if (resolvedBasePrice <= 0 && (!realLaunchPrice || realLaunchPrice <= 0 || roundedFinalPrice <= 500)) {
       return jsonResponse(
         {
           success: false,
@@ -517,7 +517,7 @@ export async function POST(req: NextRequest) {
     const roundedFinalPrice =
       Math.round(finalPrice / 100) * 100;
 
-    if (roundedFinalPrice <= 0 && resolvedBasePrice <= 0) {
+    if (resolvedBasePrice <= 0 && (!realLaunchPrice || realLaunchPrice <= 0 || roundedFinalPrice <= 500)) {
       return jsonResponse(
         {
           success: false,
