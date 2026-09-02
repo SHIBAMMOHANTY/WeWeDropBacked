@@ -6,13 +6,23 @@ import { prisma } from "@/lib/prisma";
 import { signToken } from "@/lib/auth";
 import { verifyOTP } from "@/lib/otp";
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
 export async function POST(req: Request) {
   const { phone, otp } = await req.json();
 
   // 1️⃣ Verify OTP (must await — it's async!)
   const valid = await verifyOTP(phone, otp);
   if (!valid) {
-    return NextResponse.json({ error: "Invalid OTP" }, { status: 401 });
+    return NextResponse.json({ error: "Invalid OTP" }, { status: 401, headers: corsHeaders });
   }
 
   // Generate search variants for robust matching
@@ -92,8 +102,8 @@ export async function POST(req: Request) {
       avatar: userFound.avatar || "",
       membership: userFound.membership || null,
       type: userFound.role === 'BUSINESS' ? 'BUSINESS' : (userFound.role === 'SUPER_ADMIN' ? 'ADMIN' : 'USER'),
-    });
-  } else {
+    }, { headers: corsHeaders });
+  } else if (businessFound) {
     const token = signToken({
       id: businessFound.id,
       role: 'BUSINESS',
@@ -111,7 +121,9 @@ export async function POST(req: Request) {
       avatar: "",
       membership: null,
       type: 'BUSINESS',
-    });
+    }, { headers: corsHeaders });
   }
+
+  return NextResponse.json({ error: "Failed to authenticate" }, { status: 400, headers: corsHeaders });
 }
 

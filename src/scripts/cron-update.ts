@@ -51,6 +51,7 @@ async function runCronUpdate() {
               if (obj.widget && obj.widget.data && obj.widget.data.products) {
                 obj.widget.data.products.forEach((p: any) => {
                   if (p.productInfo && p.productInfo.value) {
+                    const info = p.productInfo.value;
                     const title = info.titles?.title || (info.titles?.superTitle ? `${info.titles.superTitle} ${info.titles.newTitle}` : info.titles?.newTitle) || '';
                     if (title) {
                       let price = 0;

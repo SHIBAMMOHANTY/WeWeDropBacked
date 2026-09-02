@@ -84,6 +84,53 @@ function isHandsetModel(model: string, price?: number): boolean {
   return true;
 }
 
+function calculateRelevance(item: { brand: string; model: string }, keywords: string[], rawQuery: string): number {
+  const fullStr = `${item.brand} ${item.model}`.toLowerCase();
+  const modelStr = (item.model || '').toLowerCase();
+  const queryLower = rawQuery.toLowerCase().trim();
+
+  let score = 0;
+
+  // Exact full query match e.g. "motorola edge 50" in "motorola edge 50 fusion"
+  if (fullStr.includes(queryLower) || modelStr.includes(queryLower)) {
+    score += 100;
+  }
+
+  // Exact model phrase match e.g. "edge 50"
+  const modelQuery = rawQuery
+    .replace(/^(apple|iphone|samsung|galaxy|oneplus|xiaomi|redmi|poco|vivo|oppo|realme|google|pixel|motorola|moto|nothing)\s+/i, '')
+    .trim()
+    .toLowerCase();
+
+  if (modelQuery && (modelStr.includes(modelQuery) || fullStr.includes(modelQuery))) {
+    score += 80;
+  }
+
+  // Check numeric model numbers in query vs item model (e.g. "50" vs "60" / "70")
+  const queryNumbers = rawQuery.match(/\b\d+\b/g) || [];
+  for (const num of queryNumbers) {
+    const numRegex = new RegExp(`\\b${num}\\b`, 'i');
+    if (numRegex.test(modelStr)) {
+      score += 50;
+    } else {
+      // Query explicitly asked for a number like 50, but model contains a DIFFERENT model number like 60, 70, 30
+      const modelNumbers = modelStr.match(/\b\d+\b/g) || [];
+      if (modelNumbers.length > 0 && !modelNumbers.includes(num)) {
+        score -= 80; // Heavy penalty for model number mismatch
+      }
+    }
+  }
+
+  // Keyword coverage
+  for (const kw of keywords) {
+    if (fullStr.includes(kw.toLowerCase())) {
+      score += 15;
+    }
+  }
+
+  return score;
+}
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -104,7 +151,7 @@ export async function GET(req: NextRequest) {
     const normalizedQuery = normalizeQuery(query);
     // Versioned key prevents prior accessory-containing search results from
     // being served until their old TTL expires.
-    const cacheKey = `mobile_handset_search_v3_${normalizedQuery}_page_${page}`;
+    const cacheKey = `mobile_handset_search_v4_${normalizedQuery}_page_${page}`;
     const cachedData = CacheService.get<any[]>(cacheKey);
 
     if (cachedData) {
@@ -122,13 +169,20 @@ export async function GET(req: NextRequest) {
         : kwClean.replace(/\bplus\b/gi, '+');
 
       const terms = Array.from(new Set([kwClean, kwPlusVariant, kwClean.replace(/\+/g, '')])).filter(Boolean);
+      const isNumeric = /^\d+$/.test(kwClean);
 
       return {
-        OR: terms.flatMap(term => [
-          { brand: { contains: term, mode: 'insensitive' as const } },
-          { model: { contains: term, mode: 'insensitive' as const } },
-          { slug:  { contains: term, mode: 'insensitive' as const } },
-        ]),
+        OR: terms.flatMap(term => {
+          const filters: any[] = [
+            { brand: { contains: term, mode: 'insensitive' as const } },
+            { model: { contains: term, mode: 'insensitive' as const } },
+          ];
+          // Exclude slug matching for purely numeric terms to prevent matching 5000mah or 50mp
+          if (!isNumeric) {
+            filters.push({ slug: { contains: term, mode: 'insensitive' as const } });
+          }
+          return filters;
+        }),
       };
     });
 
@@ -151,7 +205,7 @@ export async function GET(req: NextRequest) {
     const dbDevices = await prisma.device.findMany({
       where: { AND: keywordFiltersDevice },
       include: { currentPrices: true },
-      take: 20,
+      take: 30,
     });
 
     // ─── 2. Search DeviceMaster (buyback catalog) ───
@@ -161,7 +215,7 @@ export async function GET(req: NextRequest) {
         isActive: true,
         isDeleted: false,
       },
-      take: 20,
+      take: 30,
     });
 
     // ─── Map Device results ───
@@ -207,14 +261,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    let results = merged;
+    // Relevance sort DB results
+    merged.sort((a, b) => calculateRelevance(b, keywords, normalizedQuery) - calculateRelevance(a, keywords, normalizedQuery));
 
-    // ─── 4. If no DB results, try live Flipkart scrape ───
-    if (deviceResults.length === 0) {
+    let results = merged;
+    const topScore = merged.length > 0 ? calculateRelevance(merged[0], keywords, normalizedQuery) : -1;
+    const needsScrape = merged.length === 0 || topScore < 40;
+
+    // ─── 4. If no relevant DB results, try live Flipkart/Yahoo scrape ───
+    if (needsScrape) {
       try {
         const { ScraperService } = await import('@/services/mobile/scraper.service');
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        const timeout = setTimeout(() => controller.abort(), 12000);
 
         const scrapedResults = await Promise.race([
           ScraperService.search(normalizedQuery, page),
@@ -226,7 +285,7 @@ export async function GET(req: NextRequest) {
         clearTimeout(timeout);
 
         if (scrapedResults && scrapedResults.length > 0) {
-          results = scrapedResults.filter((p: any) => isHandsetModel(p.model, p.price)).map((p: any) => ({
+          const freshResults = scrapedResults.filter((p: any) => isHandsetModel(p.model, p.price)).map((p: any) => ({
             id:          p.id,
             brand:       p.brand,
             model:       p.model,
@@ -235,6 +294,16 @@ export async function GET(req: NextRequest) {
             price:       p.price,
             mrp:         p.mrp,
           }));
+
+          // Merge scraped results with DB results, prioritizing scraped
+          const combined = [...freshResults];
+          for (const item of merged) {
+            if (!combined.some(c => c.brand.toLowerCase() === item.brand.toLowerCase() && c.model.toLowerCase() === item.model.toLowerCase())) {
+              combined.push(item);
+            }
+          }
+          combined.sort((a, b) => calculateRelevance(b, keywords, normalizedQuery) - calculateRelevance(a, keywords, normalizedQuery));
+          results = combined;
 
           // Background: register scraped devices in DB
           Promise.all(scrapedResults.map(async (p: any) => {
@@ -299,7 +368,9 @@ export async function GET(req: NextRequest) {
             const storage = r.model.match(/(\d+\s*(?:GB|TB))/i)?.[1] || '128GB';
 
             const cashify = await Promise.race([
-              getCashifyPrice(r.brand, cleanModel, storage, 'good'),
+              getCashifyPrice(r.brand, cleanModel, storage, 'good', {
+                launchPrice: r.mrp || r.price,
+              }),
               new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
             ]);
 
@@ -344,3 +415,4 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+

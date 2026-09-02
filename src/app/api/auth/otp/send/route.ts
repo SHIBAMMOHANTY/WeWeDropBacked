@@ -2,9 +2,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma"; // Make sure this path is correct!
+import { prisma } from "@/lib/prisma";
 import { sendOTP } from "@/lib/otp";
 import { getOrCreateNumericId } from "@/lib/userIdMap";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
 
 export async function POST(req: Request) {
   try {
@@ -13,7 +23,7 @@ export async function POST(req: Request) {
 
     // basic validation / normalization
     if (!phone || typeof phone !== "string") {
-      return NextResponse.json({ error: "Phone is required" }, { status: 400 });
+      return NextResponse.json({ error: "Phone is required" }, { status: 400, headers: corsHeaders });
     }
     phone = phone.trim();
 
@@ -160,39 +170,50 @@ export async function POST(req: Request) {
     }
 
     if (!foundAccount) {
-      console.log(`None of the search phone options are registered.`);
-      return NextResponse.json(
-        { error: "Number is not registered" },
-        { status: 400 }
-      );
+      if (typeCanonical === 'business') {
+        return NextResponse.json(
+          { error: "This number is not registered as a business" },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+      if (typeCanonical === 'admin') {
+        return NextResponse.json(
+          { error: "This number is not registered as an admin" },
+          { status: 400, headers: corsHeaders }
+        );
+      }
     }
 
     // Enforce role-type matching if typeCanonical is provided
-    if (typeCanonical) {
+    if (typeCanonical && foundAccount) {
       if (typeCanonical === 'user' && foundAccount.type === 'BUSINESS') {
         return NextResponse.json(
           { error: "Business users must log in with type 'business'" },
-          { status: 400 }
+          { status: 400, headers: corsHeaders }
         );
       }
       if (typeCanonical === 'business' && foundAccount.type !== 'BUSINESS') {
         return NextResponse.json(
           { error: "This number is not registered as a business" },
-          { status: 400 }
+          { status: 400, headers: corsHeaders }
         );
       }
       if (typeCanonical === 'admin' && foundAccount.type !== 'ADMIN') {
         return NextResponse.json(
           { error: "This number is not registered as an admin" },
-          { status: 400 }
+          { status: 400, headers: corsHeaders }
         );
       }
     }
 
-    console.log("Verified account found:", { id: foundAccount.id, phone: foundAccount.phone, type: foundAccount.type });
+    if (foundAccount) {
+      console.log("Verified account found:", { id: foundAccount.id, phone: foundAccount.phone, type: foundAccount.type });
+    } else {
+      console.log("New user OTP request for phone:", phone);
+    }
 
     // allocate stable numeric id and persist to DB (best-effort) for User model records only
-    if (foundAccount.isUserTable) {
+    if (foundAccount && foundAccount.isUserTable) {
       try {
         const numericId = await getOrCreateNumericId(foundAccount.id);
         if (userFound && (userFound as any).numericId !== numericId) {
@@ -212,26 +233,14 @@ export async function POST(req: Request) {
       await sendOTP(phone);
     } catch (e) {
       console.error("[otp] sendOTP failed:", (e as Error).message);
-      return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
+      return NextResponse.json({ error: "Failed to send OTP" }, { status: 500, headers: corsHeaders });
     }
-
-    const userDetails = {
-      id: foundAccount.id,
-      phone: foundAccount.phone,
-      role: foundAccount.role,
-      name: foundAccount.username || null,
-      username: foundAccount.username || null,
-      email: foundAccount.email || null,
-      avatar: foundAccount.avatar,
-      membership: foundAccount.membership,
-      type: foundAccount.type,
-    };
 
     return NextResponse.json({
       success: true,
       message: "OTP sent",
       phone,
-    });
+    }, { headers: corsHeaders });
 
   } catch (error: any) {
     console.error("--------------------------------");
@@ -239,7 +248,7 @@ export async function POST(req: Request) {
     console.error("--------------------------------");
     return NextResponse.json(
       { error: error.message || "Internal Server Error" },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
