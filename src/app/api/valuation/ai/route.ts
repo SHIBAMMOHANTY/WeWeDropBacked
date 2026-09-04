@@ -74,6 +74,20 @@ function calculateConditionAdjustedPrice(
   const has = (...names: string[]) =>
     names.some((name) => normalizedDefects.includes(name));
 
+  // Cellular / Calling failure (Motherboard scrap drop ~92.66%)
+  if (
+    has(
+      'calls_failed',
+      'cellular_issue',
+      'sim_issue',
+      'sim_not_working',
+      'network_issue',
+      'calling_dead'
+    )
+  ) {
+    price *= 0.0734;
+  }
+
   // Screen
   if (
     has(
