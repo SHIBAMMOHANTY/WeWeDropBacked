@@ -9,10 +9,16 @@ export const dynamic = 'force-dynamic';
 const calculateSchema = z.object({
   brand: z.string().min(1, 'Brand is required'),
   model: z.string().min(1, 'Model is required'),
-  storage: z.string().min(1, 'Storage size is required'),
-  condition: z.enum(['excellent', 'good', 'average'], {
-    errorMap: () => ({ message: "Condition must be 'excellent', 'good', or 'average'" }),
-  }),
+  storage: z.string().default('128 GB'),
+  condition: z.string().default('good'),
+  
+  // Core Status
+  canMakeCalls: z.boolean().optional(),
+  touchScreenWorking: z.boolean().optional(),
+  screenOriginal: z.boolean().optional(),
+  isPhoneRepaired: z.boolean().optional(),
+  calls_failed: z.boolean().optional(),
+
   // Legacy compat
   screenCracked: z.boolean().default(false),
   cameraIssue: z.boolean().default(false),
@@ -22,12 +28,15 @@ const calculateSchema = z.object({
   screenIssue: z.boolean().default(false),
   replacementScreen: z.boolean().default(false),
   glassbroken: z.boolean().default(false),
+  screenGlassBroken: z.boolean().default(false),
   heavyDiscoloration: z.boolean().default(false),
   scratchOnScreen: z.boolean().default(false),
 
   // Body
   bodyHeavyScratch: z.boolean().default(false),
+  heavyScratchBody: z.boolean().default(false),
   minorBodyScratch: z.boolean().default(false),
+  dentBody: z.boolean().default(false),
   cameraGlassBroken: z.boolean().default(false),
 
   // SIM
@@ -56,13 +65,19 @@ const calculateSchema = z.object({
   batteryHealth: z.number().min(0).max(100).default(100),
 
   // Accessories & bonuses
-  hasChargerAndBox: z.boolean().default(false),
-  hasBill: z.boolean().default(false),
+  hasBox: z.boolean().optional(),
+  hasCharger: z.boolean().optional(),
+  hasChargerAndBox: z.boolean().optional(),
+  hasBill: z.boolean().default(true),
+  isUnderWarranty: z.boolean().optional(),
   warrantyMonths: z.number().min(0).default(0),
+  deviceAge: z.string().optional(),
+  deviceAgeMonths: z.number().optional(),
 
+  basePrice: z.number().optional(),
   modelSlug: z.string().optional(),
   launchPrice: z.number().optional(),
-});
+}).passthrough();
 
 
 export async function OPTIONS() {

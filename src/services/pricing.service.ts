@@ -553,288 +553,148 @@ export class PricingService {
     };
 
     /*
+     * ==========================================================
+     * CASHIFY CALIBRATED DEDUCTION & SCRAP FLOOR ENGINE
+     * ==========================================================
+     */
+
+    const isCallsDead = Boolean(
+      data.simNotWorking ||
+      data.calls_failed ||
+      data.canMakeCalls === false ||
+      data.cellularIssue ||
+      data.networkIssue
+    );
+
+    if (isCallsDead) {
+      const scrapFloor = (isApple || basePrice > 20000) ? 1180 : 760;
+      const deductionAmount = Math.max(0, basePrice - scrapFloor);
+
+      return {
+        success: true,
+        estimatedPrice: scrapFloor,
+        launchPrice,
+        priceSource,
+        breakdown: {
+          basePrice,
+          deductions: [{ label: 'Calls / Cellular Network Failed (Scrap Floor)', amount: deductionAmount }],
+          bonuses: [],
+          totalDeduction: deductionAmount,
+          totalBonus: 0,
+        },
+      };
+    }
+
+    /*
      * SCREEN
      */
 
-    if (
-      data.screenIssue ||
-      data.screenCracked
-    ) {
-      deduct(
-        'Screen Issue',
-        0.75
-      );
-    } else if (
-      data.replacementScreen
-    ) {
-      deduct(
-        'Replacement Screen (Non-Original)',
-        0.55
-      );
-    } else if (
-      data.glassbroken
-    ) {
-      deduct(
-        'Glass Broken',
-        0.60
-      );
-    } else if (
-      data.heavyDiscoloration
-    ) {
-      deduct(
-        'Heavy Discoloration / Dead Spot',
-        0.70
-      );
-    } else if (
-      data.scratchOnScreen
-    ) {
-      deduct(
-        'Scratch on Screen',
-        0.40
-      );
+    if (data.touchScreenWorking === false || data.touchIssue) {
+      deduct('Touch Screen Faulty', 0.515);
+    } else if (data.replacementScreen || data.screenOriginal === false) {
+      deduct('Replacement Screen (Non-Original)', isApple ? 0.3195 : 0.3225);
+    } else if (data.glassbroken || data.screenCracked || data.screenGlassBroken) {
+      deduct('Glass Broken / Cracked', isApple ? 0.2928 : 0.3761);
+    } else if (data.heavyDiscoloration || data.screenIssue || data.deadSpots) {
+      deduct('Heavy Discoloration / Dead Spot', 0.1264);
+    } else if (data.scratchOnScreen) {
+      deduct('Scratch on Screen', 0.0512);
     }
 
     /*
      * BODY
      */
 
-    if (
-      data.bodyHeavyScratch
-    ) {
-      deduct(
-        'Heavy Body Scratch / Dent',
-        0.25
-      );
-    } else if (
-      data.bodyDamage
-    ) {
-      deduct(
-        'Body Damage',
-        0.30
-      );
-    } else if (
-      data.minorBodyScratch
-    ) {
-      deduct(
-        'Minor Body Scratch (1-2)',
-        0.25
-      );
+    if (data.bodyDamage || data.dentBody) {
+      deduct('Body Dents / Bent Frame', 0.25);
+    } else if (data.bodyHeavyScratch || data.heavyScratchBody) {
+      deduct('Heavy Body Scratches', 0.12);
+    } else if (data.minorBodyScratch) {
+      deduct('Minor Body Scratches', 0.0512);
     }
 
-    if (
-      data.cameraGlassBroken
-    ) {
-      deduct(
-        'Camera Glass Broken',
-        0.30
-      );
+    if (data.cameraGlassBroken || data.cameraGlassCrack) {
+      deduct('Camera Glass Broken', isApple ? 0.128 : 0.1264);
     }
 
-    /*
-     * SIM
-     */
-
-    if (data.simNotWorking) {
-      const simFlat =
-        iPhoneGen >= 13
-          ? 1200
-          : 800;
-
-      deductions.push({
-        label:
-          'SIM Not Working',
-        amount: simFlat,
-      });
+    if (data.isPhoneRepaired || data.phoneRepaired) {
+      deduct('Phone Previously Repaired', 0.08);
     }
 
     /*
      * CAMERAS
      */
 
-    if (
-      data.frontCameraIssue &&
-      data.backCameraIssue
-    ) {
-      deduct(
-        'Front + Back Camera Not Working',
-        0.55
-      );
-    } else if (
-      data.backCameraIssue ||
-      data.cameraIssue
-    ) {
-      deduct(
-        'Back Camera Not Working',
-        0.40
-      );
-    } else if (
-      data.frontCameraIssue
-    ) {
-      deduct(
-        'Front Camera Not Working',
-        0.35
-      );
+    if (data.frontCameraIssue && data.backCameraIssue) {
+      deduct('Front + Back Camera Not Working', 0.55);
+    } else if (data.backCameraIssue || data.cameraIssue) {
+      deduct('Back Camera Not Working', isApple ? 0.128 : 0.1264);
+    } else if (data.frontCameraIssue) {
+      deduct('Front Camera Not Working', isApple ? 0.128 : 0.1264);
     }
 
     /*
      * FUNCTIONAL
      */
 
-    if (data.fingerprintIssue)
-      deduct(
-        'Fingerprint Not Working',
-        0.25
-      );
+    if (data.fingerprintIssue || data.faceIdIssue) {
+      deduct('Biometrics / Face ID Faulty', 0.35);
+    }
 
-    if (
-      data.faceIdIssue &&
-      isApple
-    )
-      deduct(
-        'Face ID Not Working',
-        0.45
-      );
+    if (data.wifiNotWorking || data.bluetoothIssue) {
+      deduct('Wi-Fi / Bluetooth Not Working', 0.35);
+    }
 
-    if (data.volumeButtonIssue)
-      deduct(
-        'Volume Button Not Working',
-        0.30
-      );
+    if (data.speakerIssue || data.audioReceiverIssue || data.microphoneIssue || data.vibrationIssue) {
+      deduct('Speaker / Mic / Earpiece Faulty', 0.25);
+    }
 
-    if (data.wifiNotWorking)
-      deduct(
-        'Wi-Fi Not Working',
-        0.60
-      );
+    if (data.volumeButtonIssue || data.silentButtonIssue || data.powerButtonIssue) {
+      deduct('Physical Buttons Faulty', 0.25);
+    }
 
-    if (data.speakerIssue)
-      deduct(
-        'Speaker Not Working',
-        0.30
-      );
+    if (data.chargingPortIssue) {
+      deduct('Charging Port Faulty', 0.25);
+    }
 
-    if (data.silentButtonIssue)
-      deduct(
-        'Silent / Mute Button Not Working',
-        0.30
-      );
-
-    if (data.powerButtonIssue)
-      deduct(
-        'Power Button Not Working',
-        0.30
-      );
-
-    if (data.chargingPortIssue)
-      deduct(
-        'Charging Port Not Working',
-        0.30
-      );
-
-    if (data.audioReceiverIssue)
-      deduct(
-        'Audio Receiver (Earpiece) Not Working',
-        0.30
-      );
-
-    if (data.microphoneIssue)
-      deduct(
-        'Microphone Not Working',
-        0.30
-      );
-
-    if (data.bluetoothIssue)
-      deduct(
-        'Bluetooth Not Working',
-        0.55
-      );
-
-    if (data.vibrationIssue)
-      deduct(
-        'Vibration Not Working',
-        0.30
-      );
-
-    if (
-      data.proximitySensorIssue
-    )
-      deduct(
-        'Proximity Sensor Not Working',
-        0.30
-      );
+    if (data.proximitySensorIssue) {
+      deduct('Proximity Sensor Not Working', 0.10);
+    }
 
     /*
      * BATTERY
      */
 
-    const batteryHealth =
-      data.batteryHealth ?? 100;
-
+    const batteryHealth = data.batteryHealth ?? 100;
     if (batteryHealth < 80) {
-      deduct(
-        'Battery Health < 80%',
-        0.35
-      );
-    } else if (
-      batteryHealth < 90
-    ) {
-      deduct(
-        'Battery Health 80–90%',
-        0.30
-      );
+      deduct('Battery Health < 80%', 0.128);
+    } else if (batteryHealth < 90) {
+      deduct('Battery Health 80–90%', 0.05);
     }
 
     /*
-     * ACCESSORIES
+     * ACCESSORIES & DOCUMENTATION
      */
 
-    if (
-      data.hasChargerAndBox
-    ) {
-      bonus(
-        'Original Charger & Box',
-        0.05
-      );
+    if (data.hasChargerAndBox === false || (data.hasBox === false && data.hasCharger === false)) {
+      deduct('Missing Original Box & Charger', 0.10);
+    } else if (data.hasBox === false) {
+      deduct('Missing Original Box', 0.05);
+    } else if (data.hasCharger === false) {
+      deduct('Missing Original Charger', 0.05);
     }
 
-    if (data.hasBill) {
-      bonus(
-        'Original Bill',
-        0.05
-      );
+    if (data.hasBill === false && !data.isUnderWarranty) {
+      deduct('Missing Bill / Out of Warranty', 0.10);
     }
 
-    /*
-     * WARRANTY
-     */
-
-    const wm =
-      data.warrantyMonths ?? 0;
-
-    if (
-      wm > 0 &&
-      wm < 3
-    ) {
-      bonus(
-        'Warranty < 3 Months Remaining',
-        0.05
-      );
-    } else if (
-      wm >= 3 &&
-      wm < 6
-    ) {
-      bonus(
-        'Warranty 3–6 Months',
-        0.075
-      );
-    } else if (
-      wm >= 6 &&
-      wm < 12
-    ) {
-      bonus(
-        'Warranty 6–11 Months',
-        0.10
-      );
+    // Age factor
+    if (data.deviceAge === 'above11' || data.deviceAgeMonths > 24) {
+      deduct('Device Age > 11 Months', 0.05);
+    } else if (data.deviceAge === '6to11' || data.deviceAgeMonths > 11) {
+      deduct('Device Age 6-11 Months', 0.034);
+    } else if (data.deviceAge === '3to6' || data.deviceAgeMonths > 6) {
+      deduct('Device Age 3-6 Months', 0.02);
     }
 
     /*
@@ -843,43 +703,29 @@ export class PricingService {
      * ==========================================================
      */
 
-    const totalDeduction =
-      deductions.reduce(
-        (sum, item) =>
-          sum + item.amount,
-        0
-      );
+    const totalDeduction = deductions.reduce(
+      (sum, item) => sum + item.amount,
+      0
+    );
 
-    const totalBonus =
-      bonuses.reduce(
-        (sum, item) =>
-          sum + item.amount,
-        0
-      );
+    const totalBonus = bonuses.reduce(
+      (sum, item) => sum + item.amount,
+      0
+    );
 
-    const minFloorPrice =
-      launchPrice > 0
-        ? Math.max(
-          Math.round(
-            (launchPrice * 0.08) /
-            100
-          ) * 100,
-          500
-        )
-        : 500;
+    let minFloor = 1160;
+    if (isApple) {
+      minFloor = Math.max(1600, Math.round(basePrice * 0.0734));
+    } else if (basePrice < 8000) {
+      minFloor = 750;
+    } else if (basePrice <= 25000) {
+      minFloor = 1160;
+    } else {
+      minFloor = Math.max(1600, Math.round(basePrice * 0.0554));
+    }
 
-    let estimatedPrice =
-      Math.max(
-        minFloorPrice,
-        basePrice -
-        totalDeduction +
-        totalBonus
-      );
-
-    estimatedPrice =
-      Math.round(
-        estimatedPrice / 100
-      ) * 100;
+    const rawEstimated = Math.max(minFloor, Math.round((basePrice - totalDeduction + totalBonus) / 10) * 10);
+    const estimatedPrice = Math.min(basePrice, rawEstimated);
 
     console.log(
       `[PricingService] FINAL: ` +
