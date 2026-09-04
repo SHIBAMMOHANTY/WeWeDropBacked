@@ -74,7 +74,7 @@ const DEFECT_MATRIX: Record<string, DefectDeductionConfig> = {
   BODY_DENTS_SCRATCHES: { key: 'BODY_DENTS_SCRATCHES', percentApple: 28.00, percentAndroid: 25.00 },
   BACK_GLASS_BROKEN: { key: 'BACK_GLASS_BROKEN', percentApple: 32.00, percentAndroid: 20.00 },
   MINOR_SCRATCHES: { key: 'MINOR_SCRATCHES', percentApple: 6.00, percentAndroid: 5.12 },
-  PHONE_REPAIRED: { key: 'PHONE_REPAIRED', percentApple: 8.00, percentAndroid: 8.00 },
+  PHONE_REPAIRED: { key: 'PHONE_REPAIRED', percentApple: 9.50, percentAndroid: 8.00 },
   SIM_SLOT_DAMAGED: { key: 'SIM_SLOT_DAMAGED', percentApple: 10.00, percentAndroid: 10.00 },
   ESIM_NOT_WORKING: { key: 'ESIM_NOT_WORKING', percentApple: 10.00, percentAndroid: 10.00 },
   SECONDARY_SIM_DAMAGED: { key: 'SECONDARY_SIM_DAMAGED', percentApple: 10.00, percentAndroid: 10.00 },
