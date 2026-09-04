@@ -150,12 +150,10 @@ export class DeviceGenerator {
             }
           });
 
-          // Generate current prices
+          // Record clean initial estimated price
           const flipkartPrice = Math.round(launchPrice * 0.85);
           const providers = [
-            { seller: 'Flipkart', price: flipkartPrice, mrp: launchPrice },
-            { seller: 'Amazon', price: Math.round(flipkartPrice * 0.985), mrp: launchPrice },
-            { seller: 'Croma', price: Math.round(flipkartPrice * 1.015), mrp: launchPrice }
+            { seller: 'Flipkart', price: flipkartPrice, mrp: launchPrice }
           ];
 
           const currentPrices = [];

@@ -39,8 +39,16 @@ const calculateSchema = z.object({
   dentBody: z.boolean().default(false),
   cameraGlassBroken: z.boolean().default(false),
 
-  // SIM
+  // SIM & Cellular
   simNotWorking: z.boolean().default(false),
+  simType: z.string().optional(), // 'dual_sim' | 'single_sim' | 'esim' | 'dual_esim'
+  esimConfig: z.string().optional(), // 'single_esim' | 'dual_esim'
+
+  // Back Glass
+  backGlassBroken: z.boolean().default(false),
+  screenLines: z.boolean().default(false),
+  screenSpots: z.boolean().default(false),
+  screenShadow: z.boolean().default(false),
 
   // Cameras
   frontCameraIssue: z.boolean().default(false),

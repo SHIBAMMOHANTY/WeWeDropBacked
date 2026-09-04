@@ -371,7 +371,7 @@ export async function GET(req: NextRequest) {
               getCashifyPrice(r.brand, cleanModel, storage, 'good', {
                 launchPrice: r.mrp || r.price,
               }),
-              new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
             ]);
 
             return {

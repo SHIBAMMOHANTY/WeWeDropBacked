@@ -50,7 +50,7 @@ export class PriceService {
     if (flipkartPrice <= 0) flipkartPrice = Math.round(baseLaunchPrice * 0.85);
     if (flipkartMrp <= 0) flipkartMrp = baseLaunchPrice;
 
-    // Define providers
+    // Define authentic scraped providers
     const providers = [
       {
         seller: 'Flipkart',
@@ -58,20 +58,6 @@ export class PriceService {
         mrp: flipkartMrp,
         availability: match?.availability || 'In Stock',
         productUrl: match?.url || `https://www.flipkart.com/search?q=${encodeURIComponent(searchQuery)}`,
-      },
-      {
-        seller: 'Amazon',
-        price: Math.round(flipkartPrice * 0.985), // slightly cheaper
-        mrp: flipkartMrp,
-        availability: 'In Stock',
-        productUrl: `https://www.amazon.in/s?k=${encodeURIComponent(searchQuery)}`,
-      },
-      {
-        seller: 'Croma',
-        price: Math.round(flipkartPrice * 1.015), // slightly more expensive
-        mrp: flipkartMrp,
-        availability: 'In Stock',
-        productUrl: `https://www.croma.com/search?text=${encodeURIComponent(searchQuery)}`,
       },
     ];
 

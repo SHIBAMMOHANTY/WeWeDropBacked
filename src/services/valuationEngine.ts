@@ -52,30 +52,115 @@ export interface DefectDeductionConfig {
 }
 
 const DEFECT_MATRIX: Record<string, DefectDeductionConfig> = {
-  CALLS_FAILED: { key: 'CALLS_FAILED', percentApple: 92.66, percentAndroid: 92.66 },
-  NETWORK_ISSUE: { key: 'NETWORK_ISSUE', percentApple: 92.66, percentAndroid: 92.66 },
-  TOUCH_NOT_WORKING: { key: 'TOUCH_NOT_WORKING', percentApple: 51.40, percentAndroid: 51.40 },
-  SCREEN_NON_ORIGINAL: { key: 'SCREEN_NON_ORIGINAL', percentApple: 32.25, percentAndroid: 32.25 },
+  CALLS_FAILED: { key: 'CALLS_FAILED', percentApple: 92.66, percentAndroid: 94.50 },
+  NETWORK_ISSUE: { key: 'NETWORK_ISSUE', percentApple: 92.66, percentAndroid: 94.50 },
+  TOUCH_NOT_WORKING: { key: 'TOUCH_NOT_WORKING', percentApple: 60.00, percentAndroid: 51.40 },
+  SCREEN_NON_ORIGINAL: { key: 'SCREEN_NON_ORIGINAL', percentApple: 34.50, percentAndroid: 32.25 },
   SCREEN_CRACKED: { key: 'SCREEN_CRACKED', percentApple: 29.20, percentAndroid: 37.61 },
   SCREEN_GLASS_BROKEN: { key: 'SCREEN_GLASS_BROKEN', percentApple: 29.20, percentAndroid: 37.61 },
-  DISPLAY_BURNT_DEAD_PIXELS: { key: 'DISPLAY_BURNT_DEAD_PIXELS', percentApple: 12.64, percentAndroid: 12.64, flatCutBudget: 550, flatCutMidTier: 2000 },
-  DISPLAY_LINES_OR_SPOTS: { key: 'DISPLAY_LINES_OR_SPOTS', percentApple: 12.64, percentAndroid: 12.64, flatCutBudget: 550, flatCutMidTier: 2000 },
-  CAMERA_FAULT: { key: 'CAMERA_FAULT', percentApple: 12.80, percentAndroid: 12.64, flatCutBudget: 800, flatCutMidTier: 2000 },
-  BOTH_CAMERAS_FAULT: { key: 'BOTH_CAMERAS_FAULT', percentApple: 55.00, percentAndroid: 55.00 },
-  BATTERY_HEALTH_LOW: { key: 'BATTERY_HEALTH_LOW', percentApple: 12.80, percentAndroid: 12.64, flatCutBudget: 800, flatCutMidTier: 2000 },
-  FACE_ID_FINGERPRINT_DEAD: { key: 'FACE_ID_FINGERPRINT_DEAD', percentApple: 35.00, percentAndroid: 35.00 },
-  WIFI_BLUETOOTH_ISSUE: { key: 'WIFI_BLUETOOTH_ISSUE', percentApple: 35.00, percentAndroid: 35.00 },
-  SPEAKER_MIC_FAULT: { key: 'SPEAKER_MIC_FAULT', percentApple: 25.00, percentAndroid: 25.00 },
-  CHARGING_PORT_FAULT: { key: 'CHARGING_PORT_FAULT', percentApple: 25.00, percentAndroid: 25.00 },
-  BUTTONS_FAULT: { key: 'BUTTONS_FAULT', percentApple: 25.00, percentAndroid: 25.00 },
-  BODY_DENTS_SCRATCHES: { key: 'BODY_DENTS_SCRATCHES', percentApple: 25.00, percentAndroid: 25.00 },
-  BACK_GLASS_BROKEN: { key: 'BACK_GLASS_BROKEN', percentApple: 25.00, percentAndroid: 25.00 },
-  MINOR_SCRATCHES: { key: 'MINOR_SCRATCHES', percentApple: 5.12, percentAndroid: 5.12 },
+  DISPLAY_BURNT_DEAD_PIXELS: { key: 'DISPLAY_BURNT_DEAD_PIXELS', percentApple: 18.00, percentAndroid: 12.64, flatCutBudget: 550, flatCutMidTier: 2000 },
+  DISPLAY_LINES_OR_SPOTS: { key: 'DISPLAY_LINES_OR_SPOTS', percentApple: 18.00, percentAndroid: 12.64, flatCutBudget: 550, flatCutMidTier: 2000 },
+  DISPLAY_LINES: { key: 'DISPLAY_LINES', percentApple: 18.00, percentAndroid: 12.64, flatCutBudget: 550, flatCutMidTier: 2000 },
+  SCREEN_SHADOW: { key: 'SCREEN_SHADOW', percentApple: 15.00, percentAndroid: 12.64, flatCutBudget: 550, flatCutMidTier: 2000 },
+  CAMERA_FAULT: { key: 'CAMERA_FAULT', percentApple: 35.00, percentAndroid: 25.00, flatCutBudget: 800, flatCutMidTier: 2000 },
+  BOTH_CAMERAS_FAULT: { key: 'BOTH_CAMERAS_FAULT', percentApple: 65.00, percentAndroid: 55.00 },
+  CAMERA_GLASS_CRACK: { key: 'CAMERA_GLASS_CRACK', percentApple: 12.80, percentAndroid: 12.64 },
+  BATTERY_HEALTH_LOW: { key: 'BATTERY_HEALTH_LOW', percentApple: 35.00, percentAndroid: 12.64, flatCutBudget: 800, flatCutMidTier: 2000 },
+  FACE_ID_FINGERPRINT_DEAD: { key: 'FACE_ID_FINGERPRINT_DEAD', percentApple: 45.00, percentAndroid: 30.00 },
+  WIFI_BLUETOOTH_ISSUE: { key: 'WIFI_BLUETOOTH_ISSUE', percentApple: 45.00, percentAndroid: 35.00 },
+  SPEAKER_MIC_FAULT: { key: 'SPEAKER_MIC_FAULT', percentApple: 28.00, percentAndroid: 25.00 },
+  CHARGING_PORT_FAULT: { key: 'CHARGING_PORT_FAULT', percentApple: 28.00, percentAndroid: 25.00 },
+  BUTTONS_FAULT: { key: 'BUTTONS_FAULT', percentApple: 25.00, percentAndroid: 22.00 },
+  BODY_DENTS_SCRATCHES: { key: 'BODY_DENTS_SCRATCHES', percentApple: 28.00, percentAndroid: 25.00 },
+  BACK_GLASS_BROKEN: { key: 'BACK_GLASS_BROKEN', percentApple: 32.00, percentAndroid: 20.00 },
+  MINOR_SCRATCHES: { key: 'MINOR_SCRATCHES', percentApple: 6.00, percentAndroid: 5.12 },
+  PHONE_REPAIRED: { key: 'PHONE_REPAIRED', percentApple: 8.00, percentAndroid: 8.00 },
+  SIM_SLOT_DAMAGED: { key: 'SIM_SLOT_DAMAGED', percentApple: 10.00, percentAndroid: 10.00 },
+  ESIM_NOT_WORKING: { key: 'ESIM_NOT_WORKING', percentApple: 10.00, percentAndroid: 10.00 },
+  SECONDARY_SIM_DAMAGED: { key: 'SECONDARY_SIM_DAMAGED', percentApple: 10.00, percentAndroid: 10.00 },
+  SINGLE_ESIM_FAULTY: { key: 'SINGLE_ESIM_FAULTY', percentApple: 10.00, percentAndroid: 10.00 },
+  DUAL_ESIM_FAULTY: { key: 'DUAL_ESIM_FAULTY', percentApple: 10.00, percentAndroid: 10.00 },
+  DUAL_SIM_SLOT2_DAMAGED: { key: 'DUAL_SIM_SLOT2_DAMAGED', percentApple: 10.00, percentAndroid: 10.00 },
   NO_ORIGINAL_BOX: { key: 'NO_ORIGINAL_BOX', percentApple: 5.00, percentAndroid: 5.00 },
   NO_ORIGINAL_CHARGER: { key: 'NO_ORIGINAL_CHARGER', percentApple: 5.00, percentAndroid: 5.00 },
-  NO_BOX_OR_ORIGINAL_BILL: { key: 'NO_BOX_OR_ORIGINAL_BILL', percentApple: 10.00, percentAndroid: 10.00 },
-  NO_BOX_BILL: { key: 'NO_BOX_BILL', percentApple: 10.00, percentAndroid: 10.00 },
+  NO_BOX_OR_ORIGINAL_BILL: { key: 'NO_BOX_OR_ORIGINAL_BILL', percentApple: 15.00, percentAndroid: 10.00 },
+  NO_BOX_BILL: { key: 'NO_BOX_BILL', percentApple: 15.00, percentAndroid: 10.00 },
 };
+
+export function checkIfDeviceSupportsEsim(brand: string = '', model: string = ''): boolean {
+  const b = brand.toLowerCase();
+  const m = model.toLowerCase();
+
+  if (b.includes('apple') || m.includes('iphone')) {
+    if (
+      m.includes('iphone xs') ||
+      m.includes('iphone xr') ||
+      m.includes('iphone 11') ||
+      m.includes('iphone 12') ||
+      m.includes('iphone 13') ||
+      m.includes('iphone 14') ||
+      m.includes('iphone 15') ||
+      m.includes('iphone 16') ||
+      m.includes('iphone 17') ||
+      m.includes('iphone se')
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  if (b.includes('samsung')) {
+    if (
+      m.includes('s20') || m.includes('s21') || m.includes('s22') ||
+      m.includes('s23') || m.includes('s24') || m.includes('note 20') ||
+      m.includes('fold') || m.includes('flip') || m.includes('a54') || m.includes('a55')
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  if (b.includes('google') || m.includes('pixel')) {
+    if (m.includes('pixel 3') || m.includes('pixel 4') || m.includes('pixel 5') || m.includes('pixel 6') || m.includes('pixel 7') || m.includes('pixel 8') || m.includes('pixel 9')) {
+      return true;
+    }
+  }
+
+  if (b.includes('oneplus')) {
+    if (m.includes('11') || m.includes('12') || m.includes('open') || m.includes('13')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function checkIfDeviceSupportsDualEsim(brand: string = '', model: string = ''): boolean {
+  const b = brand.toLowerCase();
+  const m = model.toLowerCase();
+
+  if (b.includes('apple') || m.includes('iphone')) {
+    if (
+      m.includes('iphone 13') ||
+      m.includes('iphone 14') ||
+      m.includes('iphone 15') ||
+      m.includes('iphone 16') ||
+      m.includes('iphone 17')
+    ) {
+      return true;
+    }
+  }
+
+  if (b.includes('samsung') && (m.includes('s24') || m.includes('fold 5') || m.includes('fold 6') || m.includes('flip 5') || m.includes('flip 6'))) {
+    return true;
+  }
+
+  if ((b.includes('google') || m.includes('pixel')) && (m.includes('pixel 7') || m.includes('pixel 8') || m.includes('pixel 9'))) {
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * Rounds bytes to nearest standard RAM tier in GB
@@ -177,13 +262,36 @@ export function calculateReCommerceValuation(input: ValuationEngineInput): Valua
     };
   }
 
-  // 4. Calibrated Defect Deductions
+  // 4. Calibrated Defect Deductions (Strict Deduplication & Hierarchy Normalization)
   const appliedDeductions: AppliedDeduction[] = [];
   let totalDeductions = 0;
   let runningQuote = depreciatedBaseValue;
 
-  for (const rawDefect of defects) {
-    const defectKey = rawDefect.toUpperCase().trim();
+  const rawKeys = Array.from(new Set(defects.map(d => d.toUpperCase().trim())));
+  const normalizedDefects: string[] = [];
+
+  const hasTouchDead = rawKeys.includes('TOUCH_NOT_WORKING');
+  const hasBothCamsDead = rawKeys.includes('BOTH_CAMERAS_FAULT');
+  let hasSimSlotDeducted = false;
+
+  for (const defectKey of rawKeys) {
+    // If touch screen is dead, skip lower screen defects (prevents double deduction)
+    if (hasTouchDead && ['SCREEN_NON_ORIGINAL', 'SCREEN_CRACKED', 'SCREEN_GLASS_BROKEN', 'MINOR_SCRATCHES'].includes(defectKey)) {
+      continue;
+    }
+    // If both cameras dead, skip single camera faults (prevents double deduction)
+    if (hasBothCamsDead && ['CAMERA_FAULT', 'FRONT_CAMERA_FAULT', 'BACK_CAMERA_FAULT'].includes(defectKey)) {
+      continue;
+    }
+    // Prevent duplicate SIM slot deductions
+    if (['SIM_SLOT_DAMAGED', 'ESIM_NOT_WORKING', 'SECONDARY_SIM_DAMAGED', 'SINGLE_ESIM_FAULTY', 'DUAL_ESIM_FAULTY', 'DUAL_SIM_SLOT2_DAMAGED'].includes(defectKey)) {
+      if (hasSimSlotDeducted) continue;
+      hasSimSlotDeducted = true;
+    }
+    normalizedDefects.push(defectKey);
+  }
+
+  for (const defectKey of normalizedDefects) {
     const cfg = DEFECT_MATRIX[defectKey];
 
     if (cfg) {
@@ -199,7 +307,18 @@ export function calculateReCommerceValuation(input: ValuationEngineInput): Valua
         penalty = Math.round((depreciatedBaseValue * percent) / 100);
       }
 
-      appliedDeductions.push({ fault: defectKey, penalty });
+      let faultLabel = defectKey;
+      if (['SIM_SLOT_DAMAGED', 'ESIM_NOT_WORKING', 'SECONDARY_SIM_DAMAGED', 'SINGLE_ESIM_FAULTY', 'DUAL_ESIM_FAULTY', 'DUAL_SIM_SLOT2_DAMAGED'].includes(defectKey)) {
+        const hasEsim = checkIfDeviceSupportsEsim(brand, friendlyModelName || modelCode);
+        const isDualEsim = checkIfDeviceSupportsDualEsim(brand, friendlyModelName || modelCode);
+        if (hasEsim) {
+          faultLabel = isDualEsim ? 'SECONDARY_SIM_DUAL_ESIM_FAULTY' : 'SECONDARY_SIM_SINGLE_ESIM_FAULTY';
+        } else {
+          faultLabel = 'SECONDARY_SIM_SLOT_FAULTY';
+        }
+      }
+
+      appliedDeductions.push({ fault: faultLabel, penalty });
       totalDeductions += penalty;
       runningQuote = Math.max(0, runningQuote - penalty);
     }
@@ -226,9 +345,8 @@ export function calculateReCommerceValuation(input: ValuationEngineInput): Valua
 
   // Summary message build
   const modelDisplay = friendlyModelName || modelCode;
-  const summary = `Based on a device age of ${ageInMonths} months and reported defects (${
-    defects.length > 0 ? defects.join(', ') : 'none'
-  }), your ${brand} ${modelDisplay} (${variant}) has an estimated buyback value of ₹${finalCashQuote.toLocaleString('en-IN')}.`;
+  const summary = `Based on a device age of ${ageInMonths} months and reported defects (${defects.length > 0 ? defects.join(', ') : 'none'
+    }), your ${brand} ${modelDisplay} (${variant}) has an estimated buyback value of ₹${finalCashQuote.toLocaleString('en-IN')}.`;
 
   return {
     deviceInfo: {

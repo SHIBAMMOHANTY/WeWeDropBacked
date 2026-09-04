@@ -70,6 +70,81 @@ function cleanModelName(model: string, brand: string): string {
   return model.replace(regex, '').trim();
 }
 
+export function checkIfDeviceSupportsEsim(brand: string = '', model: string = ''): boolean {
+  const b = brand.toLowerCase();
+  const m = model.toLowerCase();
+
+  if (b.includes('apple') || m.includes('iphone')) {
+    if (
+      m.includes('iphone xs') ||
+      m.includes('iphone xr') ||
+      m.includes('iphone 11') ||
+      m.includes('iphone 12') ||
+      m.includes('iphone 13') ||
+      m.includes('iphone 14') ||
+      m.includes('iphone 15') ||
+      m.includes('iphone 16') ||
+      m.includes('iphone 17') ||
+      m.includes('iphone se')
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  if (b.includes('samsung')) {
+    if (
+      m.includes('s20') || m.includes('s21') || m.includes('s22') ||
+      m.includes('s23') || m.includes('s24') || m.includes('note 20') ||
+      m.includes('fold') || m.includes('flip') || m.includes('a54') || m.includes('a55')
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  if (b.includes('google') || m.includes('pixel')) {
+    if (m.includes('pixel 3') || m.includes('pixel 4') || m.includes('pixel 5') || m.includes('pixel 6') || m.includes('pixel 7') || m.includes('pixel 8') || m.includes('pixel 9')) {
+      return true;
+    }
+  }
+
+  if (b.includes('oneplus')) {
+    if (m.includes('11') || m.includes('12') || m.includes('open') || m.includes('13')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function checkIfDeviceSupportsDualEsim(brand: string = '', model: string = ''): boolean {
+  const b = brand.toLowerCase();
+  const m = model.toLowerCase();
+
+  if (b.includes('apple') || m.includes('iphone')) {
+    if (
+      m.includes('iphone 13') ||
+      m.includes('iphone 14') ||
+      m.includes('iphone 15') ||
+      m.includes('iphone 16') ||
+      m.includes('iphone 17')
+    ) {
+      return true;
+    }
+  }
+
+  if (b.includes('samsung') && (m.includes('s24') || m.includes('fold 5') || m.includes('fold 6') || m.includes('flip 5') || m.includes('flip 6'))) {
+    return true;
+  }
+
+  if ((b.includes('google') || m.includes('pixel')) && (m.includes('pixel 7') || m.includes('pixel 8') || m.includes('pixel 9'))) {
+    return true;
+  }
+
+  return false;
+}
+
 function escapeMongoRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -165,6 +240,7 @@ export class PricingService {
     let basePriceExcellent = 0;
     let launchPrice = 0;
     let releaseYear = 2026;
+    let hasRequestBasePrice = false;
 
     let priceSource:
       | 'database'
@@ -302,12 +378,22 @@ export class PricingService {
     }
 
     /*
+     * Check if client already provided a base price
+     */
+    if (!basePriceExcellent && data.basePrice && data.basePrice > 0) {
+      basePriceExcellent = data.basePrice;
+      launchPrice = data.launchPrice || data.basePrice;
+      priceSource = 'estimate';
+      hasRequestBasePrice = true;
+      console.log(`[PricingService] Using client request basePrice: ₹${basePriceExcellent}`);
+    }
+
+    /*
      * ==========================================================
      * STEP 2 — CURRENT MARKET / CASHIFY
      * ==========================================================
      *
-     * If database has no exact device price, use current
-     * market pricing.
+     * If database and request have no price, try market lookup with 2.5s timeout.
      */
 
     if (!basePriceExcellent) {
@@ -331,7 +417,7 @@ export class PricingService {
               (resolve) =>
                 setTimeout(
                   () => resolve(null),
-                  12000
+                  2500
                 )
             ),
           ]);
@@ -447,7 +533,6 @@ export class PricingService {
      * ==========================================================
      */
 
-    let hasRequestBasePrice = false;
     if (!basePriceExcellent && data.basePrice && data.basePrice > 0) {
       basePriceExcellent = data.basePrice;
       launchPrice = data.launchPrice || data.basePrice;
@@ -620,12 +705,17 @@ export class PricingService {
      * ==========================================================
      */
 
+    /*
+     * SIM / CALLING / NETWORK
+     */
     const isCallsDead = Boolean(
       data.simNotWorking ||
       data.calls_failed ||
       data.canMakeCalls === false ||
       data.cellularIssue ||
-      data.networkIssue
+      data.networkIssue ||
+      data.simType === 'calls_failed' ||
+      data.simType === 'no_network'
     );
 
     if (isCallsDead) {
@@ -647,32 +737,48 @@ export class PricingService {
       };
     }
 
+    // Partial SIM issue (e.g. Dual SIM 2nd slot damaged or eSIM issue)
+    if (data.simType === 'dual_sim_slot2_damaged' || data.simType === 'esim_not_working' || data.simType === 'sim_slot_damaged' || data.simType === 'secondary_sim_damaged' || (data as any).simSlot2Damaged) {
+      const hasEsim = checkIfDeviceSupportsEsim(data.brand, data.model);
+      const isDualEsim = (data as any).esimConfig === 'dual_esim' || checkIfDeviceSupportsDualEsim(data.brand, data.model);
+
+      let label = 'Secondary SIM Slot Faulty';
+      if (hasEsim) {
+        label = isDualEsim ? 'Secondary SIM / Dual eSIM Profile Faulty' : 'Secondary SIM / Single eSIM Profile Faulty';
+      }
+      deduct(label, 0.10);
+    }
+
     /*
      * SCREEN
      */
 
     if (data.touchScreenWorking === false || data.touchIssue) {
-      deduct('Touch Screen Faulty', 0.515);
+      deduct('Touch Screen Faulty', isApple ? 0.60 : 0.514);
     } else if (data.replacementScreen || data.screenOriginal === false) {
-      deduct('Replacement Screen (Non-Original)', isApple ? 0.3195 : 0.3225);
+      deduct('Replacement Screen (Non-Original)', isApple ? 0.345 : 0.3225);
     } else if (data.glassbroken || data.screenCracked || data.screenGlassBroken) {
-      deduct('Glass Broken / Cracked', isApple ? 0.2928 : 0.3761);
-    } else if (data.heavyDiscoloration || data.screenIssue || data.deadSpots) {
-      deduct('Heavy Discoloration / Dead Spot', 0.1264);
+      deduct('Glass Broken / Cracked', isApple ? 0.2920 : 0.3761);
+    } else if (data.heavyDiscoloration || data.screenIssue || data.deadSpots || data.screenLines || data.screenSpots || data.screenShadow) {
+      deduct('Display Lines / Spots / Discoloration', isApple ? 0.18 : 0.1264);
     } else if (data.scratchOnScreen) {
-      deduct('Scratch on Screen', 0.0512);
+      deduct('Scratch on Screen', isApple ? 0.06 : 0.0512);
     }
 
     /*
      * BODY
      */
 
+    if (data.backGlassBroken) {
+      deduct('Back Glass Broken', isApple ? 0.32 : 0.20);
+    }
+
     if (data.bodyDamage || data.dentBody) {
-      deduct('Body Dents / Bent Frame', 0.25);
+      deduct('Body Dents / Bent Frame', isApple ? 0.28 : 0.25);
     } else if (data.bodyHeavyScratch || data.heavyScratchBody) {
       deduct('Heavy Body Scratches', 0.12);
     } else if (data.minorBodyScratch) {
-      deduct('Minor Body Scratches', 0.0512);
+      deduct('Minor Body Scratches', isApple ? 0.06 : 0.0512);
     }
 
     if (data.cameraGlassBroken || data.cameraGlassCrack) {
@@ -750,30 +856,28 @@ export class PricingService {
       deduct('Missing Bill / Out of Warranty', 0.10);
     }
 
-    // Age factor
+    // Cashify Calibrated Age Bracket Factor
     const ageStr = (data.deviceAge || '').toLowerCase();
     const ageMonths = data.deviceAgeMonths ?? 0;
 
     if (
-      ageStr === '3-4y' ||
-      ageStr === '2-3y' ||
-      ageStr === '1-2y' ||
-      ageStr === 'above11' ||
-      ageStr === 'above-11' ||
-      ageStr === 'above-11m' ||
-      ageMonths > 24
+      ageStr.includes('above') ||
+      ageStr.includes('1-2y') ||
+      ageStr.includes('2-3y') ||
+      ageStr.includes('3-4y') ||
+      ageMonths > 11
     ) {
-      deduct('Device Age > 11 Months', 0.05);
+      deduct('Device Age > 11 Months (Out of Warranty)', 0.05);
     } else if (
-      ageStr === '6to11' ||
-      ageStr === '6-11' ||
-      (ageMonths > 11 && ageMonths <= 24)
+      ageStr.includes('6to11') ||
+      ageStr.includes('6-11') ||
+      (ageMonths > 6 && ageMonths <= 11)
     ) {
       deduct('Device Age 6-11 Months', 0.034);
     } else if (
-      ageStr === '3to6' ||
-      ageStr === '3-6' ||
-      (ageMonths > 6 && ageMonths <= 11)
+      ageStr.includes('3to6') ||
+      ageStr.includes('3-6') ||
+      (ageMonths > 3 && ageMonths <= 6)
     ) {
       deduct('Device Age 3-6 Months', 0.02);
     }
