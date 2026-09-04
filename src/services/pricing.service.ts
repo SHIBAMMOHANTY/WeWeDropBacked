@@ -55,6 +55,13 @@ export interface QuoteCalculationResponse {
     totalDeduction: number;
     totalBonus: number;
   };
+  valuationBreakdown?: {
+    finalQuote: number;
+    basePrice: number;
+    defectDeductionsTotal: number;
+    appliedDeductions: Array<{ fault: string; penalty: number }>;
+  };
+  summary?: string;
 }
 
 function cleanModelName(model: string, brand: string): string {
@@ -79,15 +86,69 @@ async function fetchSpecsFromAPI(...args: any[]): Promise<any> {
   return null;
 }
 
-function getDepreciationRate(...args: any[]): number {
-  return 0.35;
+function getDepreciationRate(brand?: string, model?: string, ageYears: number = 1): number {
+  const b = (brand || '').toLowerCase();
+  const m = (model || '').toLowerCase();
+  const isApple = b.includes('apple') || m.includes('iphone');
+  if (ageYears <= 0) return isApple ? 0.85 : 0.75;
+  if (ageYears === 1) return isApple ? 0.70 : 0.60;
+  if (ageYears === 2) return isApple ? 0.58 : 0.45;
+  if (ageYears === 3) return isApple ? 0.48 : 0.35;
+  if (ageYears === 4) return isApple ? 0.38 : 0.28;
+  return isApple ? 0.30 : 0.20;
 }
 
-function estimateDynamicMSRP(...args: any[]): number {
-  return 25000;
+function estimateDynamicMSRP(brand?: string, model?: string, storage?: string): number {
+  const b = (brand || '').toLowerCase();
+  const m = (model || '').toLowerCase();
+  const s = (storage || '').toLowerCase();
+  
+  let baseMSRP = 25000;
+
+  if (b.includes('apple') || m.includes('iphone')) {
+    if (m.includes('pro max')) baseMSRP = 140000;
+    else if (m.includes('pro')) baseMSRP = 120000;
+    else if (m.includes('plus')) baseMSRP = 90000;
+    else baseMSRP = 80000;
+  } else if (b.includes('samsung')) {
+    if (m.includes('fold')) baseMSRP = 150000;
+    else if (m.includes('ultra')) baseMSRP = 125000;
+    else if (m.includes('flip')) baseMSRP = 90000;
+    else if (m.includes('s24') || m.includes('s23') || m.includes('s22')) baseMSRP = 75000;
+    else baseMSRP = 30000;
+  } else if (b.includes('oneplus')) {
+    if (m.includes('open') || m.includes('12 pro') || m.includes('11 pro')) baseMSRP = 65000;
+    else baseMSRP = 40000;
+  } else if (b.includes('google') || b.includes('pixel')) {
+    if (m.includes('pro')) baseMSRP = 90000;
+    else baseMSRP = 55000;
+  } else if (b.includes('xiaomi') || b.includes('mi')) {
+    if (m.includes('ultra') || m.includes('14 pro') || m.includes('13 pro')) baseMSRP = 70000;
+    else baseMSRP = 25000;
+  }
+
+  if (s.includes('512') || s.includes('1tb') || s.includes('1 tb')) {
+    baseMSRP = Math.round(baseMSRP * 1.2);
+  } else if (s.includes('256')) {
+    baseMSRP = Math.round(baseMSRP * 1.1);
+  }
+
+  return baseMSRP;
 }
 
-function estimateDynamicYear(...args: any[]): number {
+function estimateDynamicYear(model?: string): number {
+  const m = String(model || '');
+  const match = m.match(/\b(202[0-6])\b/);
+  if (match) return parseInt(match[1], 10);
+  const numMatch = m.match(/\b(\d+)\b/);
+  if (numMatch) {
+    const num = parseInt(numMatch[1], 10);
+    if (num === 17) return 2025;
+    if (num === 16) return 2024;
+    if (num === 15) return 2023;
+    if (num === 14) return 2022;
+    if (num === 13) return 2021;
+  }
   return 2023;
 }
 
@@ -382,9 +443,21 @@ export class PricingService {
 
     /*
      * ==========================================================
-     * STEP 4 — DYNAMIC FALLBACK
+     * STEP 4 — REQUEST BASE PRICE / DYNAMIC FALLBACK
      * ==========================================================
      */
+
+    let hasRequestBasePrice = false;
+    if (!basePriceExcellent && data.basePrice && data.basePrice > 0) {
+      basePriceExcellent = data.basePrice;
+      launchPrice = data.launchPrice || data.basePrice;
+      priceSource = 'estimate';
+      hasRequestBasePrice = true;
+      console.log(
+        `[PricingService] Request basePrice fallback: ` +
+        `₹${basePriceExcellent}`
+      );
+    }
 
     if (!basePriceExcellent) {
       const estimatedMSRP =
@@ -449,21 +522,10 @@ export class PricingService {
     let basePrice =
       basePriceExcellent;
 
-    /*
-     * CRITICAL FIX:
-     *
-     * Current market price already represents a resale/
-     * buyback price.
-     *
-     * Do NOT do:
-     *
-     *   marketPrice * 0.90
-     *
-     * for "good".
-     */
     if (
       !hasConditionSpecificDatabasePrice &&
-      !isCurrentMarketPrice
+      !isCurrentMarketPrice &&
+      !hasRequestBasePrice
     ) {
       if (condition === 'good') {
         basePrice =
@@ -689,11 +751,30 @@ export class PricingService {
     }
 
     // Age factor
-    if (data.deviceAge === 'above11' || data.deviceAgeMonths > 24) {
+    const ageStr = (data.deviceAge || '').toLowerCase();
+    const ageMonths = data.deviceAgeMonths ?? 0;
+
+    if (
+      ageStr === '3-4y' ||
+      ageStr === '2-3y' ||
+      ageStr === '1-2y' ||
+      ageStr === 'above11' ||
+      ageStr === 'above-11' ||
+      ageStr === 'above-11m' ||
+      ageMonths > 24
+    ) {
       deduct('Device Age > 11 Months', 0.05);
-    } else if (data.deviceAge === '6to11' || data.deviceAgeMonths > 11) {
+    } else if (
+      ageStr === '6to11' ||
+      ageStr === '6-11' ||
+      (ageMonths > 11 && ageMonths <= 24)
+    ) {
       deduct('Device Age 6-11 Months', 0.034);
-    } else if (data.deviceAge === '3to6' || data.deviceAgeMonths > 6) {
+    } else if (
+      ageStr === '3to6' ||
+      ageStr === '3-6' ||
+      (ageMonths > 6 && ageMonths <= 11)
+    ) {
       deduct('Device Age 3-6 Months', 0.02);
     }
 
@@ -745,6 +826,13 @@ export class PricingService {
         totalDeduction,
         totalBonus,
       },
+      valuationBreakdown: {
+        finalQuote: estimatedPrice,
+        basePrice,
+        defectDeductionsTotal: totalDeduction,
+        appliedDeductions: deductions.map(d => ({ fault: d.label, penalty: d.amount })),
+      },
+      summary: `Estimated buyback value for ${data.brand} ${data.model} (${data.storage}) is ₹${estimatedPrice.toLocaleString('en-IN')}.`,
     };
   }
 }
