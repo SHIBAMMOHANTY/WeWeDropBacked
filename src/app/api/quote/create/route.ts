@@ -36,6 +36,8 @@ const createQuoteSchema = calculateSchema.extend({
   customerAddress: z.string().optional(),
   customerPincode: z.string().optional(),
   contactNumber: z.string().optional(),
+  imeiNumber: z.string().optional(),
+  imei: z.string().optional(),
   paymentMode: z.string().optional(),
   payoutMethod: z.string().optional(),
   upiId: z.string().optional(),
@@ -93,6 +95,7 @@ export async function POST(req: Request) {
     const timestampStr = Date.now().toString().slice(-6);
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const quoteNumber = `QB-${timestampStr}-${randomSuffix}`;
+    const imeiVal = quoteData.imeiNumber || quoteData.imei;
 
     // 5. Save the Quote using Prisma client
     const quote = await prisma.quote.create({
@@ -119,6 +122,8 @@ export async function POST(req: Request) {
         customerAddress: quoteData.customerAddress,
         customerPincode: quoteData.customerPincode,
         contactNumber: quoteData.contactNumber,
+        imeiNumber: imeiVal || undefined,
+        imei: imeiVal || undefined,
         paymentMode: quoteData.paymentMode || quoteData.payoutMethod,
         payoutMethod: quoteData.payoutMethod || quoteData.paymentMode,
         upiId: quoteData.upiId,

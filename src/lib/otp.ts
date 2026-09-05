@@ -12,7 +12,7 @@ export function generateOTP(length = 6): string {
   return otp;
 }
 
-/** Normalize phone → always stored as 12-digit string e.g. 919876543210 */
+/** Normalize phone → always stored as 12-digit string e.g. 91Enter Mobile No */
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   if (digits.length === 10) return `91${digits}`;
@@ -67,10 +67,10 @@ async function sendOTPByEmail(email: string, otp: string): Promise<void> {
 async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
   const mobileNumber = normalizePhone(phone);
 
-  const authKey   = process.env.MSG91_AUTH_KEY;
+  const authKey = process.env.MSG91_AUTH_KEY;
   const intNumber = process.env.MSG91_INTEGRATED_NUMBER || '919318411796';
-  const template  = process.env.MSG91_TEMPLATE_NAME || 'wepickwedrop';
-  const langCode  = process.env.MSG91_LANG_CODE || 'en';
+  const template = process.env.MSG91_TEMPLATE_NAME || 'wepickwedrop';
+  const langCode = process.env.MSG91_LANG_CODE || 'en';
   const namespace = process.env.MSG91_NAMESPACE || 'e67365fb_e80f_4118_a3da_6701091246fa';
 
   if (!authKey || authKey === 'your_msg91_authkey_here') {
@@ -160,7 +160,7 @@ async function sendOTPByWhatsApp(phone: string, otp: string): Promise<void> {
  * can look it up with the same value.
  */
 export async function sendOTP(phoneOrEmail: string): Promise<void> {
-  const otp       = generateOTP();
+  const otp = generateOTP();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
   // Use normalized phone as the key so send & verify always match

@@ -106,6 +106,8 @@ export async function PATCH(
         customerAddress: body.customerAddress !== undefined ? body.customerAddress : undefined,
         customerPincode: body.customerPincode !== undefined ? body.customerPincode : undefined,
         contactNumber: body.contactNumber !== undefined ? body.contactNumber : undefined,
+        imeiNumber: body.imeiNumber !== undefined ? body.imeiNumber : (body.imei !== undefined ? body.imei : undefined),
+        imei: body.imei !== undefined ? body.imei : (body.imeiNumber !== undefined ? body.imeiNumber : undefined),
         paymentMode: body.paymentMode !== undefined ? body.paymentMode : undefined,
         description: body.description !== undefined ? body.description : undefined,
         finalPrice: body.finalPrice !== undefined ? body.finalPrice : undefined,

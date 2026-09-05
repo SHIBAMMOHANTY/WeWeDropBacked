@@ -548,6 +548,8 @@ model Quote {
   customerAddress   String?
   customerPincode   String?
   contactNumber     String?
+  imeiNumber        String?
+  imei              String?
   paymentMode       String?
   description       String?
   pickupDate        DateTime?

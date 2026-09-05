@@ -82,6 +82,8 @@ const calculateSchema = z.object({
   deviceAge: z.string().optional(),
   deviceAgeMonths: z.number().optional(),
 
+  imeiNumber: z.string().optional(),
+  imei: z.string().optional(),
   basePrice: z.number().optional(),
   modelSlug: z.string().optional(),
   launchPrice: z.number().optional(),
@@ -125,6 +127,7 @@ export async function POST(req: Request) {
       const timestampStr = Date.now().toString().slice(-6);
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       const quoteNumber = `QB-${timestampStr}-${randomSuffix}`;
+      const imeiVal = parseResult.data.imeiNumber || parseResult.data.imei;
 
       quote = await prisma.quote.create({
         data: {
@@ -142,6 +145,8 @@ export async function POST(req: Request) {
           bodyDamage: parseResult.data.bodyDamage,
           speakerIssue: parseResult.data.speakerIssue,
           chargingPortIssue: parseResult.data.chargingPortIssue,
+          imeiNumber: imeiVal || undefined,
+          imei: imeiVal || undefined,
           estimatedPrice: calculation.estimatedPrice,
           finalPrice: calculation.estimatedPrice,
           status: 'pending',
