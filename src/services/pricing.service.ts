@@ -719,7 +719,14 @@ export class PricingService {
     );
 
     if (isCallsDead) {
-      const scrapFloor = (isApple || basePrice > 20000) ? 1180 : 760;
+      let scrapFloor = 1200;
+      if (basePrice <= 10000 || launchPrice <= 10000) {
+        scrapFloor = 400;
+      } else if (isApple || basePrice > 20000) {
+        scrapFloor = 1200;
+      } else {
+        scrapFloor = 800;
+      }
       const deductionAmount = Math.max(0, basePrice - scrapFloor);
 
       return {

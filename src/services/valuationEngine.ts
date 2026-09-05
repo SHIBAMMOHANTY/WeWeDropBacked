@@ -233,12 +233,14 @@ export function calculateReCommerceValuation(input: ValuationEngineInput): Valua
   const isCallingDead = defects.some(d => ['CALLS_FAILED', 'NETWORK_ISSUE'].includes(d.toUpperCase()));
 
   if (isCallingDead) {
-    let scrapFloor = 1180;
-    if (isApple) {
-      scrapFloor = Math.max(1600, Math.round(depreciatedBaseValue * 0.0734));
+    let scrapFloor = 1200;
+    if (depreciatedBaseValue <= 10000 || launchPrice <= 10000) {
+      scrapFloor = 400;
+    } else if (isApple) {
+      scrapFloor = Math.max(1200, Math.round(depreciatedBaseValue * 0.0734));
     } else if (depreciatedBaseValue <= 20000) {
-      // Direct 94.46% cut for Android under 20k (retain 5.54%, min floor ₹500)
-      scrapFloor = Math.max(500, Math.round(depreciatedBaseValue * (1 - 0.9446)));
+      // Direct 94.46% cut for Android under 20k (retain 5.54%, min floor ₹800)
+      scrapFloor = Math.max(800, Math.round(depreciatedBaseValue * (1 - 0.9446)));
     }
 
     const scrapDeduction = Math.max(0, depreciatedBaseValue - scrapFloor);
