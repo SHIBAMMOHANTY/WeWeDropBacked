@@ -1,9 +1,9 @@
 import { prisma } from '@/lib/prisma';
 
 export interface QuoteCalculationRequest {
-  brand: string;
-  model: string;
-  storage: string;
+  brand: string | null;
+  model: string | null;
+  storage: string | null;
   condition: string;
   launchPrice?: number;
   modelSlug?: string;
@@ -45,6 +45,8 @@ export interface QuoteCalculationRequest {
 
 export interface QuoteCalculationResponse {
   success: boolean;
+  canBuyback?: boolean;
+  rejectionReason?: string;
   estimatedPrice: number;
   launchPrice: number;
   priceSource: string;
@@ -147,18 +149,6 @@ export function checkIfDeviceSupportsDualEsim(brand: string = '', model: string 
 
 function escapeMongoRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function getCashifyPrice(...args: any[]): any {
-  return null;
-}
-
-function detectRamFromRequest(...args: any[]): string {
-  return args[0]?.ram || '8 GB';
-}
-
-async function fetchSpecsFromAPI(...args: any[]): Promise<any> {
-  return null;
 }
 
 function getDepreciationRate(brand?: string, model?: string, ageYears: number = 1): number {
@@ -272,13 +262,17 @@ export class PricingService {
     let hasConditionSpecificDatabasePrice = false;
     let isCurrentMarketPrice = false;
 
+    const brandStr = (data.brand || '').trim();
+    const modelStr = (data.model || '').trim();
+    const storageStr = (data.storage || '128 GB').trim();
+
     const cleanedModel = cleanModelName(
-      data.model,
-      data.brand
+      modelStr,
+      brandStr
     );
 
     const exactModel = escapeMongoRegex(
-      data.model.trim()
+      modelStr
     );
 
     const exactCleanedModel =
@@ -286,7 +280,7 @@ export class PricingService {
 
     const exactBrandPrefixedModel =
       escapeMongoRegex(
-        `${data.brand.trim()} ${cleanedModel}`
+        `${brandStr} ${cleanedModel}`
       );
 
     /*
@@ -299,7 +293,7 @@ export class PricingService {
       await prisma.deviceMaster.findFirst({
         where: {
           brand: {
-            equals: data.brand.trim(),
+            equals: brandStr,
             mode: 'insensitive',
           },
 
@@ -331,7 +325,7 @@ export class PricingService {
           ],
 
           storage: {
-            equals: data.storage.trim(),
+            equals: storageStr,
             mode: 'insensitive',
           },
 
@@ -388,143 +382,12 @@ export class PricingService {
       console.log(`[PricingService] Using client request basePrice: ₹${basePriceExcellent}`);
     }
 
-    /*
-     * ==========================================================
-     * STEP 2 — CURRENT MARKET / CASHIFY
-     * ==========================================================
-     *
-     * If database and request have no price, try market lookup with 2.5s timeout.
-     */
-
-    if (!basePriceExcellent) {
-      try {
-        const cashify: any =
-          await Promise.race([
-            getCashifyPrice(
-              data.brand,
-              data.model,
-              data.storage,
-              'good',
-              {
-                ram: detectRamFromRequest(data),
-                modelId:
-                  (data as any).modelId ||
-                  undefined,
-              }
-            ),
-
-            new Promise<null>(
-              (resolve) =>
-                setTimeout(
-                  () => resolve(null),
-                  2500
-                )
-            ),
-          ]);
-
-        if (
-          cashify &&
-          typeof cashify === 'object' &&
-          cashify.price &&
-          cashify.price > 0
-        ) {
-          basePriceExcellent =
-            cashify.price;
-
-          launchPrice =
-            cashify.launchPrice || 0;
-
-          /*
-           * Both market and cashify represent an
-           * already-current resale/buyback value.
-           */
-          if (
-            cashify.source === 'market' ||
-            cashify.source === 'cache'
-          ) {
-            priceSource = 'cashify';
-            isCurrentMarketPrice = true;
-          } else {
-            priceSource = 'cashify';
-          }
-
-          console.log(
-            `[PricingService] Market price used: ` +
-            `${data.brand} ${data.model} ` +
-            `${data.storage} → ` +
-            `₹${cashify.price} ` +
-            `(source: ${cashify.source})`
-          );
-        }
-      } catch (e) {
-        console.warn(
-          '[PricingService] Cashify fetch failed:',
-          e
-        );
-      }
-    }
-
-    /*
-     * ==========================================================
-     * STEP 3 — PHONE SPECS API
-     * ==========================================================
-     */
-
-    if (!basePriceExcellent) {
-      const apiSpecs =
-        await fetchSpecsFromAPI(
-          data.brand,
-          data.model,
-          data.modelSlug
-        );
-
-      if (
-        apiSpecs?.launchPrice &&
-        apiSpecs.launchPrice > 0
-      ) {
-        launchPrice =
-          apiSpecs.launchPrice;
-
-        releaseYear =
-          apiSpecs.releaseYear || 2026;
-
-        priceSource = 'api';
-      } else if (
-        data.launchPrice &&
-        data.launchPrice > 0
-      ) {
-        launchPrice =
-          data.launchPrice;
-
-        priceSource = 'api';
-      }
-
-      if (launchPrice > 0) {
-        const ageYears = Math.max(
-          0,
-          new Date().getFullYear() -
-          releaseYear
-        );
-
-        const mult =
-          getDepreciationRate(
-            data.brand,
-            data.model,
-            ageYears
-          );
-
-        basePriceExcellent =
-          Math.round(
-            launchPrice * mult
-          );
-
-        console.log(
-          `[PricingService] API estimate: ` +
-          `launch ₹${launchPrice}, ` +
-          `year ${releaseYear}, ` +
-          `→ ₹${basePriceExcellent}`
-        );
-      }
+    if (!basePriceExcellent && data.launchPrice && data.launchPrice > 0) {
+      launchPrice = data.launchPrice;
+      const ageYears = Math.max(0, new Date().getFullYear() - (data.releaseYear || 2024));
+      const mult = getDepreciationRate(brandStr, modelStr, ageYears);
+      basePriceExcellent = Math.round(launchPrice * mult);
+      priceSource = 'api';
     }
 
     /*
@@ -547,14 +410,14 @@ export class PricingService {
     if (!basePriceExcellent) {
       const estimatedMSRP =
         estimateDynamicMSRP(
-          data.brand,
-          data.model,
-          data.storage
+          brandStr,
+          modelStr,
+          storageStr
         );
 
       const estimatedYear =
         estimateDynamicYear(
-          data.model
+          modelStr
         );
 
       const currentYear =
@@ -574,8 +437,8 @@ export class PricingService {
 
       const mult =
         getDepreciationRate(
-          data.brand,
-          data.model,
+          brandStr,
+          modelStr,
           clampedAge
         );
 
@@ -641,17 +504,17 @@ export class PricingService {
      */
 
     const isApple =
-      data.brand
+      brandStr
         .toLowerCase()
         .includes('apple') ||
-      data.model
+      modelStr
         .toLowerCase()
         .includes('iphone');
 
     const iPhoneGen =
       isApple
         ? getiPhoneGeneration(
-          data.model
+          modelStr
         )
         : 0;
 
@@ -706,7 +569,7 @@ export class PricingService {
      */
 
     /*
-     * SIM / CALLING / NETWORK
+     * PRIORITY 1: Calling / Network Connectivity Failure (Absolute Highest Priority)
      */
     const isCallsDead = Boolean(
       data.simNotWorking ||
@@ -719,13 +582,13 @@ export class PricingService {
     );
 
     if (isCallsDead) {
-      let scrapFloor = 1200;
-      if (basePrice <= 10000 || launchPrice <= 10000) {
-        scrapFloor = 400;
-      } else if (isApple || basePrice > 20000) {
-        scrapFloor = 1200;
+      let scrapFloor = 1180;
+      if (basePrice < 8000 || launchPrice < 8000) {
+        scrapFloor = 480;
+      } else if (basePrice <= 23000) {
+        scrapFloor = 780;
       } else {
-        scrapFloor = 800;
+        scrapFloor = 1180;
       }
       const deductionAmount = Math.max(0, basePrice - scrapFloor);
 
@@ -736,38 +599,97 @@ export class PricingService {
         priceSource,
         breakdown: {
           basePrice,
-          deductions: [{ label: 'Calls / Cellular Network Failed (Scrap Floor)', amount: deductionAmount }],
+          deductions: [{ label: 'Calling / Cellular Network Failed (Fixed Scrap Floor)', amount: deductionAmount }],
           bonuses: [],
           totalDeduction: deductionAmount,
           totalBonus: 0,
         },
+        summary: `Calling/Network functionality dead. Immediate priority applied with fixed segment scrap value of ₹${scrapFloor.toLocaleString('en-IN')}.`,
+      };
+    }
+
+    /*
+     * PRIORITY 2: Touch Screen Working = false (Overrides all other defects)
+     */
+    if (data.touchScreenWorking === false || data.touchIssue) {
+      let touchRetainRatio = 0.33; // Default ~67% deduction
+      if (isApple && basePrice > 50000) {
+        touchRetainRatio = 0.4941; // ~50.6% retained for premium Apple flagship
+      } else if (basePrice < 8000) {
+        touchRetainRatio = 0.52; // Budget retain floor
+      } else if (basePrice <= 23000) {
+        touchRetainRatio = 0.356; // Mid-range ~64.4% deduction
+      }
+
+      const finalTouchQuote = Math.round((basePrice * touchRetainRatio) / 10) * 10;
+      const deductionAmount = Math.max(0, basePrice - finalTouchQuote);
+
+      return {
+        success: true,
+        estimatedPrice: finalTouchQuote,
+        launchPrice,
+        priceSource,
+        breakdown: {
+          basePrice,
+          deductions: [{ label: 'Touch Screen Non-Functional (Priority Override)', amount: deductionAmount }],
+          bonuses: [],
+          totalDeduction: deductionAmount,
+          totalBonus: 0,
+        },
+        summary: `Touch screen is non-functional. Priority override applied showing only touch screen faulty valuation of ₹${finalTouchQuote.toLocaleString('en-IN')}.`,
+      };
+    }
+
+    /*
+     * PRIORITY 3: Replacement Screen (Non-Original Screen)
+     */
+    if (data.replacementScreen || data.screenOriginal === false) {
+      let nonOriginalRetainRatio = 0.534; // ~46.6% deduction
+      if (isApple && basePrice > 50000) {
+        nonOriginalRetainRatio = 0.6266; // ~37.34% deduction for premium Apple flagship
+      } else if (basePrice <= 23000) {
+        nonOriginalRetainRatio = 0.5621; // ~43.8% deduction for mid-range
+      }
+
+      const finalNonOriginalQuote = Math.round((basePrice * nonOriginalRetainRatio) / 10) * 10;
+      const deductionAmount = Math.max(0, basePrice - finalNonOriginalQuote);
+
+      return {
+        success: true,
+        estimatedPrice: finalNonOriginalQuote,
+        launchPrice,
+        priceSource,
+        breakdown: {
+          basePrice,
+          deductions: [{ label: 'Replacement Screen (Non-Original)', amount: deductionAmount }],
+          bonuses: [],
+          totalDeduction: deductionAmount,
+          totalBonus: 0,
+        },
+        summary: `Non-original replacement screen reported. Priority override applied with fixed replacement screen valuation of ₹${finalNonOriginalQuote.toLocaleString('en-IN')}.`,
       };
     }
 
     // Partial SIM issue (e.g. Dual SIM 2nd slot damaged or eSIM issue)
     if (data.simType === 'dual_sim_slot2_damaged' || data.simType === 'esim_not_working' || data.simType === 'sim_slot_damaged' || data.simType === 'secondary_sim_damaged' || (data as any).simSlot2Damaged) {
-      const hasEsim = checkIfDeviceSupportsEsim(data.brand, data.model);
-      const isDualEsim = (data as any).esimConfig === 'dual_esim' || checkIfDeviceSupportsDualEsim(data.brand, data.model);
+      const hasEsim = checkIfDeviceSupportsEsim(brandStr, modelStr);
+      const isDualEsim = (data as any).esimConfig === 'dual_esim' || checkIfDeviceSupportsDualEsim(brandStr, modelStr);
 
       let label = 'Secondary SIM Slot Faulty';
       if (hasEsim) {
         label = isDualEsim ? 'Secondary SIM / Dual eSIM Profile Faulty' : 'Secondary SIM / Single eSIM Profile Faulty';
       }
-      deduct(label, 0.10);
+      deduct(label, 0.05); // 5% penalty for secondary eSIM / slot issue
     }
 
     /*
-     * SCREEN
+     * SCREEN COSMETIC DEFECTS
      */
-
-    if (data.touchScreenWorking === false || data.touchIssue) {
-      deduct('Touch Screen Faulty', isApple ? 0.60 : 0.514);
-    } else if (data.replacementScreen || data.screenOriginal === false) {
-      deduct('Replacement Screen (Non-Original)', isApple ? 0.345 : 0.3225);
-    } else if (data.glassbroken || data.screenCracked || data.screenGlassBroken) {
+    if (data.glassbroken || data.screenCracked || data.screenGlassBroken) {
       deduct('Glass Broken / Cracked', isApple ? 0.2920 : 0.3761);
     } else if (data.heavyDiscoloration || data.screenIssue || data.deadSpots || data.screenLines || data.screenSpots || data.screenShadow) {
-      deduct('Display Lines / Spots / Discoloration', isApple ? 0.18 : 0.1264);
+      const isHeavySpot = Boolean(data.heavyDiscoloration || data.deadSpots || data.screenSpots);
+      deduct(isHeavySpot ? 'Heavy Dead Spot / Screen Discoloration' : 'Display Lines / Minor Screen Spots', isHeavySpot ? (isApple ? 0.40 : 0.388) : (isApple ? 0.18 : 0.1264));
     } else if (data.scratchOnScreen) {
       deduct('Scratch on Screen', isApple ? 0.06 : 0.0512);
     }
@@ -859,34 +781,34 @@ export class PricingService {
       deduct('Missing Original Charger', 0.05);
     }
 
-    if (data.hasBill === false && !data.isUnderWarranty) {
-      deduct('Missing Bill / Out of Warranty', 0.10);
-    }
+    // Single Out of Warranty / Missing GST Bill Check (Prevents Double Deduction)
+    const isOutofWarranty = Boolean(
+      data.isUnderWarranty === false ||
+      data.hasBill === false ||
+      (data.deviceAge || '').toLowerCase().includes('above') ||
+      (data.deviceAge || '').toLowerCase().includes('1-2y') ||
+      (data.deviceAge || '').toLowerCase().includes('11') ||
+      (data.deviceAgeMonths ?? 0) > 11
+    );
 
-    // Cashify Calibrated Age Bracket Factor
-    const ageStr = (data.deviceAge || '').toLowerCase();
-    const ageMonths = data.deviceAgeMonths ?? 0;
-
-    if (
-      ageStr.includes('above') ||
-      ageStr.includes('1-2y') ||
-      ageStr.includes('2-3y') ||
-      ageStr.includes('3-4y') ||
-      ageMonths > 11
-    ) {
-      deduct('Device Age > 11 Months (Out of Warranty)', 0.05);
-    } else if (
-      ageStr.includes('6to11') ||
-      ageStr.includes('6-11') ||
-      (ageMonths > 6 && ageMonths <= 11)
-    ) {
-      deduct('Device Age 6-11 Months', 0.034);
-    } else if (
-      ageStr.includes('3to6') ||
-      ageStr.includes('3-6') ||
-      (ageMonths > 3 && ageMonths <= 6)
-    ) {
-      deduct('Device Age 3-6 Months', 0.02);
+    if (isOutofWarranty) {
+      deduct('Out of Warranty / No Valid GST Bill', isApple ? 0.2558 : 0.2387);
+    } else {
+      const ageStr = (data.deviceAge || '').toLowerCase();
+      const ageMonths = data.deviceAgeMonths ?? 0;
+      if (
+        ageStr.includes('6to11') ||
+        ageStr.includes('6-11') ||
+        (ageMonths > 6 && ageMonths <= 11)
+      ) {
+        deduct('Device Age 6-11 Months', isApple ? 0.1285 : 0.1530);
+      } else if (
+        ageStr.includes('3to6') ||
+        ageStr.includes('3-6') ||
+        (ageMonths > 3 && ageMonths <= 6)
+      ) {
+        deduct('Device Age 3-6 Months', isApple ? 0.1119 : 0.1283);
+      }
     }
 
     /*
@@ -904,6 +826,34 @@ export class PricingService {
       (sum, item) => sum + item.amount,
       0
     );
+
+    // Check for excessive defects (price drops too low due to multiple issues)
+    const isExcessive = totalDeduction >= basePrice * 0.82 || deductions.length >= 5;
+
+    if (isExcessive) {
+      return {
+        success: true,
+        canBuyback: false,
+        rejectionReason: "Sorry, we can't take your device due to excessive physical or functional defects.",
+        estimatedPrice: 0,
+        launchPrice,
+        priceSource,
+        breakdown: {
+          basePrice,
+          deductions,
+          bonuses,
+          totalDeduction,
+          totalBonus,
+        },
+        valuationBreakdown: {
+          finalQuote: 0,
+          basePrice,
+          defectDeductionsTotal: totalDeduction,
+          appliedDeductions: deductions.map(d => ({ fault: d.label, penalty: d.amount })),
+        },
+        summary: "Sorry, we can't take your device.",
+      };
+    }
 
     let minFloor = 1160;
     if (isApple) {
@@ -927,6 +877,7 @@ export class PricingService {
 
     return {
       success: true,
+      canBuyback: true,
       estimatedPrice,
       launchPrice,
       priceSource,
