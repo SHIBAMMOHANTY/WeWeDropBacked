@@ -827,8 +827,11 @@ export class PricingService {
       0
     );
 
-    // Check for excessive defects (price drops too low due to multiple issues)
-    const isExcessive = totalDeduction >= basePrice * 0.82 || deductions.length >= 5;
+    // Check for excessive defects (price drops too low, negative value, or multiple severe issues)
+    const isExcessive =
+      (basePrice - totalDeduction + totalBonus) <= 0 ||
+      totalDeduction >= basePrice * 0.78 ||
+      deductions.length >= 5;
 
     if (isExcessive) {
       return {
