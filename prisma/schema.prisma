@@ -541,6 +541,7 @@ model Quote {
   expiresAt         DateTime?
 
   status            String   @default("pending") // pending, ordered, completed, rejected
+  diagnosisCompleted Boolean  @default(false)
   images            String[]
   
   // Booking Details

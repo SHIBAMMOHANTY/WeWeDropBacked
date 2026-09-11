@@ -112,9 +112,11 @@ export async function PUT(
         bodyDamage: mergedData.bodyDamage,
         speakerIssue: mergedData.speakerIssue,
         chargingPortIssue: mergedData.chargingPortIssue,
-        estimatedPrice: calculation.estimatedPrice,
-        finalPrice: calculation.estimatedPrice,
-      },
+        estimatedPrice: body.recalculatedPrice ? Number(body.recalculatedPrice) : calculation.estimatedPrice,
+        finalPrice: body.recalculatedPrice ? Number(body.recalculatedPrice) : calculation.estimatedPrice,
+        status: "recalculated",
+        diagnosisCompleted: true,
+      } as any,
     });
 
     return jsonResponse({
