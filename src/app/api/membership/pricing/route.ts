@@ -23,8 +23,8 @@ export async function GET() {
     
     // Format response as { USER: {...}, BUSINESS: {...} }
     const formattedPrices: Record<string, Record<string, number>> = {
-      USER: {},
-      BUSINESS: {},
+      USER: { BASIC: 0, PREMIUM: 0, ELITE: 0 },
+      BUSINESS: { BASIC: 0, PREMIUM: 0, ELITE: 0 },
     };
     
     prices.forEach((price) => {
@@ -70,8 +70,8 @@ export async function PATCH(req: NextRequest) {
     // Fetch all prices and return
     const prices = await prisma.membershipPricing.findMany();
     const formattedPrices: Record<string, Record<string, number>> = {
-      USER: {},
-      BUSINESS: {},
+      USER: { BASIC: 0, PREMIUM: 0, ELITE: 0 },
+      BUSINESS: { BASIC: 0, PREMIUM: 0, ELITE: 0 },
     };
     
     prices.forEach((p) => {
