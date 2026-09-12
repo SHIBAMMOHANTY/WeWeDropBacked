@@ -149,7 +149,7 @@ export async function POST(req: Request) {
         fullAddress: data.address || data.fullAddress || null,
         amount: amountVal,
         paymentId: data.paymentId || data.payment_id || data.orderId || null,
-        orderStatus: data.orderStatus !== undefined ? Number(data.orderStatus) : 0, // PENDING
+        orderStatus: data.orderStatus !== undefined ? Number(data.orderStatus) : (membershipType === "BASIC" ? 1 : 0),
         receiverName: data.receiverName ?? null,
         mobileNumber: data.mobileNumber ?? null,
         preferredDate: data.preferredDate ? new Date(data.preferredDate) : null,
