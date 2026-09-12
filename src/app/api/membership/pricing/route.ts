@@ -51,11 +51,6 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Invalid type" }, { status: 400, headers: corsHeaders });
     }
     
-    // Business only supports PREMIUM and ELITE
-    if (category === "BUSINESS" && type === "BASIC") {
-      return NextResponse.json({ error: "BUSINESS category does not support BASIC tier" }, { status: 400, headers: corsHeaders });
-    }
-    
     if (typeof price !== "number" || price < 0) {
       return NextResponse.json({ error: "Invalid price" }, { status: 400, headers: corsHeaders });
     }
