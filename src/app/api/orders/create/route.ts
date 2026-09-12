@@ -6,17 +6,25 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
 function formatDateOnly(value: Date | string | null | undefined) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
-
 type MembershipType = "BASIC" | "PREMIUM" | "ELITE";
 // Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
 type OrderStatus = 0 | 1 | -1 | 2 | 3 | 4;
-
 
 export async function POST(req: Request) {
   try {
@@ -25,53 +33,67 @@ export async function POST(req: Request) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
         { error: "Missing or invalid Authorization header" },
-        { status: 401 }
+        { status: 401, headers: corsHeaders }
       );
     }
-
-    // Optionally, you can verify the token here if you want
 
     const data = await req.json();
 
+    // Extract fields with flexible field fallback mapping
+    const userId = data.userId || data.user_id;
+    const businessId = data.businessId || data.business_id;
+    const brandName = (data.brandName || data.brand || "")?.toString().trim();
+    const productName = (data.productName || data.product || "")?.toString().trim();
+    const imeiNumber = (data.imeiNumber || data.imei || "")?.toString().trim();
+    const paymentId = data.paymentId || data.payment_id || data.orderId;
+    const customerName = (data.customerName || data.name || "")?.toString().trim();
+    const contactNumber = (data.contactNumber || data.phone || "")?.toString().trim();
+    const billImage = data.billImage ?? data.billUrl ?? "";
+
+    const rawAmount = data.amount !== undefined ? data.amount : (data.totalAmount !== undefined ? data.totalAmount : data.orderPrice);
+    const amount = typeof rawAmount === "number" ? rawAmount : parseFloat(rawAmount || 0);
+
+    let rawMembership = String(data.membershipType || data.membershipDuration || data.plan || "BASIC").toUpperCase();
+    let membershipType: MembershipType = "BASIC";
+    if (rawMembership.includes("ELITE")) {
+      membershipType = "ELITE";
+    } else if (rawMembership.includes("PREMIUM")) {
+      membershipType = "PREMIUM";
+    } else {
+      membershipType = "BASIC";
+    }
+
     // Basic validation
     if (
-      !data.userId ||
-      !data.membershipType ||
-      !data.brandName ||
-      !data.productName ||
-      !data.imeiNumber ||
-      !data.amount ||
-      !data.paymentId // Require paymentId
+      !userId ||
+      !membershipType ||
+      !brandName ||
+      !productName ||
+      !imeiNumber ||
+      amount === undefined ||
+      isNaN(amount) ||
+      !paymentId
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
-    // preferredDate is optional, no validation needed
 
     // Check if userId is valid
-    const user = await prisma.user.findUnique({ where: { id: data.userId } });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       return NextResponse.json(
         { error: "Invalid userId" },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
-    // Enum validation (safe + simple)
-    if (!["BASIC", "PREMIUM", "ELITE"].includes(data.membershipType)) {
+    // Validate Cloudinary URL for billImage only if provided and non-empty
+    if (billImage && typeof billImage === "string" && billImage.trim() !== "" && !billImage.startsWith("http")) {
       return NextResponse.json(
-        { error: "Invalid membership type" },
-        { status: 400 }
-      );
-    }
-
-    // Validate Cloudinary URL for invoicePdf if provided
-    if (data.invoicePdf && (typeof data.invoicePdf !== "string" || !data.invoicePdf.startsWith("http"))) {
-      return NextResponse.json(
-        { error: "Invalid invoicePdf URL" },
-        { status: 400 }
+        { error: "Invalid billImage URL" },
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -79,34 +101,33 @@ export async function POST(req: Request) {
     if (data.invoicePdf && (typeof data.invoicePdf !== "string" || !data.invoicePdf.startsWith("http"))) {
       return NextResponse.json(
         { error: "Invalid invoicePdf URL" },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
     // Check for duplicate IMEI
-    const existingOrder = await prisma.order.findFirst({ where: { imeiNumber: data.imeiNumber } });
+    const existingOrder = await prisma.order.findFirst({ where: { imeiNumber: imeiNumber } });
     if (existingOrder) {
       // If something already exists for this IMEI, update its status automatically
       let newStatus: OrderStatus = existingOrder.orderStatus as OrderStatus;
       let expireDate: Date | null = null;
       let expired = false;
-      if (data.membershipType === "BASIC") {
+      if (membershipType === "BASIC") {
         newStatus = 1 as OrderStatus;
-      } else if (data.membershipType === "ELITE") {
-        // ELITE behaves like PREMIUM for status, so do not set to 1 or 2, just keep existing or PREMIUM logic
-        // Set expireDate to one year from now if not already set
+      } else if (membershipType === "ELITE") {
         expireDate = existingOrder.expireDate ? new Date(existingOrder.expireDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
         expired = expireDate < new Date();
       }
       const updateData: any = {
         orderStatus: newStatus,
-        ...(data.membershipType === "ELITE" ? { expireDate } : {}),
+        ...(membershipType === "ELITE" ? { expireDate } : {}),
       };
       if (data.deliveryDate !== undefined) updateData.deliveryDate = data.deliveryDate ? new Date(data.deliveryDate) : null;
       if (data.serviceCenterDate !== undefined) updateData.serviceCenterDate = data.serviceCenterDate ? new Date(data.serviceCenterDate) : null;
-      // If pickupAddress is in payload, set fullAddress to pickupAddress value
       if (data.pickupAddress !== undefined) {
         updateData.fullAddress = data.pickupAddress;
+      } else if (data.fullAddress || data.address) {
+        updateData.fullAddress = data.fullAddress || data.address;
       }
       const updated = await prisma.order.update({
         where: { id: existingOrder.id },
@@ -125,49 +146,46 @@ export async function POST(req: Request) {
       const response = {
         ...updated,
         status: statusMap[updated.orderStatus] || 'UNKNOWN',
-        ...(data.membershipType === "ELITE" ? { expireDate, expired } : {}),
+        ...(membershipType === "ELITE" ? { expireDate, expired } : {}),
       };
-      return NextResponse.json(response, { status: 200 });
+      return NextResponse.json(response, { status: 200, headers: corsHeaders });
     }
 
     let expireDate: Date | null = null;
     let expired = false;
-    if (data.membershipType === "ELITE") {
+    if (membershipType === "ELITE") {
       expireDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
       expired = false;
     }
-    // If pickupAddress is in payload, set fullAddress to pickupAddress value
-    const fullAddress = data.pickupAddress !== undefined ? data.pickupAddress : (data.fullAddress ?? null);
+    const fullAddress = data.pickupAddress !== undefined ? data.pickupAddress : (data.fullAddress ?? data.address ?? null);
+
     const order = await prisma.order.create({
       data: {
-        userId: data.userId,
-        businessId: data.businessId ?? null,
-        membershipType: data.membershipType,
-        brandName: data.brandName,
-        productName: data.productName,
-        imeiNumber: data.imeiNumber,
-        billImage: data.billImage ?? "",
+        userId: userId,
+        businessId: businessId ?? null,
+        membershipType: membershipType,
+        brandName: brandName,
+        productName: productName,
+        imeiNumber: imeiNumber,
+        billImage: billImage,
         utrScreenshot: data.utrScreenshot ?? null,
         invoicePdf: data.invoicePdf ?? null,
-        serviceDate: data.serviceDate ? new Date(data.serviceDate) : new Date(),
-        billingDate: data.billingDate ? new Date(data.billingDate) : null,
+        serviceDate: data.serviceDate ? new Date(data.serviceDate) : (data.billDate ? new Date(data.billDate) : new Date()),
+        billingDate: data.billingDate ? new Date(data.billingDate) : (data.billDate ? new Date(data.billDate) : null),
         deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
         serviceCenterDate: data.serviceCenterDate ? new Date(data.serviceCenterDate) : null,
-        deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
-        serviceCenterDate: data.serviceCenterDate ? new Date(data.serviceCenterDate) : null,
-        customerName: data.customerName ?? "",
-        contactNumber: data.contactNumber ?? "",
+        customerName: customerName,
+        contactNumber: contactNumber,
         state: data.state ?? null,
         pincode: data.pincode ?? null,
         fullAddress: fullAddress,
-        amount: data.amount,
-        paymentId: data.paymentId, // Add paymentId to order
-        // If membership is BASIC, set status to 1 (PICKUP_REQUESTED), else keep PENDING (0)
-        orderStatus: data.membershipType === "BASIC" ? 1 : 0,
+        amount: amount,
+        paymentId: paymentId,
+        orderStatus: data.orderStatus !== undefined ? Number(data.orderStatus) : (membershipType === "BASIC" ? 1 : 0),
         preferredDate: data.preferredDate ? new Date(data.preferredDate) : null,
         receiverName: data.receiverName ?? null,
         mobileNumber: data.mobileNumber ?? null,
-        ...(data.membershipType === "ELITE" ? { expireDate } : {}),
+        ...(membershipType === "ELITE" ? { expireDate } : {}),
       },
     });
 
@@ -186,7 +204,7 @@ export async function POST(req: Request) {
       serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0,10) : null,
       serviceDate: order.serviceDate ? new Date(order.serviceDate).toISOString().slice(0,10) : null,
       status: statusMap[order.orderStatus] || 'UNKNOWN',
-      ...(data.membershipType === "ELITE" ? { expireDate, expired } : {}),
+      ...(membershipType === "ELITE" ? { expireDate, expired } : {}),
     };
 
     return NextResponse.json({
@@ -195,12 +213,13 @@ export async function POST(req: Request) {
       billingDate: formatDateOnly(orderWithStatus.billingDate),
       deliveryDate: formatDateOnly((orderWithStatus as any).deliveryDate),
       serviceCenterDate: formatDateOnly((orderWithStatus as any).serviceCenterDate),
-    }, { status: 201 });
+    }, { status: 201, headers: corsHeaders });
   } catch (error) {
     console.error("ORDER CREATE ERROR:", error);
     return NextResponse.json(
       { error: "Failed to create order" },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
+
