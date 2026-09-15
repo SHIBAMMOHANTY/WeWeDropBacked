@@ -73,6 +73,7 @@ model User {
   role       Role            @default(USER)
   membership MembershipType?
   isActive   Boolean         @default(true)
+  hasOldPhonePermission Boolean? @default(true)
   createdAt  DateTime        @default(now())
 
   // GST (Optional)
