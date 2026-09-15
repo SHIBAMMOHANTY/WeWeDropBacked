@@ -59,7 +59,7 @@ export async function GET(req: Request) {
           where: { deleted: false },
         },
         payments: true,
-      },
+      } as any,
     });
 
     if (!user) {
@@ -152,7 +152,7 @@ export async function PATCH(req: Request) {
           where: { deleted: false },
         },
         payments: true,
-      },
+      } as any,
     });
 
     return NextResponse.json({ success: true, user: updatedUser }, {
