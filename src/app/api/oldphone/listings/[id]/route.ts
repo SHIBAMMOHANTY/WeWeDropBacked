@@ -114,16 +114,12 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     if (!isOwner && !isAdmin && !isUser) {
       throw new ApiError("Forbidden", 403);
     }
-    const url = new URL(req.url);
-    const isHardDelete = url.searchParams.get("hard") === "true";
 
-    if (isHardDelete) {
-      await prisma.oldPhoneListing.delete({ where: { id: listing.id } });
-      return jsonResponse({ success: true, data: null, message: "Listing permanently deleted successfully" });
-    }
+    // Direct permanent deletion from database
+    await prisma.oldPhoneOrder.deleteMany({ where: { listingId: listing.id } });
+    await prisma.oldPhoneListing.delete({ where: { id: listing.id } });
 
-    const updated = await prisma.oldPhoneListing.update({ where: { id: listing.id }, data: { isActive: false } });
-    return jsonResponse({ success: true, data: updated, message: "Listing soft deleted successfully" });
+    return jsonResponse({ success: true, data: null, message: "Listing permanently deleted from database" });
   } catch (error) {
     if (error instanceof ApiError) {
       return jsonResponse({ success: false, error: error.message }, error.status);
