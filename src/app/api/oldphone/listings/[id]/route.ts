@@ -11,6 +11,7 @@ const listingUpdateSchema = z.object({
   phoneStorage: z.string().min(1).optional(),
   phoneColor: z.string().min(1).optional(),
   phonePrice: z.number().positive().optional(),
+  mrpPrice: z.number().positive().optional(),
   description: z.string().optional(),
   imeiNumber: z.string().optional(),
   phoneOn: z.boolean().optional(),
@@ -72,7 +73,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     const isOwner = listing.userId === session.id || listing.businessId === session.id;
     const isAdmin = session.role === "SUPER_ADMIN";
-    const isUser = session.role === "USER";
+    const isUser = session.role === "USER" || session.role === "BUSINESS";
 
     if (!isOwner && !isAdmin && !isUser) {
       throw new ApiError("Forbidden", 403);
@@ -98,9 +99,21 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     if (!listing) {
       throw new ApiError("Listing not found", 404);
     }
-    if (listing.userId !== session.id && listing.businessId !== session.id && session.role !== "SUPER_ADMIN") {
+    const isOwner = listing.userId === session.id || listing.businessId === session.id;
+    const isAdmin = session.role === "SUPER_ADMIN";
+    const isUser = session.role === "USER" || session.role === "BUSINESS";
+
+    if (!isOwner && !isAdmin && !isUser) {
       throw new ApiError("Forbidden", 403);
     }
+    const url = new URL(req.url);
+    const isHardDelete = url.searchParams.get("hard") === "true";
+
+    if (isHardDelete) {
+      await prisma.oldPhoneListing.delete({ where: { id: listing.id } });
+      return jsonResponse({ success: true, data: null, message: "Listing permanently deleted successfully" });
+    }
+
     const updated = await prisma.oldPhoneListing.update({ where: { id: listing.id }, data: { isActive: false } });
     return jsonResponse({ success: true, data: updated, message: "Listing soft deleted successfully" });
   } catch (error) {

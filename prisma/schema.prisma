@@ -235,6 +235,7 @@ model OldPhoneListing {
   mobileRepaired Boolean?
   phoneColor     String
   phonePrice     Float
+  mrpPrice       Float?
   imeiNumber     String?
   description    String?
 

@@ -1,4 +1,4 @@
-﻿// Shared TypeScript types
+// Shared TypeScript types
 
 export interface Business {
   id: string;
@@ -31,6 +31,7 @@ export interface OldPhoneListingCreatePayload {
   phoneStorage: string;
   phoneColor: string;
   phonePrice: number;
+  mrpPrice?: number;
   description?: string;
   imeiNumber?: string;
   phoneOn?: boolean;
@@ -60,6 +61,7 @@ export interface OldPhoneListingResponse {
   phoneStorage: string;
   phoneColor: string;
   phonePrice: number;
+  mrpPrice?: number | null;
   imeiNumber?: string | null;
   description?: string | null;
   isActive: boolean;
