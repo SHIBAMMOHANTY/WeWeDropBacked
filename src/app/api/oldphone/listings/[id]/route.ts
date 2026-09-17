@@ -80,7 +80,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (!isOwner && !isAdmin && !isUser) {
       throw new ApiError("Forbidden", 403);
     }
-    const updated = await prisma.oldPhoneListing.update({ where: { id: listing.id }, data: payload });
+    const updateData: any = {};
+    for (const [key, val] of Object.entries(payload)) {
+      if (val !== null && val !== undefined) {
+        updateData[key] = val;
+      }
+    }
+    const updated = await prisma.oldPhoneListing.update({ where: { id: listing.id }, data: updateData });
     return jsonResponse({ success: true, data: updated, message: "Listing updated successfully" });
   } catch (error) {
     if (error instanceof ApiError) {
