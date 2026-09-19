@@ -113,8 +113,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getAuthSession(req);
-    if (session.role !== "USER") {
-      throw new ApiError("Only authenticated customers can place old phone orders", 403);
+    if (!session || !session.id) {
+      throw new ApiError("Authentication required to place orders", 401);
     }
     const body = await req.json();
     console.log("RECEIVED PAYLOAD:", JSON.stringify(body, null, 2));
