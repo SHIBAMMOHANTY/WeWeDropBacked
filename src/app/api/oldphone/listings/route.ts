@@ -107,7 +107,6 @@ export async function GET(req: Request) {
               id: true,
               orderId: true,
               deliveryStatus: true,
-              orderStatus: true,
               createdAt: true,
             }
           },

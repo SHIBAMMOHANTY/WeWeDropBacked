@@ -54,7 +54,6 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
             id: true,
             orderId: true,
             deliveryStatus: true,
-            orderStatus: true,
             createdAt: true,
           },
           orderBy: { createdAt: "desc" },
