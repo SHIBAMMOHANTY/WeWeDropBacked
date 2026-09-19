@@ -28,6 +28,8 @@ const listingUpdateSchema = z.object({
   financeKitAvailable: z.boolean().nullable().optional(),
   accessories: z.array(z.string()).nullable().optional(),
   warranty: z.boolean().nullable().optional(),
+  warrantyType: z.string().nullable().optional(),
+  specifications: z.any().nullable().optional(),
   images: z.array(z.string()).nullable().optional(),
   billImage: z.string().nullable().optional(),
   purchaseDate: z.string().nullable().optional(),

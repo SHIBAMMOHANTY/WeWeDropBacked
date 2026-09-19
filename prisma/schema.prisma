@@ -254,6 +254,8 @@ model OldPhoneListing {
   financeKitAvailable Boolean?
   accessories         String[] // Box, Charger, Bill, Headphones, Cable
   warranty            Boolean?
+  warrantyType        String?  // e.g. 3 Months, 6 Months, 1 Year, etc.
+  specifications      Json?    // Key-value specifications e.g. [{ key: "IMEI", value: "1234..." }]
 
   // Images
   images       String[] // Array of image URLs

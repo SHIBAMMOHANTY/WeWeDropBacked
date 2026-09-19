@@ -28,11 +28,14 @@ const listingCreateSchema = z.object({
   financeKitAvailable: z.boolean().nullable().optional(),
   accessories: z.array(z.string()).nullable().optional(),
   warranty: z.boolean().nullable().optional(),
+  warrantyType: z.string().nullable().optional(),
+  specifications: z.any().nullable().optional(),
   images: z.array(z.string()).nullable().optional(),
   billImage: z.string().nullable().optional(),
   purchaseDate: z.string().nullable().optional(),
   gift: z.string().nullable().optional(),
   exactPrice: z.number().positive().nullable().optional(),
+  isActive: z.boolean().nullable().optional(),
 });
 
 export async function OPTIONS() {
@@ -143,12 +146,14 @@ export async function POST(req: Request) {
         financeKitAvailable: payload.financeKitAvailable,
         accessories: payload.accessories ?? [],
         warranty: payload.warranty,
+        warrantyType: payload.warrantyType,
+        specifications: payload.specifications,
         images: payload.images ?? [],
         billImage: payload.billImage,
         purchaseDate: payload.purchaseDate,
         gift: payload.gift,
         exactPrice: payload.exactPrice,
-        isActive: false,
+        isActive: payload.isActive ?? true,
       },
     });
 
