@@ -48,7 +48,18 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     const id = params.id;
     const listing = await prisma.oldPhoneListing.findFirst({
       where: { OR: [{ id }, { listingId: id }] },
-      include: { orders: { orderBy: { createdAt: "desc" } } },
+      include: {
+        orders: {
+          select: {
+            id: true,
+            orderId: true,
+            deliveryStatus: true,
+            orderStatus: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        }
+      },
     });
     if (!listing) {
       throw new ApiError("Listing not found", 404);

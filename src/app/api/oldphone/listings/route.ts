@@ -78,9 +78,17 @@ export async function GET(req: Request) {
         skip,
         take: limit,
         include: { 
-          orders: true,
-          user: { select: { id: true, phone: true, username: true, email: true, role: true, avatar: true } },
-          business: { select: { id: true, email: true, dealerName: true, contactNumber: true, approved: true, isActive: true } }
+          orders: {
+            select: {
+              id: true,
+              orderId: true,
+              deliveryStatus: true,
+              orderStatus: true,
+              createdAt: true,
+            }
+          },
+          user: { select: { id: true, phone: true, username: true, email: true, role: true } },
+          business: { select: { id: true, email: true, dealerName: true, contactNumber: true } }
         }
       }),
     ]);
