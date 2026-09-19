@@ -137,7 +137,7 @@ export async function POST(req: Request) {
         phoneOn: payload.phoneOn,
         displayWorking: payload.displayWorking,
         displayGlassDamage: payload.displayGlassDamage,
-        bodyCondition: payload.bodyCondition,
+        bodyCondition: (payload.bodyCondition as any) || "GOOD",
         simSlotsWorking: payload.simSlotsWorking,
         volumeButtonsWorking: payload.volumeButtonsWorking,
         fingerprintWorking: payload.fingerprintWorking,
