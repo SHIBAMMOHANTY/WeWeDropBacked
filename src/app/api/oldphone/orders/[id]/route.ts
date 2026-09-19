@@ -11,6 +11,7 @@ const orderStatusUpdateSchema = z.object({
   feedback: z.string().optional(),
   rating: z.number().int().min(1).max(5).optional(),
   deliveryDate: z.string().optional(),
+  deliveryAgentId: z.string().optional().nullable(),
 });
 
 export async function OPTIONS() {
@@ -24,6 +25,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     const order = await prisma.oldPhoneOrder.findFirst({
       where: { OR: [{ id }, { orderId: id }] },
       include: {
+        deliveryAgent: { select: { id: true, phone: true, username: true, role: true } },
         listing: {
           include: {
             business: { select: { id: true, email: true, dealerName: true, contactNumber: true, approved: true, isActive: true } },
@@ -35,26 +37,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     if (!order) {
       throw new ApiError("Order not found", 404);
     }
-    if (session.role !== "SUPER_ADMIN" && order.userId !== session.id && order.sellerId !== session.id) {
+    if (session.role !== "SUPER_ADMIN" && session.role !== "DELIVERY_AGENT" && order.userId !== session.id && order.sellerId !== session.id && order.deliveryAgentId !== session.id) {
       throw new ApiError("Forbidden", 403);
-    }    let businessName = order.listing?.businessId;
-    if (order.listing?.business) {
-      businessName = order.listing.business.dealerName;
-    } else if (order.listing?.user && order.listing.businessId === order.listing.user.id) {
-      businessName = order.listing.user.username || order.listing.user.phone;
-    } else if (order.listing?.user) {
-      businessName = order.listing.user.username || order.listing.user.phone;
     }
-
-    const formattedOrder = {
-      ...order,
-      listing: {
-        ...order.listing,
-        businessId: businessName,
-      },
-    };
-
-    return jsonResponse({ success: true, data: formattedOrder, message: "Order retrieved successfully" });
+    return jsonResponse({ success: true, data: order });
   } catch (error) {
     if (error instanceof ApiError) {
       return jsonResponse({ success: false, error: error.message }, error.status);
@@ -75,7 +61,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (!order) {
       throw new ApiError("Order not found", 404);
     }
-    if (session.role !== "SUPER_ADMIN" && order.sellerId !== session.id && order.userId !== session.id) {
+    if (session.role !== "SUPER_ADMIN" && session.role !== "DELIVERY_AGENT" && order.sellerId !== session.id && order.userId !== session.id && order.deliveryAgentId !== session.id) {
       throw new ApiError("Forbidden", 403);
     }
 
@@ -84,6 +70,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (payload.remark !== undefined) updateData.remark = payload.remark;
     if (payload.rating !== undefined) updateData.rating = payload.rating;
     if (payload.feedback !== undefined) updateData.feedback = payload.feedback;
+    if (payload.deliveryAgentId !== undefined) updateData.deliveryAgentId = payload.deliveryAgentId;
 
     if (payload.deliveryDate) {
       const parsedDate = new Date(payload.deliveryDate);

@@ -52,8 +52,14 @@ export async function GET(req: Request) {
       throw new ApiError("Invalid role query", 400);
     }
 
+    const agentIdParam = url.searchParams.get("deliveryAgentId") || url.searchParams.get("agentId");
     const where: Record<string, unknown> = {};
-    if (session.role !== "SUPER_ADMIN" || filterQuery === "mine") {
+    
+    if (agentIdParam) {
+      where.deliveryAgentId = agentIdParam;
+    } else if (session.role === "DELIVERY_AGENT") {
+      where.deliveryAgentId = session.id;
+    } else if (session.role !== "SUPER_ADMIN" || filterQuery === "mine") {
       if (role === "seller") {
         where.sellerId = session.id;
       } else if (role === "buyer") {
@@ -74,6 +80,7 @@ export async function GET(req: Request) {
         skip,
         take: limit,
         include: {
+          deliveryAgent: { select: { id: true, phone: true, username: true, role: true } },
           listing: {
             include: {
               business: { select: { id: true, email: true, dealerName: true, contactNumber: true, approved: true, isActive: true } },
@@ -143,20 +150,22 @@ export async function POST(req: Request) {
           // Dynamically create an OldPhoneListing from this Quote so that OldPhoneOrder relation works!
           listing = await tx.oldPhoneListing.create({
             data: {
-              userId: quote.userId,
-              phoneName: quote.brand,
-              phoneModel: quote.model,
-              phoneStorage: quote.storage,
-              phonePrice: quote.finalPrice || quote.estimatedPrice,
+              userId: quote.userId || session.id,
+              phoneName: quote.brand || "Unknown Brand",
+              phoneModel: quote.model || "Unknown Model",
+              phoneStorage: quote.storage || "N/A",
+              phonePrice: quote.finalPrice || quote.estimatedPrice || firstItem.price,
               mobileRepaired: true, // It is refurbished!
               phoneColor: "Default",
-              imeiNumber: "N/A",
+              imeiNumber: quote.imeiNumber || quote.imei || "N/A",
               description: `Quote Order. Quote Number: ${quote.quoteNumber}`,
-              bodyCondition: quote.condition.toUpperCase() === "EXCELLENT" 
-                ? "EXCELLENT" 
-                : quote.condition.toUpperCase() === "GOOD" 
-                  ? "GOOD" 
-                  : "AVERAGE",
+              bodyCondition: (quote.condition?.toUpperCase() === "EXCELLENT" || quote.condition?.toUpperCase() === "GOOD")
+                ? "GOOD" 
+                : quote.condition?.toUpperCase() === "AVERAGE" 
+                  ? "AVERAGE" 
+                  : quote.condition?.toUpperCase() === "BAD"
+                    ? "BAD"
+                    : "GOOD",
               images: quote.images && quote.images.length > 0 ? quote.images : [],
               isActive: true,
               isSold: true, // Mark it sold immediately since it's being ordered!

@@ -87,6 +87,7 @@ model User {
   payments            Payment[]
   oldPhoneListings    OldPhoneListing[]
   oldPhoneOrders      OldPhoneOrder[]
+  assignedOldPhoneOrders OldPhoneOrder[] @relation("OldPhoneOrderDeliveryAgent")
   notifications       Notification[]
 
   // Avatar image URL with default empty string
@@ -288,12 +289,14 @@ model OldPhoneOrder {
   orderId String?
 
   // Relations
-  listingId String
-  userId    String // Customer who placed the order
-  sellerId  String // Business/User who listed the phone
+  listingId       String
+  userId          String // Customer who placed the order
+  sellerId        String // Business/User who listed the phone
+  deliveryAgentId String?
 
-  listing OldPhoneListing @relation(fields: [listingId], references: [id])
-  user    User            @relation(fields: [userId], references: [id])
+  listing       OldPhoneListing @relation(fields: [listingId], references: [id])
+  user          User            @relation(fields: [userId], references: [id])
+  deliveryAgent User?           @relation("OldPhoneOrderDeliveryAgent", fields: [deliveryAgentId], references: [id])
 
   // Order Details
   customerName   String
