@@ -46,27 +46,51 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const filters: Record<string, unknown> = {};
-    const isActive = parseBoolean(url.searchParams.get("isActive"));
+
+    const isActiveParam = url.searchParams.get("isActive");
+    const isActive = parseBoolean(isActiveParam);
     if (typeof isActive === "boolean") {
       filters.isActive = isActive;
     }
-    const userId = url.searchParams.get("userId");
-    const businessId = url.searchParams.get("businessId");
-    if (userId) filters.userId = userId;
-    if (businessId) filters.businessId = businessId;
 
+    const isSoldParam = url.searchParams.get("isSold");
+    const isSold = parseBoolean(isSoldParam);
+    if (typeof isSold === "boolean") {
+      filters.isSold = isSold;
+    }
+
+    const includeSold = parseBoolean(url.searchParams.get("includeSold"));
+    const myListingsOnly = parseBoolean(url.searchParams.get("myListings")) || parseBoolean(url.searchParams.get("my"));
+
+    let session: any = null;
     const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
-      const session = await getAuthSession(req);
-      if (session.role !== "SUPER_ADMIN") {
-        if (session.role === "BUSINESS") {
-          filters.businessId = session.id;
-          delete filters.userId; // ensure they can't override
-        } else {
-          filters.userId = session.id;
-          delete filters.businessId; // ensure they can't override
-        }
+      try {
+        session = await getAuthSession(req);
+      } catch (e) {
+        // Ignore auth error for public listings browsing
       }
+    }
+
+    const userId = url.searchParams.get("userId");
+    const businessId = url.searchParams.get("businessId");
+
+    if (myListingsOnly && session) {
+      if (session.role === "BUSINESS") {
+        filters.businessId = session.id;
+      } else if (session.role === "SUPER_ADMIN") {
+        // admin sees all
+      } else {
+        filters.userId = session.id;
+      }
+    } else {
+      if (userId) filters.userId = userId;
+      if (businessId) filters.businessId = businessId;
+    }
+
+    // Default to active listings if not specified and not querying own/all
+    if (filters.isActive === undefined && !includeSold && !myListingsOnly && !userId && !businessId) {
+      filters.isActive = true;
     }
 
     const { page, limit, skip } = buildPagination(req.url);
@@ -95,7 +119,7 @@ export async function GET(req: Request) {
 
     const formattedListings = listings.map((listing: any) => {
       let businessName = listing.businessId;
-      if (listing.business) {
+      if (listing.business?.dealerName) {
         businessName = listing.business.dealerName;
       } else if (listing.user && listing.businessId === listing.user.id) {
         businessName = listing.user.username || listing.user.phone;
@@ -110,11 +134,12 @@ export async function GET(req: Request) {
     });
 
     return jsonResponse({ success: true, data: formattedListings, message: "Listings retrieved successfully", meta: { page, limit, total } });
-  } catch (error) {
+  } catch (error: any) {
+    console.error("[GET /api/oldphone/listings Error]:", error);
     if (error instanceof ApiError) {
       return jsonResponse({ success: false, error: error.message }, error.status);
     }
-    return jsonResponse({ success: false, error: "Server error" }, 500);
+    return jsonResponse({ success: false, error: error?.message || "Server error" }, 500);
   }
 }
 
@@ -175,13 +200,14 @@ export async function POST(req: Request) {
     });
 
     return jsonResponse({ success: true, data: listing, message: 'Listing created successfully' }, 201);
-  } catch (error) {
+  } catch (error: any) {
+    console.error("[POST /api/oldphone/listings Error]:", error);
     if (error instanceof ApiError) {
       return jsonResponse({ success: false, error: error.message }, error.status);
     }
     if (error instanceof z.ZodError) {
       return jsonResponse({ success: false, error: error.errors.map((e) => e.message).join('; ') }, 400);
     }
-    return jsonResponse({ success: false, error: 'Server error' }, 500);
+    return jsonResponse({ success: false, error: error?.message || 'Server error' }, 500);
   }
 }

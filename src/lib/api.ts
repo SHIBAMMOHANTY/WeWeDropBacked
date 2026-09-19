@@ -64,16 +64,21 @@ export async function getAuthSession(req: Request): Promise<AuthSession> {
     throw new ApiError("Bearer token is required", 401);
   }
 
-  const payload = verifyToken(token);
-  if (!payload || typeof payload !== "object" || !payload.id || !payload.role) {
-    throw new ApiError("Invalid authentication token", 401);
-  }
+  try {
+    const payload = verifyToken(token);
+    if (!payload || typeof payload !== "object" || !payload.id || !payload.role) {
+      throw new ApiError("Invalid authentication token", 401);
+    }
 
-  return {
-    id: String(payload.id),
-    role: String(payload.role),
-    ...payload,
-  };
+    return {
+      id: String(payload.id),
+      role: String(payload.role),
+      ...payload,
+    };
+  } catch (err: any) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(err?.message || "Invalid or expired token", 401);
+  }
 }
 
 export async function createNotification(params: {
