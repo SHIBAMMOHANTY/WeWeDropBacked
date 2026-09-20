@@ -27,7 +27,7 @@ export async function GET() {
       BUSINESS: { BASIC: 0, PREMIUM: 0, ELITE: 0 },
     };
     
-    prices.forEach((price) => {
+    prices.forEach((price: any) => {
       formattedPrices[price.category][price.type] = price.price;
     });
     
@@ -74,7 +74,7 @@ export async function PATCH(req: NextRequest) {
       BUSINESS: { BASIC: 0, PREMIUM: 0, ELITE: 0 },
     };
     
-    prices.forEach((p) => {
+    prices.forEach((p: any) => {
       formattedPrices[p.category][p.type] = p.price;
     });
     

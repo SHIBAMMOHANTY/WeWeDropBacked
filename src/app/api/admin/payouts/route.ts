@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getAuthSession, buildPagination } from '@/lib/api';
+import { getAuthSession, buildPagination, ApiError } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
@@ -162,11 +162,14 @@ export async function GET(req: NextRequest) {
       { headers: corsHeaders }
     );
   } catch (err: unknown) {
+    const status = err instanceof ApiError ? err.status : 500;
     const errorMessage = err instanceof Error ? err.message : 'Failed to fetch payouts';
-    console.error('[Admin Payouts API Error]:', err);
+    if (status === 500) {
+      console.error('[Admin Payouts API Error]:', err);
+    }
     return NextResponse.json(
       { success: false, error: errorMessage },
-      { status: 500, headers: corsHeaders }
+      { status, headers: corsHeaders }
     );
   }
 }

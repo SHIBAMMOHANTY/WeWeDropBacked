@@ -41,20 +41,52 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   // Pagination logic
   const page = searchParams?.userPage ? parseInt(searchParams.userPage as string) : 1;
   const skip = (page - 1) * PAGE_SIZE;
-  const usersRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/users/all?page=${page}&limit=${PAGE_SIZE}`, { cache: 'no-store' });
-  const usersData = await usersRes.json();
-  const users: any[] = usersData.users || [];
-  const totalUsers: number = usersData.total || 0;
 
-  const ordersRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/orders/all`, { cache: 'no-store' });
-  const ordersData = await ordersRes.json();
-  const orders: any[] = ordersData.orders || [];
+  let users: any[] = [];
+  let totalUsers: number = 0;
+  try {
+    const usersRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/users/all?page=${page}&limit=${PAGE_SIZE}`, { cache: 'no-store' });
+    if (usersRes.ok) {
+      const usersData = await usersRes.json();
+      users = Array.isArray(usersData) ? usersData : (usersData.users || []);
+      totalUsers = usersData.total || users.length;
+    }
+  } catch (e) {
+    console.warn('Failed to fetch users', e);
+  }
 
-  const paymentsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/payments/all`, { cache: 'no-store' });
-  const payments: any[] = (await paymentsRes.json()) || [];
+  let orders: any[] = [];
+  try {
+    const ordersRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/orders/all`, { cache: 'no-store' });
+    if (ordersRes.ok) {
+      const ordersData = await ordersRes.json();
+      orders = Array.isArray(ordersData) ? ordersData : (ordersData.orders || []);
+    }
+  } catch (e) {
+    console.warn('Failed to fetch orders', e);
+  }
 
-  const businessesRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/business/all`, { cache: 'no-store' });
-  const businesses: any[] = (await businessesRes.json()) || [];
+  let payments: any[] = [];
+  try {
+    const paymentsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/payments/all`, { cache: 'no-store' });
+    if (paymentsRes.ok) {
+      const paymentsData = await paymentsRes.json();
+      payments = Array.isArray(paymentsData) ? paymentsData : (paymentsData.payments || []);
+    }
+  } catch (e) {
+    console.warn('Failed to fetch payments', e);
+  }
+
+  let businesses: any[] = [];
+  try {
+    const businessesRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/business/all`, { cache: 'no-store' });
+    if (businessesRes.ok) {
+      const businessesData = await businessesRes.json();
+      businesses = Array.isArray(businessesData) ? businessesData : (businessesData.businesses || []);
+    }
+  } catch (e) {
+    console.warn('Failed to fetch businesses', e);
+  }
 
   // Fetch Payouts for Buyback
   let payoutsList: any[] = [];
