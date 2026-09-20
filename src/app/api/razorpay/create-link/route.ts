@@ -45,17 +45,25 @@ export async function POST(req: Request) {
     // ✅ Convert to paise (NO forced minimum)
     const amountInPaise = Math.round(rupees * 100);
 
+    const custEmail = body.email || `${digits.slice(-10)}@temp.com`;
+
     // ✅ Only set callback_url if a valid web URL is provided
     const paymentLinkOptions = {
       amount: amountInPaise,
       currency: "INR",
+      accept_partial: false,
       description: "Order Payment",
       reference_id: orderId || Date.now().toString(),
       customer: {
         name: customerName || "Customer",
         contact: fixedContact,
-        email: `${digits.slice(-10)}@temp.com` // Razorpay requires email
+        email: custEmail
       },
+      notify: {
+        sms: false,
+        email: false
+      },
+      reminder_enable: false,
       // Conditionally add callback_url only if it's a valid web URL
       ...(callback_url && callback_url.startsWith('http') ? { 
         callback_url, 
@@ -64,6 +72,16 @@ export async function POST(req: Request) {
       options: {
         checkout: {
           name: "WePick",
+          prefill: {
+            contact: fixedContact,
+            email: custEmail,
+            name: customerName || "Customer"
+          },
+          readonly: {
+            contact: true,
+            email: true,
+            name: true
+          },
           theme: {
             hide_topbar: false
           },
