@@ -10,32 +10,32 @@ const orderCreateSchema = z.object({
     items: z.array(z.object({
       phoneId: z.string().min(1),
       quantity: z.number().int().min(1),
-      price: z.number().positive()
+      price: z.number()
     })).min(1),
     paymentMethod: z.string(),
-    paymentId: z.string().optional(),
-    totalAmount: z.number().positive(),
-    exactPrice: z.number().positive().optional(),
-    gift: z.string().optional(),
-  }),
+    paymentId: z.string().optional().nullable(),
+    totalAmount: z.number(),
+    exactPrice: z.number().optional().nullable(),
+    gift: z.string().optional().nullable(),
+  }).passthrough(),
   customer: z.object({
-    firstName: z.string().min(1),
-    lastName: z.string().min(1),
-    mobileNo: z.string().min(6),
-    altMobileNo: z.string().optional(),
-  }),
+    firstName: z.string().optional().nullable(),
+    lastName: z.string().optional().nullable(),
+    mobileNo: z.string().optional().nullable(),
+    altMobileNo: z.string().optional().nullable(),
+  }).passthrough(),
   shippingAddress: z.object({
-    blockBuilding: z.string().optional(),
-    addressLine1: z.string(),
-    addressLine2: z.string().optional(),
-    state: z.string(),
-    pincode: z.string(),
+    blockBuilding: z.string().optional().nullable(),
+    addressLine1: z.string().optional().nullable(),
+    addressLine2: z.string().optional().nullable(),
+    state: z.string().optional().nullable(),
+    pincode: z.string().optional().nullable(),
     location: z.object({
       latitude: z.number(),
       longitude: z.number(),
-    }).optional()
-  })
-});
+    }).optional().nullable()
+  }).passthrough()
+}).passthrough();
 
 export async function OPTIONS() {
   return jsonResponse({}, 204);
