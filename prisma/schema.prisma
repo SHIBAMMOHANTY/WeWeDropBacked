@@ -413,6 +413,42 @@ model Payment {
 }
 
 //////////////////////
+// PAYOUT TRANSACTION (RazorpayX Customer Buyback Payouts)
+//////////////////////
+
+model PayoutTransaction {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  pickupId           String   // Quote ID / Order ID
+  quoteId            String?  // Reference to Quote if applicable
+  customerId         String?  // Customer User ID
+  agentId            String   // Delivery Agent ID who initiated payout
+  amount             Float    // Amount in Rupees (e.g. 8000.00)
+  amountInPaise      Int      // Amount in Paise (e.g. 800000)
+  currency           String   @default("INR")
+  paymentMethod      String   @default("UPI") // UPI | BANK_TRANSFER
+  recipientReference String   // UPI VPA (e.g. user@upi) or Bank Account Number
+  recipientName      String?  // Name of recipient
+  bankIfsc           String?  // If bank transfer
+  contactId          String?  // RazorpayX Contact ID
+  fundAccountId      String?  // RazorpayX Fund Account ID
+  razorpayPayoutId   String?  @unique // RazorpayX Payout ID (pout_xxx)
+  status             String   @default("PENDING") // PENDING | QUEUED | PROCESSING | SUCCESS | FAILED | REVERSED | CANCELLED
+  failureReason      String?  // Error message if failed
+  utr                String?  // Unique Transaction Reference from bank/UPI
+  idempotencyKey     String   @unique // Idempotency key to prevent duplicate payouts
+  metadata           Json?    // Audit & debug metadata
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([pickupId])
+  @@index([quoteId])
+  @@index([agentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+//////////////////////
 // SUPER ADMIN
 //////////////////////
 

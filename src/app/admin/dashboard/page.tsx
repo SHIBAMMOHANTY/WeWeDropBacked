@@ -40,25 +40,37 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const dbStatus = await getDbStatus();
   // Pagination logic
   const page = searchParams?.userPage ? parseInt(searchParams.userPage as string) : 1;
+  const skip = (page - 1) * PAGE_SIZE;
   const usersRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/users/all?page=${page}&limit=${PAGE_SIZE}`, { cache: 'no-store' });
   const usersData = await usersRes.json();
-  const users = usersData.users;
-  const totalUsers = usersData.total;
+  const users: any[] = usersData.users || [];
+  const totalUsers: number = usersData.total || 0;
 
   const ordersRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/orders/all`, { cache: 'no-store' });
   const ordersData = await ordersRes.json();
-  const orders = ordersData.orders;
+  const orders: any[] = ordersData.orders || [];
 
   const paymentsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/payments/all`, { cache: 'no-store' });
-  const payments = await paymentsRes.json();
+  const payments: any[] = (await paymentsRes.json()) || [];
 
   const businessesRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/business/all`, { cache: 'no-store' });
-  const businesses = await businessesRes.json();
+  const businesses: any[] = (await businessesRes.json()) || [];
+
+  // Fetch Payouts for Buyback
+  let payoutsList: any[] = [];
+  try {
+    const payoutsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/payouts`, { cache: 'no-store' });
+    if (payoutsRes.ok) {
+      const payoutsData = await payoutsRes.json();
+      payoutsList = payoutsData.payouts || [];
+    }
+  } catch (e) {
+    console.warn('Failed to fetch payouts for admin dashboard', e);
+  }
 
   // membership summary
-  const membershipCounts = users.reduce((acc, u) => {
+  const membershipCounts = users.reduce((acc: Record<string, number>, u: any) => {
     const key = u.membership ?? 'NONE';
-    // @ts-ignore
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
@@ -81,6 +93,65 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
               <div className={styles.cardValue}>{v}</div>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionTitle}>Customer Buyback Payouts (RazorpayX)</div>
+        <div className={styles.tableWrap}>
+          <div className={styles.tableInner}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Pickup ID</th>
+                  <th>Customer / Recipient</th>
+                  <th>Agent ID</th>
+                  <th>Device</th>
+                  <th>Final Buyback Amount</th>
+                  <th>Payment Method</th>
+                  <th>Payout ID / UTR</th>
+                  <th>Status</th>
+                  <th>Failure Reason</th>
+                  <th>Created At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payoutsList.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} style={{ textAlign: 'center', padding: '16px', color: '#64748b' }}>
+                      No payout transactions recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  payoutsList.map((p) => (
+                    <tr key={p.id}>
+                      <td className={styles.muted}>{p.quoteNumber || p.pickupId}</td>
+                      <td>
+                        <strong>{p.customerName || p.recipientName || 'Customer'}</strong>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>{p.recipientReference}</div>
+                      </td>
+                      <td className={styles.muted}>{p.agentId}</td>
+                      <td>{p.device}</td>
+                      <td><strong>₹{p.amount}</strong></td>
+                      <td>{p.paymentMethod}</td>
+                      <td className={styles.muted}>
+                        <div>{p.razorpayPayoutId || '-'}</div>
+                        {p.utr && <div style={{ fontSize: '11px', color: '#16a34a' }}>UTR: {p.utr}</div>}
+                      </td>
+                      <td>
+                        {p.status === 'SUCCESS' && <span className={`${styles.badge} ${styles.badgeGreen}`}>Success</span>}
+                        {p.status === 'PROCESSING' && <span className={`${styles.badge} ${styles.badgeYellow}`}>Processing</span>}
+                        {p.status === 'PENDING' && <span className={`${styles.badge} ${styles.badgeYellow}`}>Pending</span>}
+                        {['FAILED', 'REVERSED'].includes(p.status) && <span className={`${styles.badge} ${styles.badgeRed}`}>{p.status}</span>}
+                      </td>
+                      <td className={styles.muted} style={{ color: '#dc2626', fontSize: '12px' }}>{p.failureReason || '-'}</td>
+                      <td className={styles.small}>{formatDate(p.createdAt)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
