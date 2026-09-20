@@ -43,31 +43,63 @@ export async function OPTIONS() {
 
 export async function GET(req: Request) {
   try {
-    const session = await getAuthSession(req);
     const url = new URL(req.url);
     const roleQuery = url.searchParams.get("role");
     const filterQuery = url.searchParams.get("filter");
+    const phoneParam = url.searchParams.get("customerPhone") || url.searchParams.get("phone");
+    const userIdParam = url.searchParams.get("userId");
+    const orderIdParam = url.searchParams.get("orderId");
     const role = roleQuery ? roleQuery.toLowerCase() : undefined;
     if (role && !["buyer", "seller"].includes(role)) {
       throw new ApiError("Invalid role query", 400);
     }
 
+    let session: any = null;
+    try {
+      session = await getAuthSession(req);
+    } catch (authErr) {
+      if (!phoneParam && !userIdParam && !orderIdParam) {
+        throw authErr;
+      }
+    }
+
     const agentIdParam = url.searchParams.get("deliveryAgentId") || url.searchParams.get("agentId");
     const where: Record<string, unknown> = {};
-    
+
     if (agentIdParam) {
       where.deliveryAgentId = agentIdParam;
-    } else if (session.role === "DELIVERY_AGENT") {
+    } else if (session && session.role === "DELIVERY_AGENT") {
       where.deliveryAgentId = session.id;
+    } else if (orderIdParam) {
+      where.orderId = orderIdParam;
+    } else if (!session) {
+      // Unauthenticated request with phoneParam or userIdParam fallback
+      const buyerConditions: any[] = [];
+      if (userIdParam) buyerConditions.push({ userId: userIdParam });
+      if (phoneParam) {
+        const cleanPhone = phoneParam.replace(/\D/g, "");
+        if (cleanPhone.length >= 10) {
+          buyerConditions.push({ customerPhone: { contains: cleanPhone.slice(-10) } });
+        }
+      }
+      if (buyerConditions.length > 0) {
+        where.OR = buyerConditions;
+      }
     } else if (session.role !== "SUPER_ADMIN" || filterQuery === "mine") {
+      const cleanPhone = (phoneParam || session.phone || "").replace(/\D/g, "");
+      const buyerConditions: any[] = [{ userId: session.id }];
+      if (cleanPhone && cleanPhone.length >= 10) {
+        buyerConditions.push({ customerPhone: { contains: cleanPhone.slice(-10) } });
+      }
+
       if (role === "seller") {
         where.sellerId = session.id;
-      } else if (role === "buyer") {
-        where.userId = session.id;
+      } else if (role === "buyer" || filterQuery === "mine") {
+        where.OR = buyerConditions;
       } else if (session.role === "BUSINESS") {
         where.sellerId = session.id;
       } else {
-        where.userId = session.id;
+        where.OR = buyerConditions;
       }
     }
 
