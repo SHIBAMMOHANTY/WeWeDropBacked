@@ -295,7 +295,7 @@ model OldPhoneOrder {
   deliveryAgentId String?
 
   listing       OldPhoneListing @relation(fields: [listingId], references: [id])
-  user          User            @relation(fields: [userId], references: [id])
+  user          User?           @relation(fields: [userId], references: [id])
   deliveryAgent User?           @relation("OldPhoneOrderDeliveryAgent", fields: [deliveryAgentId], references: [id])
 
   // Order Details

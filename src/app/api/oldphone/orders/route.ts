@@ -251,7 +251,7 @@ export async function POST(req: Request) {
           userId: session.id,
           sellerId,
           customerName,
-          customerPhone: payload.customer.mobileNo,
+          customerPhone: payload.customer.mobileNo || "",
           offerPrice: payload.order.totalAmount,
           exactPrice: payload.order.exactPrice,
           gift: payload.order.gift,
