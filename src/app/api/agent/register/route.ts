@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       const updatedAgent = await prisma.user.update({
         where: { id: existingUser.id },
         data: {
-          role: "DELIVERY_AGENT",
+          role: ['REFURBISH_TEAM', 'SELLING_TEAM', 'DELIVERY_AGENT', 'BUSINESS', 'USER'].includes((body.role || '').toUpperCase()) ? (body.role.toUpperCase() as any) : 'DELIVERY_AGENT',
           password: hashedPassword,
           username: agentName,
           email: email || existingUser.email,
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
         password: hashedPassword,
         username: agentName,
         email: email || null,
-        role: "DELIVERY_AGENT",
+        role: ['REFURBISH_TEAM', 'SELLING_TEAM', 'DELIVERY_AGENT', 'BUSINESS', 'USER'].includes((body.role || '').toUpperCase()) ? (body.role.toUpperCase() as any) : 'DELIVERY_AGENT',
         isActive: defaultIsActive, // Default Disabled until admin activates
         // Location & Address
         address: address || null,

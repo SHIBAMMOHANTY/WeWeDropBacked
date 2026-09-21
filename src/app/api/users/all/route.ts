@@ -1,4 +1,4 @@
-﻿export const runtime = "nodejs";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse, NextRequest } from 'next/server';
@@ -28,36 +28,36 @@ export async function GET(req: NextRequest) {
       where.role = 'BUSINESS';
     } else if (rawRole === 'USER' || rawRole === 'CUSTOMER') {
       where.role = 'USER';
+    } else if (rawRole === 'REFURBISH_TEAM' || rawRole === 'REFURBISH') {
+      where.role = 'REFURBISH_TEAM';
+    } else if (rawRole === 'SELLING_TEAM' || rawRole === 'SELLING') {
+      where.role = 'SELLING_TEAM';
     } else if (rawRole === 'DELIVERY_AGENT' || rawRole === 'AGENT') {
       where.role = 'DELIVERY_AGENT';
+    } else if (rawRole === 'STAFF' || rawRole === 'TEAM' || rawRole === 'AGENTS') {
+      where.role = { in: ['DELIVERY_AGENT', 'REFURBISH_TEAM', 'SELLING_TEAM'] };
     } else if (rawRole === 'SUPER_ADMIN' || rawRole === 'ADMIN') {
       where.role = 'SUPER_ADMIN';
     } else if (rawRole && rawRole !== 'ALL') {
       where.role = rawRole as any;
     }
 
-    // Get users with optional role filtering
     const users = await prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: { orders: true },
     });
-    console.log(`Fetched users count (filtered role: ${rawRole || 'ALL'}):`, users.length);
+    console.log(`Fetched users count (filtered role: ${rawRole || 'ALL'}): ${users.length}`);
 
-    // Get total count
-    const total = users.length;
-
-    // Format users (remove password) and ensure avatar is present
     const formattedUsers = users.map(({ password, avatar, ...user }) => ({
       ...user,
       avatar: avatar ?? "",
     }));
 
-    // Create response with CORS headers
     return NextResponse.json({
       success: true,
       filter: rawRole || 'ALL',
-      total,
+      total: users.length,
       users: formattedUsers,
     }, { headers: corsHeaders });
   } catch (error) {

@@ -145,7 +145,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getAuthSession(req);
-    if (!['USER', 'BUSINESS'].includes(session.role)) {
+    if (!['USER', 'BUSINESS', 'SELLING_TEAM', 'SUPER_ADMIN', 'DELIVERY_AGENT', 'REFURBISH_TEAM'].includes(session.role)) {
       throw new ApiError('Only authenticated users or businesses can create listings', 403);
     }
     const body = await req.json();

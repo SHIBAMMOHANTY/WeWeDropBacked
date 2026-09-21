@@ -28,6 +28,8 @@ enum Role {
   USER
   BUSINESS
   DELIVERY_AGENT
+  REFURBISH_TEAM
+  SELLING_TEAM
 }
 
 enum MembershipType {
@@ -166,6 +168,7 @@ model Order {
   billImage         String
   utrScreenshot     String?
   invoicePdf        String?
+  refurbishData     Json?
   serviceDate       DateTime
   billingDate       DateTime?
   deliveryDate      DateTime?
@@ -676,3 +679,39 @@ model PriceHistory {
 
 
 
+
+
+//////////////////////
+// PARTS INVENTORY
+//////////////////////
+
+model SparePart {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  partName         String
+  sku              String?
+  category         String
+  brand            String?
+  compatibleModels String[] @default([])
+  qualityGrade     String?
+  costPrice        Float    @default(0)
+  sellingPrice     Float    @default(0)
+  mrp              Float?   @default(0)
+  quantity         Int      @default(0)
+  minStockLevel    Int      @default(5)
+  location         String?
+  supplier         String?
+  images           String[] @default([])
+  status           String   @default("IN_STOCK")
+  isHighDemand     Boolean  @default(false)
+  usedCount        Int      @default(0)
+  usedIn           Json?
+  stockLogs        Json?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([category])
+  @@index([brand])
+  @@index([status])
+  @@index([isHighDemand])
+}

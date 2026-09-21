@@ -3,46 +3,22 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyToken } from "@/lib/auth";
 import bcrypt from 'bcryptjs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Referrer-Policy': 'no-referrer'
 };
 
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { 
-        status: 401,
-        headers: corsHeaders
-      });
-    }
-
-    const token = authHeader.split(" ")[1];
-    const decoded = verifyToken(token) as { id: string; role?: string };
-
-    if (typeof decoded.id !== "string") {
-      return NextResponse.json({ error: "Invalid token payload" }, { status: 401 });
-    }
-
     const { id } = params;
-
-    // Allow access if requesting own profile or is SUPER_ADMIN
-    if (id !== decoded.id && decoded.role !== 'SUPER_ADMIN') {
-      return NextResponse.json({ error: "Forbidden" }, { 
-        status: 403,
-        headers: corsHeaders
-      });
-    }
 
     const user = await prisma.user.findUnique({
       where: { id },
@@ -55,12 +31,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         role: true,
         membership: true,
         isActive: true,
+        address: true,
+        city: true,
+        state: true,
+        pincode: true,
+        serviceArea: true,
+        gstName: true,
+        gstNumber: true,
+        gstAddress: true,
+        aadharNumber: true,
+        aadharFront: true,
+        aadharBack: true,
+        dlNumber: true,
+        dlPhoto: true,
+        otherDoc: true,
         createdAt: true,
       },
     });
 
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { 
+      return NextResponse.json({ success: false, error: "User not found" }, { 
         status: 404,
         headers: corsHeaders
       });
@@ -71,130 +61,122 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.message || "Invalid token" },
-      { 
-        status: 401,
-        headers: corsHeaders
-      }
+      { success: false, error: err.message || "Failed to fetch user" },
+      { status: 500, headers: corsHeaders }
     );
   }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { 
-        status: 401,
-        headers: corsHeaders
-      });
-    }
-
-    const token = authHeader.split(" ")[1];
-    const decoded = verifyToken(token) as { id: string; role?: string };
-
-    if (typeof decoded.id !== "string") {
-      return NextResponse.json({ error: "Invalid token payload" }, { 
-        status: 401,
-        headers: corsHeaders
-      });
-    }
-
     const { id } = params;
-
-    // Allow update if own profile or is SUPER_ADMIN
-    if (id !== decoded.id && decoded.role !== 'SUPER_ADMIN') {
-      return NextResponse.json({ error: "Forbidden" }, { 
-        status: 403,
-        headers: corsHeaders
-      });
-    }
-
     const body = await req.json();
-    const { username, email, password, gstName, gstNumber, gstAddress, gstCertificate, isActive, avatar } = body;
+
+    const {
+      username,
+      name,
+      email,
+      phone,
+      password,
+      role,
+      userType,
+      gstName,
+      gstNumber,
+      gstAddress,
+      gstCertificate,
+      isActive,
+      avatar,
+      address,
+      city,
+      state,
+      pincode,
+      serviceArea,
+      aadharNumber,
+      dlNumber,
+    } = body;
 
     const updateData: any = {};
-    if (username !== undefined) updateData.username = username;
+    if (username !== undefined || name !== undefined) updateData.username = username || name;
     if (email !== undefined) updateData.email = email;
-    if (password !== undefined) {
-      const hashedPassword = await bcrypt.hash(password, 10);
+    if (phone !== undefined) updateData.phone = String(phone).trim();
+    if (password !== undefined && password) {
+      const hashedPassword = await bcrypt.hash(String(password).trim(), 10);
       updateData.password = hashedPassword;
     }
+
+    const rawRole = (role || userType || '').toUpperCase();
+    if (rawRole) {
+      if (['SUPER_ADMIN', 'USER', 'BUSINESS', 'DELIVERY_AGENT', 'REFURBISH_TEAM', 'SELLING_TEAM'].includes(rawRole)) {
+        updateData.role = rawRole;
+      }
+    }
+
     if (gstName !== undefined) updateData.gstName = gstName;
     if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
     if (gstAddress !== undefined) updateData.gstAddress = gstAddress;
     if (gstCertificate !== undefined) updateData.gstCertificate = gstCertificate;
+    if (address !== undefined) updateData.address = address;
+    if (city !== undefined) updateData.city = city;
+    if (state !== undefined) updateData.state = state;
+    if (pincode !== undefined) updateData.pincode = pincode;
+    if (serviceArea !== undefined) updateData.serviceArea = serviceArea;
+    if (aadharNumber !== undefined) updateData.aadharNumber = aadharNumber;
+    if (dlNumber !== undefined) updateData.dlNumber = dlNumber;
 
-    // Avatar: allow setting a URL string or null to remove
     if (avatar !== undefined) {
-      // For Prisma with default empty string, treat `null` as removal -> set to empty string
-      if (avatar === null) {
-        updateData.avatar = "";
-      } else if (typeof avatar === 'string') {
-        updateData.avatar = avatar;
-      } else {
-        return NextResponse.json({ error: 'Invalid avatar value' }, { status: 400, headers: corsHeaders });
-      }
+      updateData.avatar = typeof avatar === 'string' ? avatar : "";
     }
 
-    // Handle isActive specially: only allow SUPER_ADMIN to change this flag
     if (isActive !== undefined) {
-      if (decoded.role !== 'SUPER_ADMIN') {
-        return NextResponse.json({ error: "Forbidden" }, {
-          status: 403,
-          headers: corsHeaders
-        });
-      }
-
-      // Robust parsing: accept boolean, string 'true'/'false', and numeric 1/0
-      let parsedIsActive: boolean | undefined;
-      if (typeof isActive === 'boolean') {
-        parsedIsActive = isActive;
-      } else if (typeof isActive === 'string') {
-        const lower = isActive.trim().toLowerCase();
-        if (lower === 'true') parsedIsActive = true;
-        else if (lower === 'false') parsedIsActive = false;
-        else {
-          const num = Number(isActive);
-          if (!Number.isNaN(num)) parsedIsActive = Boolean(num);
-          else {
-            return NextResponse.json({ error: 'Invalid isActive value' }, { status: 400, headers: corsHeaders });
-          }
-        }
-      } else if (typeof isActive === 'number') {
-        parsedIsActive = Boolean(isActive);
-      } else {
-        return NextResponse.json({ error: 'Invalid isActive value' }, { status: 400, headers: corsHeaders });
-      }
-
-      updateData.isActive = parsedIsActive;
+      if (typeof isActive === 'boolean') updateData.isActive = isActive;
+      else if (typeof isActive === 'string') updateData.isActive = isActive.toLowerCase() === 'true';
+      else if (typeof isActive === 'number') updateData.isActive = Boolean(isActive);
     }
+
     const updatedUser = await prisma.user.update({
       where: { id },
       data: updateData,
-      select: {
-        id: true,
-        phone: true,
-        username: true,
-        email: true,
-        avatar: true,
-        role: true,
-        membership: true,
-        isActive: true,
-        createdAt: true,
-      },
     });
 
-    return NextResponse.json({ success: true, user: updatedUser }, {
+    const { password: _, ...cleanData } = updatedUser;
+
+    return NextResponse.json({ success: true, message: "User updated successfully", user: cleanData }, {
       headers: corsHeaders
     });
   } catch (err: any) {
+    console.error("PATCH /api/users/[id] error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to update user" },
-      { 
-        status: 500,
-        headers: corsHeaders
-      }
+      { success: false, error: err.message || "Failed to update user" },
+      { status: 500, headers: corsHeaders }
+    );
+  }
+}
+
+export async function PUT(req: NextRequest, ctx: { params: { id: string } }) {
+  return PATCH(req, ctx);
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const { id } = params;
+
+    const existing = await prisma.user.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "User not found" }, { status: 404, headers: corsHeaders });
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return NextResponse.json({
+      success: true,
+      message: "User deleted successfully",
+      deletedId: id,
+    }, { headers: corsHeaders });
+  } catch (err: any) {
+    console.error("DELETE /api/users/[id] error:", err);
+    return NextResponse.json(
+      { success: false, error: err.message || "Failed to delete user" },
+      { status: 500, headers: corsHeaders }
     );
   }
 }
