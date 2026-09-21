@@ -6,10 +6,10 @@ import { PricingService } from '@/services/pricing.service';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const calculateSchema = z.object({
-  brand: z.string().min(1, 'Brand is required'),
+export const calculateSchema = z.object({
+  brand: z.string().optional(),
   model: z.string().min(1, 'Model is required'),
-  storage: z.string().min(1, 'Storage size is required'),
+  storage: z.string().optional().default('128 GB'),
   condition: z.union([z.string(), z.enum(['excellent', 'good', 'average'])]).optional().default('good').transform((val) => {
     const lower = (val || '').toLowerCase();
     if (lower === 'excellent' || lower === 'average') return lower;
@@ -17,7 +17,7 @@ const calculateSchema = z.object({
   }),
   screenCracked: z.boolean().default(false),
   batteryHealth: z.union([z.number(), z.string()]).optional().transform((val) => {
-    const num = typeof val === 'string' ? parseInt(val) : val;
+    const num = typeof val === 'string' ? parseInt(val, 10) : val;
     return isNaN(num as number) ? 100 : (num as number);
   }),
   cameraIssue: z.boolean().default(false),
@@ -30,7 +30,7 @@ const calculateSchema = z.object({
   launchPrice: z.number().optional(),
 });
 
-const createQuoteSchema = calculateSchema.extend({
+export const createQuoteSchema = calculateSchema.extend({
   images: z.array(z.string()).optional().default([]),
   customerName: z.string().optional(),
   customerAddress: z.string().optional(),
@@ -49,94 +49,235 @@ const createQuoteSchema = calculateSchema.extend({
   finalPrice: z.number().optional(),
 });
 
+export function inferBrandFromModel(modelName: string): string {
+  if (!modelName) return 'Other';
+  const lower = modelName.toLowerCase();
+  if (lower.includes('iphone') || lower.includes('apple') || lower.includes('ipad')) return 'Apple';
+  if (lower.includes('samsung') || lower.includes('galaxy')) return 'Samsung';
+  if (lower.includes('oneplus')) return 'OnePlus';
+  if (lower.includes('xiaomi') || lower.includes('redmi') || lower.includes('poco') || lower.includes('mi ')) return 'Xiaomi';
+  if (lower.includes('vivo') || lower.includes('iqoo')) return 'Vivo';
+  if (lower.includes('oppo') || lower.includes('realme')) return 'Oppo';
+  if (lower.includes('google') || lower.includes('pixel')) return 'Google';
+  if (lower.includes('motorola') || lower.includes('moto')) return 'Motorola';
+  if (lower.includes('nothing')) return 'Nothing';
+  if (lower.includes('honor') || lower.includes('huawei')) return 'Honor';
+  return 'Other';
+}
+
 export async function OPTIONS() {
   return jsonResponse(null, 204);
 }
 
 export async function POST(req: Request) {
   try {
-    // 1. Authenticate user
-    const session = await getAuthSession(req);
-    if (!session || !session.id) {
-      return jsonResponse({ error: 'Unauthorized: Authentication required' }, 401);
+    let session: any = null;
+    try {
+      session = await getAuthSession(req);
+    } catch (_) {
+      // Allow guest / intake
     }
 
     const body = await req.json();
 
-    // 2. Validate input schema
-    const parseResult = createQuoteSchema.safeParse(body);
-    if (!parseResult.success) {
-      return jsonResponse(
-        {
-          error: 'Validation failed',
-          details: parseResult.error.errors.map((e) => ({
-            field: e.path.join('.'),
-            message: e.message,
-          })),
+    // 1. Check if this is a Multi-Device Dealer Quote Intake
+    const isDealerOrMultiDevice =
+      body.customerType === 'dealer' ||
+      (Array.isArray(body.devices) && body.devices.length > 0) ||
+      Boolean(body.shopName);
+
+    if (isDealerOrMultiDevice) {
+      const devicesList = Array.isArray(body.devices) && body.devices.length > 0
+        ? body.devices
+        : [
+            {
+              model: body.model || 'Unknown Handset',
+              ram: body.ram || '',
+              storage: body.storage || '',
+              buyingPrice: body.finalPrice || body.buyingPrice || body.totalAmount || 0,
+              accessories: body.accessories || {},
+              lockStatus: body.lockStatus || 'Unlocked',
+              isPhoneReset: body.isPhoneReset ?? true,
+              imei: body.imei || body.imeiNumber || '',
+              photos6Sides: body.photos6Sides || {},
+              ceirScreenshot: body.ceirScreenshot || null,
+              problems: body.problems || '',
+            },
+          ];
+
+      const customerName = body.customerName || body.dealerName || 'Valued Dealer';
+      const shopName = body.shopName || body.storeName || 'N/A';
+      const contactNumber = body.contactNumber || body.dealerPhone || body.customerPhone || body.phone || '';
+      const customerAddress = body.customerAddress || body.address || '';
+
+      const totalCalculated = devicesList.reduce((sum: number, d: any) => {
+        const p = typeof d.buyingPrice === 'number' ? d.buyingPrice : parseFloat(d.buyingPrice || 0);
+        return sum + (isNaN(p) ? 0 : p);
+      }, 0);
+
+      const finalAmount = body.totalAmount || body.finalPrice || (totalCalculated > 0 ? totalCalculated : 0);
+
+      const allImages: string[] = [];
+      if (body.idProofFront) allImages.push(body.idProofFront);
+      if (body.idProofBack) allImages.push(body.idProofBack);
+
+      devicesList.forEach((d: any) => {
+        if (d.photos6Sides) {
+          Object.values(d.photos6Sides).forEach((val) => {
+            if (typeof val === 'string' && val.trim()) allImages.push(val.trim());
+          });
+        }
+        if (Array.isArray(d.photos)) {
+          d.photos.forEach((p: any) => {
+            if (typeof p === 'string' && p.trim()) allImages.push(p.trim());
+          });
+        }
+        if (d.ceirScreenshot) allImages.push(d.ceirScreenshot);
+      });
+
+      const primaryDevice = devicesList[0] || {};
+      const primaryModel = primaryDevice.model || (devicesList.length > 1 ? `${devicesList.length} Devices (Dealer Intake)` : 'Dealer Procurement');
+      const primaryBrand = primaryDevice.brand || inferBrandFromModel(primaryModel);
+      const primaryStorage = primaryDevice.storage || 'Multiple';
+
+      const timestampStr = Date.now().toString().slice(-6);
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const quoteNumber = `DLR-${timestampStr}-${randomSuffix}`;
+
+      const isAgent = session?.role === 'AGENT' || session?.role === 'DELIVERY_PARTNER';
+
+      const quote = await prisma.quote.create({
+        data: {
+          quoteNumber,
+          userId: session?.id || undefined,
+          agentId: isAgent ? session?.id : undefined,
+          brand: primaryBrand,
+          model: primaryModel,
+          storage: primaryStorage,
+          condition: 'dealer_inspected',
+          estimatedPrice: finalAmount,
+          finalPrice: finalAmount,
+          status: 'booked',
+          images: allImages,
+          customerName,
+          customerAddress,
+          customerPincode: body.customerPincode || '',
+          contactNumber,
+          imeiNumber: primaryDevice.imei || primaryDevice.imeiNumber || undefined,
+          imei: primaryDevice.imei || primaryDevice.imeiNumber || undefined,
+          paymentMode: body.paymentMode || body.payoutMethod || 'CASH',
+          payoutMethod: body.payoutMethod || body.paymentMode || 'CASH',
+          description: shopName !== 'N/A'
+            ? `Shop: ${shopName} | Dealer Intake (${devicesList.length} device(s))`
+            : `Dealer Intake (${devicesList.length} device(s))`,
+          breakdown: {
+            customerType: 'dealer',
+            shopName,
+            totalDevices: devicesList.length,
+            totalAmount: finalAmount,
+            devices: devicesList,
+          } as any,
+          conditionAnswers: {
+            customerType: 'dealer',
+            shopName,
+            idProofType: body.idProofType || 'Aadhaar Card',
+            idProofNumber: body.idProofNumber || 'N/A',
+            idProofFront: body.idProofFront || null,
+            idProofBack: body.idProofBack || null,
+            devices: devicesList,
+          } as any,
         },
-        400
-      );
+      });
+
+      return jsonResponse({
+        success: true,
+        message: 'Dealer quote created successfully',
+        quoteId: quote.id,
+        quoteNumber: quote.quoteNumber,
+        quote,
+      }, 201);
     }
 
-    const quoteData = parseResult.data;
+    // 2. Standard Single-Device Consumer Quote Flow (Validates with createQuoteSchema)
+    const parseResult = createQuoteSchema.safeParse(body);
+    const parsedData = parseResult.success ? parseResult.data : body;
 
-    // 3. Recalculate price on server side using Prisma-based Pricing Engine (safely with fallback)
-    let calculatedEstPrice = quoteData.finalPrice || 1000;
+    const brand = parsedData.brand || inferBrandFromModel(parsedData.model || '');
+    const model = parsedData.model || 'Unknown Phone';
+    const storage = parsedData.storage || '128 GB';
+    const finalPrice = typeof parsedData.finalPrice === 'number'
+      ? parsedData.finalPrice
+      : parseFloat(parsedData.finalPrice || body.estimatedPrice || 0);
+
+    let calculatedEstPrice = finalPrice || 1000;
     try {
-      const calculation = await PricingService.calculateQuote(quoteData as any);
+      const calculation = await PricingService.calculateQuote({
+        brand,
+        model,
+        storage,
+        condition: parsedData.condition || 'good',
+        screenCracked: Boolean(parsedData.screenCracked),
+        batteryHealth: typeof parsedData.batteryHealth === 'number' ? parsedData.batteryHealth : 100,
+        cameraIssue: Boolean(parsedData.cameraIssue),
+        fingerprintIssue: Boolean(parsedData.fingerprintIssue),
+        faceIdIssue: Boolean(parsedData.faceIdIssue),
+        bodyDamage: Boolean(parsedData.bodyDamage),
+        speakerIssue: Boolean(parsedData.speakerIssue),
+        chargingPortIssue: Boolean(parsedData.chargingPortIssue),
+      } as any);
       if (calculation && calculation.estimatedPrice > 0) {
         calculatedEstPrice = calculation.estimatedPrice;
       }
     } catch (_) {
-      console.warn('PricingService fallback for device quote creation:', quoteData.model);
+      console.warn('PricingService fallback for single device creation:', model);
     }
 
-    // 4. Generate unique quote number (QB + Timestamp + Random suffix)
     const timestampStr = Date.now().toString().slice(-6);
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const quoteNumber = `QB-${timestampStr}-${randomSuffix}`;
-    const imeiVal = quoteData.imeiNumber || quoteData.imei;
+    const imeiVal = parsedData.imeiNumber || parsedData.imei;
 
-    // 5. Save the Quote using Prisma client
     const quote = await prisma.quote.create({
       data: {
         quoteNumber,
-        userId: session.id,
-        brand: quoteData.brand,
-        model: quoteData.model,
-        storage: quoteData.storage,
-        condition: quoteData.condition,
-        screenCracked: quoteData.screenCracked,
-        batteryHealth: quoteData.batteryHealth,
-        cameraIssue: quoteData.cameraIssue,
-        fingerprintIssue: quoteData.fingerprintIssue,
-        faceIdIssue: quoteData.faceIdIssue,
-        bodyDamage: quoteData.bodyDamage,
-        speakerIssue: quoteData.speakerIssue,
-        chargingPortIssue: quoteData.chargingPortIssue,
+        userId: session?.id || undefined,
+        brand,
+        model,
+        storage,
+        condition: parsedData.condition || 'good',
+        screenCracked: Boolean(parsedData.screenCracked),
+        batteryHealth: typeof parsedData.batteryHealth === 'number' ? parsedData.batteryHealth : 100,
+        cameraIssue: Boolean(parsedData.cameraIssue),
+        fingerprintIssue: Boolean(parsedData.fingerprintIssue),
+        faceIdIssue: Boolean(parsedData.faceIdIssue),
+        bodyDamage: Boolean(parsedData.bodyDamage),
+        speakerIssue: Boolean(parsedData.speakerIssue),
+        chargingPortIssue: Boolean(parsedData.chargingPortIssue),
         estimatedPrice: calculatedEstPrice,
-        finalPrice: quoteData.finalPrice ?? calculatedEstPrice,
-        status: quoteData.status || (quoteData.customerName ? 'booked' : 'submitted'),
-        images: quoteData.images,
-        customerName: quoteData.customerName,
-        customerAddress: quoteData.customerAddress,
-        customerPincode: quoteData.customerPincode,
-        contactNumber: quoteData.contactNumber,
+        finalPrice: finalPrice || calculatedEstPrice,
+        status: parsedData.status || (parsedData.customerName ? 'booked' : 'submitted'),
+        images: Array.isArray(parsedData.images) ? parsedData.images : [],
+        customerName: parsedData.customerName,
+        customerAddress: parsedData.customerAddress,
+        customerPincode: parsedData.customerPincode,
+        contactNumber: parsedData.contactNumber || body.customerPhone || body.phone,
         imeiNumber: imeiVal || undefined,
         imei: imeiVal || undefined,
-        paymentMode: quoteData.paymentMode || quoteData.payoutMethod,
-        payoutMethod: quoteData.payoutMethod || quoteData.paymentMode,
-        upiId: quoteData.upiId,
-        bankAccount: quoteData.bankAccount,
-        bankIfsc: quoteData.bankIfsc,
-        bankAccountHolder: quoteData.bankAccountHolder,
-        description: quoteData.description,
+        paymentMode: parsedData.paymentMode || parsedData.payoutMethod,
+        payoutMethod: parsedData.payoutMethod || parsedData.paymentMode,
+        upiId: parsedData.upiId,
+        bankAccount: parsedData.bankAccount,
+        bankIfsc: parsedData.bankIfsc,
+        bankAccountHolder: parsedData.bankAccountHolder,
+        description: parsedData.description,
       },
     });
 
     return jsonResponse({
       success: true,
       message: 'Quote created successfully',
+      quoteId: quote.id,
+      quoteNumber: quote.quoteNumber,
       quote,
     }, 201);
   } catch (err: any) {
@@ -150,24 +291,36 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   try {
-    // 1. Authenticate user
     const session = await getAuthSession(req);
     if (!session || !session.id) {
       return jsonResponse({ error: 'Unauthorized: Authentication required' }, 401);
     }
 
-    // 2. Parse query parameters for pagination
     const { page, limit, skip } = buildPagination(req.url);
 
-    // 3. Only return quotes that were formally submitted
-    //    (created via POST /quote/create with booking details).
     const query: any = {
       userId: session.id,
       status: {
-        in: ['booked', 'scheduled', 'delayed_pickup', 'pickup_delayed', 'ordered', 'requested', 'accepted', 'pickup_scheduled', 'pickup_successful', 'payment_processing', 'payment_completed', 'cancelled', 'rejected', 'pending', 'submitted']
-      }
+        in: [
+          'booked',
+          'scheduled',
+          'delayed_pickup',
+          'pickup_delayed',
+          'ordered',
+          'requested',
+          'accepted',
+          'pickup_scheduled',
+          'pickup_successful',
+          'payment_processing',
+          'payment_completed',
+          'cancelled',
+          'rejected',
+          'pending',
+          'submitted',
+        ],
+      },
     };
-    
+
     const total = await prisma.quote.count({ where: query });
     const quotes = await prisma.quote.findMany({
       where: query,

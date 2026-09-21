@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildPagination } from '@/lib/api';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,32 +37,35 @@ export async function GET(req: NextRequest) {
       where.role = rawRole as any;
     }
 
-    // Get users with optional role filtering
+    const { page, limit, skip } = buildPagination(req.url);
+
+    const total = await prisma.user.count({ where });
     const users = await prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: { orders: true },
+      skip,
+      take: limit,
     });
-    console.log(`Fetched users count (filtered role: ${rawRole || 'ALL'}):`, users.length);
 
-    // Get total count
-    const total = users.length;
-
-    // Format users (remove password) and ensure avatar is present
     const formattedUsers = users.map(({ password, avatar, ...user }) => ({
       ...user,
       avatar: avatar ?? "",
     }));
 
-    // Create response with CORS headers
     return NextResponse.json({
       success: true,
       filter: rawRole || 'ALL',
-      total,
       users: formattedUsers,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
     }, { headers: corsHeaders });
   } catch (error) {
-    console.error('GET /api/users/all error:', error);
+    console.error('GET /api/users error:', error);
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500, headers: corsHeaders }
