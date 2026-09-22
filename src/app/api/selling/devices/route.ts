@@ -7,14 +7,14 @@ import { prisma } from '@/lib/prisma';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-role, x-user-role',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
-// GET: Fetch all devices ready for selling team, live on app, or sold
+// GET: Fetch ONLY devices that have been assigned to SELLING_TEAM by Refurbish Team
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
@@ -26,11 +26,9 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(url.searchParams.get('limit') || '50', 10);
     const skip = (page - 1) * limit;
 
+    // Strict rule: ONLY devices assigned to SELLING_TEAM or with status ready_for_sale / listed_on_app / sold
     const where: any = {
-      OR: [
-        { status: { in: ['ready_for_sale', 'listed_on_app', 'sold', 'in_repair', 'payment_completed', 'pickup_successful'] } },
-        { diagnosisCompleted: true }
-      ]
+      status: { in: ['ready_for_sale', 'listed_on_app', 'sold'] },
     };
 
     if (search) {

@@ -17,15 +17,12 @@ export async function OPTIONS() {
 // GET: List available Selling Team members and active groups
 export async function GET(req: NextRequest) {
   try {
-    // Find users with SELLING_TEAM, DELIVERY_AGENT, ADMIN, or SUPER_ADMIN roles who can sell
+    // Valid Role enum: SUPER_ADMIN, USER, BUSINESS, DELIVERY_AGENT, REFURBISH_TEAM, SELLING_TEAM
     const sellers = await (prisma as any).user.findMany({
       where: {
-        OR: [
-          { role: 'SELLING_TEAM' },
-          { role: 'SUPER_ADMIN' },
-          { role: 'DELIVERY_AGENT' },
-          { role: 'ADMIN' },
-        ],
+        role: {
+          in: ['SELLING_TEAM', 'SUPER_ADMIN', 'DELIVERY_AGENT'],
+        },
       },
       select: {
         id: true,

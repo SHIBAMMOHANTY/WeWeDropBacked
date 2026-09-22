@@ -14,44 +14,53 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
-// GET: Fetch received intake phones for Refurbishment Team
+// GET: Fetch received intake phones for Refurbishment Team (ONLY completed pickups)
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const roleHeader = req.headers.get('x-role') || req.headers.get('x-user-role') || url.searchParams.get('role') || '';
     const isRefurbRole = roleHeader.toUpperCase().includes('REFURBISH');
     const search = url.searchParams.get('search')?.trim() || '';
-    const statusFilter = url.searchParams.get('status')?.trim() || 'ALL'; // PENDING, IN_REPAIR, READY_FOR_SALE, ALL
+    const statusFilter = url.searchParams.get('status')?.trim() || 'ALL'; // PENDING_INSPECTION, IN_REPAIR, READY_FOR_SALE, ALL
     const page = parseInt(url.searchParams.get('page') || '1', 10);
     const limit = parseInt(url.searchParams.get('limit') || '50', 10);
     const skip = (page - 1) * limit;
 
-    const where: any = {};
-
-        // Filter ONLY devices whose pickup / payment / intake is completed
-    where.OR = [
-      { status: { in: ['pickup_successful', 'pickup_completed', 'payment_completed', 'paid', 'picked_up', 'in_repair', 'ready_for_sale', 'refurbishing', 'refurbished'] } },
-      { diagnosisCompleted: true, status: { not: 'rejected' } }
-    ];
+    // Strict rule: ONLY devices where physical pickup & payment is completed
+    const where: any = {
+      status: {
+        in: [
+          'pickup_successful',
+          'pickup_completed',
+          'payment_completed',
+          'paid',
+          'picked_up',
+          'in_repair',
+          'ready_for_sale',
+          'refurbishing',
+          'refurbished'
+        ],
+      },
+    };
 
     if (search) {
-      where.OR = [
-        { model: { contains: search, mode: 'insensitive' } },
-        { brand: { contains: search, mode: 'insensitive' } },
-        { quoteNumber: { contains: search, mode: 'insensitive' } },
-        { imeiNumber: { contains: search, mode: 'insensitive' } },
-        { imei: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { model: { contains: search, mode: 'insensitive' } },
+            { brand: { contains: search, mode: 'insensitive' } },
+            { quoteNumber: { contains: search, mode: 'insensitive' } },
+            { imeiNumber: { contains: search, mode: 'insensitive' } },
+            { imei: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
     const allQuotes = await (prisma as any).quote.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
+      orderBy: { updatedAt: 'desc' },
     });
-
-    const totalCount = await (prisma as any).quote.count({ where });
 
     // Format devices & apply privacy mask for Refurbish Team
     const formattedDevices = allQuotes.map((q: any) => {
@@ -59,14 +68,18 @@ export async function GET(req: NextRequest) {
       const breakdown = q.breakdown || {};
       const refurbData = q.refurbishData || {};
 
-      // Calculate initial buying price from quote
       const initialPrice = q.finalPrice || q.estimatedPrice || breakdown.totalAmount || 0;
-
-      // Extract device breakdown if multi-device intake
       const subDevices = breakdown.devices || conditionAnswers.devices || [];
 
       // Determine refurb status
-      const refurbStatus = refurbData.refurbStatus || (q.status === 'ready_for_sale' ? 'READY_FOR_SALE' : q.status === 'in_repair' ? 'IN_REPAIR' : 'PENDING_INSPECTION');
+      let refurbStatus = 'PENDING_INSPECTION';
+      if (q.status === 'ready_for_sale' || refurbData.refurbStatus === 'READY_FOR_SALE') {
+        refurbStatus = 'READY_FOR_SALE';
+      } else if (q.status === 'in_repair' || refurbData.refurbStatus === 'IN_REPAIR') {
+        refurbStatus = 'IN_REPAIR';
+      } else if (refurbData.refurbStatus) {
+        refurbStatus = refurbData.refurbStatus;
+      }
 
       const item: any = {
         id: q.id,
@@ -74,8 +87,8 @@ export async function GET(req: NextRequest) {
         quoteNumber: q.quoteNumber,
         model: q.model || (subDevices[0]?.model) || 'Smartphone',
         brand: q.brand || 'Device',
-        storage: q.storage || (subDevices[0]?.storage) || '',
-        ram: (subDevices[0]?.ram) || '',
+        storage: q.storage || (subDevices[0]?.storage) || '128GB',
+        ram: (subDevices[0]?.ram) || '6GB',
         imei: q.imeiNumber || q.imei || (subDevices[0]?.imei) || 'N/A',
         initialBuyingPrice: initialPrice,
         pickupDate: q.pickupDate || q.createdAt,
@@ -91,12 +104,11 @@ export async function GET(req: NextRequest) {
         accessories: subDevices[0]?.accessories || { bill: false, box: false, charger: false },
         lockStatus: subDevices[0]?.lockStatus || 'Unlocked',
         photos6Sides: subDevices[0]?.photos6Sides || {},
-        images: q.images || [],
+        images: Array.isArray(q.images) && q.images.length > 0 ? q.images : (refurbData.photos8to10 ? Object.values(refurbData.photos8to10).filter(Boolean) : []),
         totalDevices: breakdown.totalDevices || subDevices.length || 1,
         subDevices: subDevices,
       };
 
-      // STRICT PRIVACY RULE: If caller is REFURBISH_TEAM, do NOT return customer contact details!
       if (!isRefurbRole) {
         item.customerName = q.customerName;
         item.contactNumber = q.contactNumber;
@@ -106,13 +118,11 @@ export async function GET(req: NextRequest) {
       return item;
     });
 
-    // Apply tab filter if needed
     let filteredList = formattedDevices;
     if (statusFilter !== 'ALL') {
       filteredList = formattedDevices.filter((d: any) => d.refurbStatus === statusFilter);
     }
 
-    // Aggregated stats
     const stats = {
       totalReceived: formattedDevices.length,
       pendingInspection: formattedDevices.filter((d: any) => d.refurbStatus === 'PENDING_INSPECTION').length,
@@ -120,15 +130,17 @@ export async function GET(req: NextRequest) {
       readyForSale: formattedDevices.filter((d: any) => d.refurbStatus === 'READY_FOR_SALE').length,
     };
 
+    const paginated = filteredList.slice(skip, skip + limit);
+
     return NextResponse.json(
       {
         success: true,
-        devices: filteredList,
-        total: totalCount,
+        devices: paginated,
+        total: filteredList.length,
         stats,
         page,
         limit,
-        totalPages: Math.ceil(totalCount / limit) || 1,
+        totalPages: Math.ceil(filteredList.length / limit) || 1,
       },
       { headers: corsHeaders }
     );
