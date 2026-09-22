@@ -56,7 +56,21 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  try { await requireAdmin(req); const input = deviceSchema.parse(await req.json()); const normalizedName = normalizeDeviceName(input.brand, input.model, input.name);
+  try { await requireAdmin(req); const input = deviceSchema.parse(await req.json());     const existingDevice = await prisma.deviceMaster.findFirst({
+      where: {
+        isDeleted: false,
+        brand: { equals: input.brand, mode: 'insensitive' },
+        model: { equals: input.model, mode: 'insensitive' },
+        storage: { equals: input.storage, mode: 'insensitive' },
+      },
+      select: { id: true }
+    });
+
+    if (existingDevice) {
+      return jsonResponse({ error: 'A device with this brand, model, and storage already exists' }, 409, noStoreHeaders);
+    }
+
+    const normalizedName = normalizeDeviceName(input.brand, input.model, input.name);
     const device = await prisma.deviceMaster.create({ data: { ...input, name: normalizedName, isActive: input.isActive ?? true } }); return jsonResponse({ success: true, device }, 201, noStoreHeaders); }
   catch (error: any) { if (error instanceof z.ZodError) return jsonResponse({ error: 'Validation failed', details: error.errors }, 400, noStoreHeaders); if (error.code === 'P2002') return jsonResponse({ error: 'A device with this brand, model, and storage already exists' }, 409, noStoreHeaders); return jsonResponse({ error: error.message || 'Failed to create device' }, error.message === 'Forbidden' ? 403 : 500, noStoreHeaders); }
 }

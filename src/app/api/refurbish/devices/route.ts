@@ -28,8 +28,11 @@ export async function GET(req: NextRequest) {
 
     const where: any = {};
 
-    // Filter quotes that have been booked / picked up / received for refurbishment
-    where.status = { not: 'rejected' };
+        // Filter ONLY devices whose pickup / payment / intake is completed
+    where.OR = [
+      { status: { in: ['pickup_successful', 'pickup_completed', 'payment_completed', 'paid', 'picked_up', 'in_repair', 'ready_for_sale', 'refurbishing', 'refurbished'] } },
+      { diagnosisCompleted: true, status: { not: 'rejected' } }
+    ];
 
     if (search) {
       where.OR = [
@@ -80,6 +83,10 @@ export async function GET(req: NextRequest) {
         intakeStatus: q.status,
         refurbStatus,
         refurbishData: q.refurbishData || null,
+        assignedSellerId: refurbData.assignedSellerId || null,
+        assignedSellerName: refurbData.assignedSellerName || (refurbData.assignedTeam === 'SELLING_TEAM' ? 'Selling Team' : null),
+        assignedSellingGroup: refurbData.assignedSellingGroup || null,
+        assignedAt: refurbData.assignedAt || null,
         defects: subDevices[0]?.defects || (q.screenCracked ? ['Screen Cracked'] : []) || [],
         accessories: subDevices[0]?.accessories || { bill: false, box: false, charger: false },
         lockStatus: subDevices[0]?.lockStatus || 'Unlocked',

@@ -178,6 +178,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
+        // Prevent duplicate spare parts in inventory
+    const trimmedPartName = String(partName).trim();
+    const trimmedCategory = String(category).trim();
+    const trimmedSku = sku ? String(sku).trim().toUpperCase() : undefined;
+    const trimmedBrand = brand ? String(brand).trim() : undefined;
+    const trimmedQualityGrade = qualityGrade ? String(qualityGrade).trim() : undefined;
+
+    if (trimmedSku) {
+      const existingPartBySku = await (prisma as any).sparePart.findFirst({
+        where: {
+          sku: { equals: trimmedSku, mode: 'insensitive' },
+        },
+      });
+      if (existingPartBySku) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `A spare part with SKU "${trimmedSku}" already exists in inventory.`,
+          },
+          { status: 409, headers: corsHeaders }
+        );
+      }
+    }
+
+    const duplicatePart = await (prisma as any).sparePart.findFirst({
+      where: {
+        partName: { equals: trimmedPartName, mode: 'insensitive' },
+        category: { equals: trimmedCategory, mode: 'insensitive' },
+        ...(trimmedBrand ? { brand: { equals: trimmedBrand, mode: 'insensitive' } } : {}),
+        ...(trimmedQualityGrade ? { qualityGrade: { equals: trimmedQualityGrade, mode: 'insensitive' } } : {}),
+      },
+    });
+
+    if (duplicatePart) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `A spare part with this name, category, and brand already exists (SKU: ${duplicatePart.sku || duplicatePart.id}).`,
+        },
+        { status: 409, headers: corsHeaders }
+      );
+    }
+
     const qtyNum = parseInt(String(quantity), 10) || 0;
     const minNum = parseInt(String(minStockLevel), 10) || 5;
 

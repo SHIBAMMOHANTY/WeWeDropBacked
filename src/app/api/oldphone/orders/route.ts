@@ -161,7 +161,7 @@ export async function POST(req: Request) {
 
     const firstItem = payload.order.items[0];
 
-    const order = await prisma.$transaction(async (tx) => {
+    const order = await prisma.$transaction(async (tx: any) => {
       let listing = await tx.oldPhoneListing.findFirst({
         where: {
           OR: [{ id: firstItem.phoneId }, { listingId: firstItem.phoneId }],

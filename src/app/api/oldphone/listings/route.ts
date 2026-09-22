@@ -151,6 +151,26 @@ export async function POST(req: Request) {
     const body = await req.json();
     const payload = listingCreateSchema.parse(body);
 
+        // Prevent duplicate listing with identical active IMEI
+    if (payload.imeiNumber && typeof payload.imeiNumber === 'string') {
+      const cleanImei = payload.imeiNumber.trim();
+      if (cleanImei && cleanImei.toUpperCase() !== 'N/A' && cleanImei.length >= 8) {
+        const existingActiveListing = await prisma.oldPhoneListing.findFirst({
+          where: {
+            imeiNumber: { equals: cleanImei, mode: 'insensitive' },
+            isActive: true,
+            isSold: false,
+          },
+        });
+        if (existingActiveListing) {
+          throw new ApiError(
+            `An active unsold phone listing with IMEI ${cleanImei} already exists (Listing: ${existingActiveListing.listingId || existingActiveListing.id}).`,
+            409
+          );
+        }
+      }
+    }
+
     const listing = await prisma.oldPhoneListing.create({
       data: {
         listingId: `WPWD-${Math.floor(1000 + Math.random() * 9000)}`,
