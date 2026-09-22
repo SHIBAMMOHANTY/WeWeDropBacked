@@ -1,3 +1,15 @@
+function generateFormattedStaffId(role: string, id: string, existingStaffId?: string) {
+  if (existingStaffId) return existingStaffId;
+  const roleUpper = (role || '').toUpperCase();
+  const suffix = id ? id.slice(-4).toUpperCase() : Math.floor(1000 + Math.random() * 9000).toString();
+  if (roleUpper.includes('REFURBISH')) return `WP-RFB-${suffix}`;
+  if (roleUpper.includes('SELLING')) return `WP-SLT-${suffix}`;
+  if (roleUpper.includes('DELIVERY') || roleUpper.includes('AGENT')) return `WP-DLV-${suffix}`;
+  if (roleUpper.includes('BUSINESS') || roleUpper.includes('DEALER')) return `WP-BIZ-${suffix}`;
+  if (roleUpper.includes('ADMIN')) return `WP-ADM-${suffix}`;
+  return `WP-USR-${suffix}`;
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -51,6 +63,8 @@ export async function GET(req: NextRequest) {
 
     const formattedUsers = users.map(({ password, avatar, ...user }) => ({
       ...user,
+      staffId: generateFormattedStaffId(user.role, user.id, (user as any).staffId),
+      customId: generateFormattedStaffId(user.role, user.id, (user as any).staffId),
       avatar: avatar ?? "",
     }));
 

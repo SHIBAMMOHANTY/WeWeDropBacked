@@ -1,3 +1,12 @@
+function generateSellerStaffId(role: string, id: string) {
+  const suffix = id ? id.slice(-4).toUpperCase() : Math.floor(1000 + Math.random() * 9000).toString();
+  const r = (role || '').toUpperCase();
+  if (r.includes('SELLING')) return `WP-SLT-${suffix}`;
+  if (r.includes('REFURBISH')) return `WP-RFB-${suffix}`;
+  if (r.includes('DELIVERY')) return `WP-DLV-${suffix}`;
+  return `WP-ADM-${suffix}`;
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -44,12 +53,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        sellers: sellers.map((s: any) => ({
-          id: s.id,
-          name: s.username || s.phone || 'Selling Agent',
-          phone: s.phone,
-          role: s.role,
-        })),
+        sellers: sellers.map((s: any) => {
+          const staffId = generateSellerStaffId(s.role, s.id);
+          return {
+            id: s.id,
+            staffId,
+            name: `${s.username || s.phone} (${staffId})`,
+            rawName: s.username || s.phone,
+            phone: s.phone,
+            role: s.role,
+          };
+        }),
         groups,
       },
       { headers: corsHeaders }
