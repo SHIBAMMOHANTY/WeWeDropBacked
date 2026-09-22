@@ -104,7 +104,20 @@ export async function GET(req: NextRequest) {
         accessories: subDevices[0]?.accessories || { bill: false, box: false, charger: false },
         lockStatus: subDevices[0]?.lockStatus || 'Unlocked',
         photos6Sides: subDevices[0]?.photos6Sides || {},
-        images: Array.isArray(q.images) && q.images.length > 0 ? q.images : (refurbData.photos8to10 ? Object.values(refurbData.photos8to10).filter(Boolean) : []),
+        images: (() => {
+        const raw = [
+          ...(Array.isArray(q.images) ? q.images : (q.images ? [q.images] : [])),
+          ...(q.image ? [q.image] : []),
+          ...(q.deviceImage ? [q.deviceImage] : []),
+          ...(Array.isArray(conditionAnswers?.photos) ? conditionAnswers.photos : (conditionAnswers?.photos ? [conditionAnswers.photos] : [])),
+          ...(Array.isArray(conditionAnswers?.images) ? conditionAnswers.images : (conditionAnswers?.images ? [conditionAnswers.images] : [])),
+          ...(refurbData?.photos8to10 ? Object.values(refurbData.photos8to10).filter(Boolean) : []),
+          ...(Array.isArray(refurbData?.images) ? refurbData.images : (refurbData?.images ? [refurbData.images] : [])),
+          ...(subDevices[0]?.images ? (Array.isArray(subDevices[0].images) ? subDevices[0].images : [subDevices[0].images]) : []),
+          ...(subDevices[0]?.image ? [subDevices[0].image] : [])
+        ].filter(Boolean);
+        return Array.from(new Set(raw));
+      })(),
         totalDevices: breakdown.totalDevices || subDevices.length || 1,
         subDevices: subDevices,
       };
