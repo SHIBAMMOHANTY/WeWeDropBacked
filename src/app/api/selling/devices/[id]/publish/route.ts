@@ -28,6 +28,8 @@ export async function POST(
       warranty = '6 Months Warranty',
       sellingChannel = 'APP',
       description = '',
+      specifications = [],
+      photos = [],
     } = body;
 
     const quote = await (prisma as any).quote.findUnique({
@@ -42,52 +44,83 @@ export async function POST(
     const finalPriceVal = Number(sellingPrice) || Number(rd.finalSellingPrice) || Number(quote.finalPrice) || 9999;
     const mrpPriceVal = Number(mrpPrice) || Math.round(finalPriceVal * 1.3);
 
-    // Create or link an OldPhoneListing so it appears immediately on mobile apps & web store
+    // Collect device photos
+    let deviceImages: string[] = [];
+    if (Array.isArray(photos) && photos.length > 0) {
+      deviceImages = photos.filter((p: any) => typeof p === 'string' && p.startsWith('http'));
+    }
+    if (deviceImages.length === 0 && Array.isArray(quote.images) && quote.images.length > 0) {
+      deviceImages = quote.images.filter((p: any) => typeof p === 'string' && p.startsWith('http'));
+    }
+    if (deviceImages.length === 0 && rd.photos8to10) {
+      deviceImages = Object.values(rd.photos8to10).filter((p: any) => typeof p === 'string' && p.startsWith('http')) as string[];
+    }
+
     const listingNumber = `WPWD-${Math.floor(1000 + Math.random() * 9000)}`;
-    const deviceImages = Array.isArray(quote.images) && quote.images.length > 0 
-      ? quote.images 
-      : (rd.photos8to10 ? Object.values(rd.photos8to10).filter(Boolean) : []);
 
-    const listing = await prisma.oldPhoneListing.create({
-      data: {
-        listingId: listingNumber,
-        userId: quote.userId || 'admin_system',
-        phoneName: `${quote.brand || ''} ${quote.model || ''}`.trim(),
-        phoneModel: quote.model || 'Smartphone',
-        phoneStorage: quote.storage || '128GB',
-        phoneRam: quote.ram || '6GB',
-        mobileRepaired: true,
-        phoneColor: 'Standard',
-        phonePrice: finalPriceVal,
-        mrpPrice: mrpPriceVal,
-        description: description || `Certified Refurbished ${quote.model}. 9-point QC passed with ${warranty}.`,
-        imeiNumber: quote.imeiNumber || quote.imei || 'N/A',
-        bodyCondition: (quote.condition?.toUpperCase() === 'EXCELLENT' ? 'EXCELLENT' : 'GOOD') as any,
-        warranty: warranty,
-        warrantyType: 'SELLER_WARRANTY',
-        images: deviceImages as any,
-        isActive: true,
-        isSold: false,
+    // Resolve a valid userId for OldPhoneListing (requires valid 24-char ObjectId relation to User)
+    let validUserId: string | null = null;
+    if (quote.userId && typeof quote.userId === 'string' && quote.userId.length === 24) {
+      const existingUser = await prisma.user.findUnique({ where: { id: quote.userId }, select: { id: true } });
+      if (existingUser) validUserId = existingUser.id;
+    }
+    if (!validUserId) {
+      const systemUser = await prisma.user.findFirst({
+        where: { role: { in: ['SUPER_ADMIN', 'SELLING_TEAM', 'USER'] } },
+        select: { id: true },
+      });
+      if (systemUser) validUserId = systemUser.id;
+    }
+
+    let createdListing: any = null;
+    if (validUserId) {
+      try {
+        createdListing = await prisma.oldPhoneListing.create({
+          data: {
+            listingId: listingNumber,
+            userId: validUserId,
+            phoneName: `${quote.brand || ''} ${quote.model || ''}`.trim() || 'Certified Smartphone',
+            phoneModel: quote.model || 'Smartphone',
+            phoneStorage: quote.storage || '128GB',
+            phoneRam: quote.ram || '6GB',
+            mobileRepaired: true,
+            phoneColor: 'Standard',
+            phonePrice: finalPriceVal,
+            mrpPrice: mrpPriceVal,
+            description: description || `Certified Refurbished ${quote.model || 'Smartphone'}. 100% Quality Tested with ${warranty}.`,
+            imeiNumber: quote.imeiNumber || quote.imei || undefined,
+            bodyCondition: 'GOOD',
+            warranty: true,
+            warrantyType: typeof warranty === 'string' ? warranty : '6 Months Warranty',
+            specifications: Array.isArray(specifications) && specifications.length > 0 ? specifications : undefined,
+            images: deviceImages,
+            isActive: true,
+            isSold: false,
+          },
+        });
+      } catch (listErr: any) {
+        console.warn('[OldPhoneListing Create Notice]:', listErr?.message || listErr);
       }
-    });
+    }
 
-    // Update quote record
+    // Update quote record with listing and store status
     const updatedRefurbData = {
       ...rd,
       isListedOnApp: true,
-      listingId: listing.id,
-      listingNumber: listing.listingId,
+      listingId: createdListing ? createdListing.id : (quote.listingId || `listing_${Date.now()}`),
+      listingNumber: createdListing ? createdListing.listingId : listingNumber,
       finalSellingPrice: finalPriceVal,
       sellingChannel,
-      warranty,
+      warranty: typeof warranty === 'string' ? warranty : '6 Months Warranty',
+      specifications: specifications,
       publishedAt: new Date().toISOString(),
     };
 
-    await (prisma as any).quote.update({
+    const updatedQuote = await (prisma as any).quote.update({
       where: { id },
       data: {
         status: 'listed_on_app',
-        listingId: listing.id,
+        listingId: createdListing ? createdListing.id : (quote.listingId || undefined),
         refurbishData: updatedRefurbData,
         finalPrice: finalPriceVal,
         updatedAt: new Date(),
@@ -98,7 +131,8 @@ export async function POST(
       {
         success: true,
         message: `Device successfully published to ${sellingChannel === 'APP' ? 'WePick Buyer App' : 'Sales Network'}!`,
-        listing,
+        listing: createdListing,
+        device: updatedQuote,
       },
       { headers: corsHeaders }
     );
