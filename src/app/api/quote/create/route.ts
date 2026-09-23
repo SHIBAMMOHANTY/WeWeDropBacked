@@ -6,7 +6,7 @@ import { PricingService } from '@/services/pricing.service';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const calculateSchema = z.object({
+const calculateSchema = z.object({
   brand: z.string().optional(),
   model: z.string().min(1, 'Model is required'),
   storage: z.string().optional().default('128 GB'),
@@ -30,7 +30,7 @@ export const calculateSchema = z.object({
   launchPrice: z.number().optional(),
 });
 
-export const createQuoteSchema = calculateSchema.extend({
+const createQuoteSchema = calculateSchema.extend({
   images: z.array(z.string()).optional().default([]),
   customerName: z.string().optional(),
   customerAddress: z.string().optional(),
@@ -49,7 +49,7 @@ export const createQuoteSchema = calculateSchema.extend({
   finalPrice: z.number().optional(),
 });
 
-export function inferBrandFromModel(modelName: string): string {
+function inferBrandFromModel(modelName: string): string {
   if (!modelName) return 'Other';
   const lower = modelName.toLowerCase();
   if (lower.includes('iphone') || lower.includes('apple') || lower.includes('ipad')) return 'Apple';
