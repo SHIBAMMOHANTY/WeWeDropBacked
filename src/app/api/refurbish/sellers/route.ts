@@ -1,10 +1,6 @@
 function generateSellerStaffId(role: string, id: string) {
   const suffix = id ? id.slice(-4).toUpperCase() : Math.floor(1000 + Math.random() * 9000).toString();
-  const r = (role || '').toUpperCase();
-  if (r.includes('SELLING')) return `WP-SLT-${suffix}`;
-  if (r.includes('REFURBISH')) return `WP-RFB-${suffix}`;
-  if (r.includes('DELIVERY')) return `WP-DLV-${suffix}`;
-  return `WP-ADM-${suffix}`;
+  return `WP-SLT-${suffix}`;
 }
 
 export const runtime = "nodejs";
@@ -23,15 +19,14 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
-// GET: List available Selling Team members and active groups
+// GET: List ONLY active Selling Team members and active selling groups
 export async function GET(req: NextRequest) {
   try {
-    // Valid Role enum: SUPER_ADMIN, USER, BUSINESS, DELIVERY_AGENT, REFURBISH_TEAM, SELLING_TEAM
+    // Strictly ONLY active users with role SELLING_TEAM
     const sellers = await (prisma as any).user.findMany({
       where: {
-        role: {
-          in: ['SELLING_TEAM', 'SUPER_ADMIN', 'DELIVERY_AGENT'],
-        },
+        role: 'SELLING_TEAM',
+        isActive: { not: false },
       },
       select: {
         id: true,
@@ -39,31 +34,37 @@ export async function GET(req: NextRequest) {
         phone: true,
         email: true,
         role: true,
+        isActive: true,
       },
       orderBy: { username: 'asc' },
     });
 
     const groups = [
       { id: 'GROUP_ALL', name: 'All Available Selling Team (General Pool)', description: 'Shared queue for all active sellers' },
-      { id: 'GROUP_RETAIL', name: 'Retail Store Sales Hub', description: 'Assigned for walk-in retail & shop sales' },
       { id: 'GROUP_APP', name: 'WePick App Online Catalog', description: 'Directly listed on buyer mobile app' },
+      { id: 'GROUP_RETAIL', name: 'Retail Store Sales Hub', description: 'Assigned for walk-in retail & shop sales' },
       { id: 'GROUP_B2B', name: 'B2B Wholesale / Bulk Dealer Group', description: 'For bulk batch lots to verified dealers' },
     ];
+
+    const formattedSellers = sellers.map((s: any) => {
+      const staffId = generateSellerStaffId(s.role, s.id);
+      const displayName = s.username || (s.phone ? `Selling Exec (${s.phone.slice(-4)})` : 'Selling Team Exec');
+      return {
+        id: s.id,
+        staffId,
+        name: `${displayName} (${staffId})`,
+        rawName: displayName,
+        phone: s.phone,
+        email: s.email,
+        role: s.role,
+        isActive: s.isActive !== false,
+      };
+    });
 
     return NextResponse.json(
       {
         success: true,
-        sellers: sellers.map((s: any) => {
-          const staffId = generateSellerStaffId(s.role, s.id);
-          return {
-            id: s.id,
-            staffId,
-            name: `${s.username || s.phone} (${staffId})`,
-            rawName: s.username || s.phone,
-            phone: s.phone,
-            role: s.role,
-          };
-        }),
+        sellers: formattedSellers,
         groups,
       },
       { headers: corsHeaders }
