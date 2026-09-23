@@ -30,8 +30,6 @@ export async function GET(req: NextRequest) {
     const where: any = {
       status: {
         in: [
-          'booked',
-          'pending',
           'pickup_successful',
           'pickup_completed',
           'payment_completed',
