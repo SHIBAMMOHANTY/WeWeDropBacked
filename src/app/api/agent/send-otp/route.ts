@@ -33,10 +33,18 @@ export async function POST(req: NextRequest) {
       where: { phone: cleanPhone },
     });
 
-    if (!agent || agent.role !== "DELIVERY_AGENT") {
+    if (!agent) {
       return NextResponse.json(
-        { success: false, error: "No delivery agent account found with this phone number" },
+        { success: false, error: "No user account found with this phone number" },
         { status: 404, headers: corsHeaders }
+      );
+    }
+
+    const allowedStaffRoles = ["DELIVERY_AGENT", "REFURBISH_TEAM", "SELLING_TEAM", "SUPER_ADMIN", "ADMIN", "USER"];
+    if (!allowedStaffRoles.includes(agent.role)) {
+      return NextResponse.json(
+        { success: false, error: `Unauthorized role (${agent.role}).` },
+        { status: 403, headers: corsHeaders }
       );
     }
 

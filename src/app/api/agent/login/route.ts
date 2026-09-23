@@ -42,10 +42,18 @@ export async function POST(req: NextRequest) {
       where: { phone: cleanPhone },
     });
 
-    if (!agent || agent.role !== "DELIVERY_AGENT") {
+    if (!agent) {
       return NextResponse.json(
-        { success: false, error: "Invalid delivery agent credentials" },
-        { status: 401, headers: corsHeaders }
+        { success: false, error: "Account with this mobile number not found." },
+        { status: 404, headers: corsHeaders }
+      );
+    }
+
+    const allowedStaffRoles = ["DELIVERY_AGENT", "REFURBISH_TEAM", "SELLING_TEAM", "SUPER_ADMIN", "ADMIN", "USER"];
+    if (!allowedStaffRoles.includes(agent.role)) {
+      return NextResponse.json(
+        { success: false, error: `Unauthorized role (${agent.role}). Please contact administrator.` },
+        { status: 403, headers: corsHeaders }
       );
     }
 
