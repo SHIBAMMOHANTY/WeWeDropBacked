@@ -62,6 +62,30 @@ export async function GET(req: NextRequest) {
     const allQuotes = await (prisma as any).quote.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        quoteNumber: true,
+        model: true,
+        brand: true,
+        storage: true,
+        imeiNumber: true,
+        imei: true,
+        status: true,
+        finalPrice: true,
+        estimatedPrice: true,
+        pickupDate: true,
+        createdAt: true,
+        updatedAt: true,
+        images: true,
+        image: true,
+        deviceImage: true,
+        conditionAnswers: true,
+        breakdown: true,
+        refurbishData: true,
+        customerName: true,
+        contactNumber: true,
+        customerAddress: true,
+      },
     });
 
     // Format devices & apply privacy mask for Refurbish Team
