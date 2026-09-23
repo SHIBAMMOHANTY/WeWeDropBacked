@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
@@ -14,7 +14,7 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
-// POST: Save refurbishment photos, replaced parts, pricing calculation & assign to SELLING_TEAM
+// POST / PUT: Save refurbishment photos, replaced parts, repair status, pricing & assign to selling team
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -35,8 +35,12 @@ export async function POST(
       technicianName = 'Refurbish Team',
       qcChecklist = {},
       notes = '',
-      refurbStatus = 'READY_FOR_SALE',
-      assignToSellingTeam = true,
+      refurbStatus = 'READY_FOR_SALE', // 'IN_REPAIR' | 'READY_FOR_SALE' | 'PENDING_INSPECTION'
+      assignToSellingTeam = (refurbStatus === 'READY_FOR_SALE'),
+      sellerId = null,
+      sellerName = null,
+      sellingGroup = 'All Selling Team',
+      assignType = 'INDIVIDUAL',
     } = body;
 
     const quote = await (prisma as any).quote.findUnique({
@@ -52,6 +56,7 @@ export async function POST(
 
     const deviceModel = quote.model || 'Smartphone';
     const quoteRef = quote.quoteNumber || id;
+    const isUnderRepair = (refurbStatus === 'IN_REPAIR' || !assignToSellingTeam);
 
     // 1. Automatically deduct stock for any inventory parts used
     if (Array.isArray(replacedParts) && replacedParts.length > 0) {
@@ -117,21 +122,31 @@ export async function POST(
     }
 
     // 2. Build complete Refurbishment Data payload
+    const existingRefurbData = quote.refurbishData || {};
+    const resolvedSellerName = sellerName || (assignType === 'GROUP' ? sellingGroup : 'Selling Team');
+
     const refurbPayload = {
-      refurbStatus: refurbStatus,
-      assignedTeam: assignToSellingTeam ? 'SELLING_TEAM' : 'REFURBISH_TEAM',
-      repairedProblems,
-      replacedParts,
-      photos8to10,
-      initialBuyingPrice: parseFloat(String(initialBuyingPrice)) || 0,
-      partsTotalCost: parseFloat(String(partsTotalCost)) || 0,
-      labourCost: parseFloat(String(labourCost)) || 0,
-      totalRefurbCost: parseFloat(String(totalRefurbCost)) || 0,
-      finalSellingPrice: parseFloat(String(finalSellingPrice)) || 0,
-      technicianName,
-      qcChecklist,
-      notes,
-      completedAt: new Date().toISOString(),
+      ...existingRefurbData,
+      refurbStatus: isUnderRepair ? 'IN_REPAIR' : 'READY_FOR_SALE',
+      assignedTeam: isUnderRepair ? 'REFURBISH_TEAM' : 'SELLING_TEAM',
+      assignedSellerId: isUnderRepair ? null : (sellerId || existingRefurbData.assignedSellerId || null),
+      assignedSellerName: isUnderRepair ? null : resolvedSellerName,
+      assignedSellingGroup: isUnderRepair ? null : (sellingGroup || existingRefurbData.assignedSellingGroup || 'All Selling Team'),
+      assignType: isUnderRepair ? null : assignType,
+      assignedAt: isUnderRepair ? null : new Date().toISOString(),
+      repairedProblems: repairedProblems.length > 0 ? repairedProblems : (existingRefurbData.repairedProblems || []),
+      replacedParts: replacedParts.length > 0 ? replacedParts : (existingRefurbData.replacedParts || []),
+      photos8to10: Object.keys(photos8to10).length > 0 ? { ...(existingRefurbData.photos8to10 || {}), ...photos8to10 } : (existingRefurbData.photos8to10 || {}),
+      initialBuyingPrice: parseFloat(String(initialBuyingPrice)) || existingRefurbData.initialBuyingPrice || 0,
+      partsTotalCost: parseFloat(String(partsTotalCost)) || existingRefurbData.partsTotalCost || 0,
+      labourCost: parseFloat(String(labourCost)) || existingRefurbData.labourCost || 0,
+      totalRefurbCost: parseFloat(String(totalRefurbCost)) || existingRefurbData.totalRefurbCost || 0,
+      finalSellingPrice: parseFloat(String(finalSellingPrice)) || existingRefurbData.finalSellingPrice || 0,
+      technicianName: technicianName || existingRefurbData.technicianName || 'Refurbish Team',
+      qcChecklist: Object.keys(qcChecklist).length > 0 ? qcChecklist : (existingRefurbData.qcChecklist || {}),
+      notes: notes || existingRefurbData.notes || '',
+      updatedAt: new Date().toISOString(),
+      ...(isUnderRepair ? { inRepairSince: new Date().toISOString() } : { completedAt: new Date().toISOString() }),
     };
 
     // 3. Update the Quote record in Database
@@ -139,8 +154,8 @@ export async function POST(
       where: { id },
       data: {
         refurbishData: refurbPayload,
-        status: assignToSellingTeam ? 'ready_for_sale' : 'in_repair',
-        finalPrice: parseFloat(String(finalSellingPrice)) || quote.finalPrice,
+        status: isUnderRepair ? 'in_repair' : 'ready_for_sale',
+        ...(finalSellingPrice ? { finalPrice: parseFloat(String(finalSellingPrice)) } : {}),
         updatedAt: new Date(),
       },
     });
@@ -148,7 +163,9 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-        message: 'Phone refurbished successfully and assigned to Selling Team!',
+        message: isUnderRepair
+          ? 'Device marked as In Repair!'
+          : `Phone refurbished successfully and assigned to ${resolvedSellerName}!`,
         device: updatedQuote,
         refurbishData: refurbPayload,
       },
@@ -157,7 +174,7 @@ export async function POST(
   } catch (error: any) {
     console.error('[POST /api/refurbish/devices/[id]/complete error]:', error);
     return NextResponse.json(
-      { success: false, error: error?.message || 'Failed to complete refurbishment' },
+      { success: false, error: error?.message || 'Failed to update refurbishment status' },
       { status: 500, headers: corsHeaders }
     );
   }

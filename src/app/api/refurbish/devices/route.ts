@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
           'paid',
           'picked_up',
           'in_repair',
+          'repairing',
           'ready_for_sale',
           'refurbishing',
           'refurbished',
@@ -73,11 +74,17 @@ export async function GET(req: NextRequest) {
       const initialPrice = q.finalPrice || q.estimatedPrice || breakdown.totalAmount || 0;
       const subDevices = breakdown.devices || conditionAnswers.devices || [];
 
-      // Determine refurb status
+      // Determine refurb status accurately
       let refurbStatus = 'PENDING_INSPECTION';
       if (q.status === 'ready_for_sale' || refurbData.refurbStatus === 'READY_FOR_SALE') {
         refurbStatus = 'READY_FOR_SALE';
-      } else if (q.status === 'in_repair' || refurbData.refurbStatus === 'IN_REPAIR') {
+      } else if (
+        q.status === 'in_repair' ||
+        q.status === 'repairing' ||
+        q.status === 'refurbishing' ||
+        refurbData.refurbStatus === 'IN_REPAIR' ||
+        refurbData.refurbStatus === 'in_repair'
+      ) {
         refurbStatus = 'IN_REPAIR';
       } else if (refurbData.refurbStatus) {
         refurbStatus = refurbData.refurbStatus;
@@ -95,6 +102,7 @@ export async function GET(req: NextRequest) {
         initialBuyingPrice: initialPrice,
         pickupDate: q.pickupDate || q.createdAt,
         createdAt: q.createdAt,
+        updatedAt: q.updatedAt,
         intakeStatus: q.status,
         refurbStatus,
         refurbishData: q.refurbishData || null,
@@ -107,19 +115,19 @@ export async function GET(req: NextRequest) {
         lockStatus: subDevices[0]?.lockStatus || 'Unlocked',
         photos6Sides: subDevices[0]?.photos6Sides || {},
         images: (() => {
-        const raw = [
-          ...(Array.isArray(q.images) ? q.images : (q.images ? [q.images] : [])),
-          ...(q.image ? [q.image] : []),
-          ...(q.deviceImage ? [q.deviceImage] : []),
-          ...(Array.isArray(conditionAnswers?.photos) ? conditionAnswers.photos : (conditionAnswers?.photos ? [conditionAnswers.photos] : [])),
-          ...(Array.isArray(conditionAnswers?.images) ? conditionAnswers.images : (conditionAnswers?.images ? [conditionAnswers.images] : [])),
-          ...(refurbData?.photos8to10 ? Object.values(refurbData.photos8to10).filter(Boolean) : []),
-          ...(Array.isArray(refurbData?.images) ? refurbData.images : (refurbData?.images ? [refurbData.images] : [])),
-          ...(subDevices[0]?.images ? (Array.isArray(subDevices[0].images) ? subDevices[0].images : [subDevices[0].images]) : []),
-          ...(subDevices[0]?.image ? [subDevices[0].image] : [])
-        ].filter(Boolean);
-        return Array.from(new Set(raw));
-      })(),
+          const raw = [
+            ...(Array.isArray(q.images) ? q.images : (q.images ? [q.images] : [])),
+            ...(q.image ? [q.image] : []),
+            ...(q.deviceImage ? [q.deviceImage] : []),
+            ...(Array.isArray(conditionAnswers?.photos) ? conditionAnswers.photos : (conditionAnswers?.photos ? [conditionAnswers.photos] : [])),
+            ...(Array.isArray(conditionAnswers?.images) ? conditionAnswers.images : (conditionAnswers?.images ? [conditionAnswers.images] : [])),
+            ...(refurbData?.photos8to10 ? Object.values(refurbData.photos8to10).filter(Boolean) : []),
+            ...(Array.isArray(refurbData?.images) ? refurbData.images : (refurbData?.images ? [refurbData.images] : [])),
+            ...(subDevices[0]?.images ? (Array.isArray(subDevices[0].images) ? subDevices[0].images : [subDevices[0].images]) : []),
+            ...(subDevices[0]?.image ? [subDevices[0].image] : [])
+          ].filter(Boolean);
+          return Array.from(new Set(raw));
+        })(),
         totalDevices: breakdown.totalDevices || subDevices.length || 1,
         subDevices: subDevices,
       };
