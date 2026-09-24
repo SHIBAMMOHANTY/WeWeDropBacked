@@ -588,6 +588,8 @@ model Quote {
 
   status            String   @default("pending") // pending, ordered, completed, rejected
   diagnosisCompleted Boolean  @default(false)
+  isDead            Boolean? @default(false)
+  isPhoneDead       Boolean? @default(false)
   images            String[]
   
   // Booking Details

@@ -107,6 +107,23 @@ export async function PUT(
       updateData.paymentMethod = paymentMethod;
     }
 
+    if (body.isDead !== undefined || body.isPhoneDead !== undefined || body.deadPhone !== undefined || body.phoneCondition === 'dead') {
+      const deadBool = Boolean(body.isDead || body.isPhoneDead || body.deadPhone || body.phoneCondition === 'dead');
+      updateData.isDead = deadBool;
+      updateData.isPhoneDead = deadBool;
+      if (deadBool) {
+        updateData.diagnosisCompleted = true;
+      }
+    }
+
+    if (body.agentInspectionRemarks !== undefined || body.agentRemarks !== undefined) {
+      updateData.description = body.agentInspectionRemarks || body.agentRemarks;
+    }
+
+    if (body.diagnosisCompleted !== undefined) {
+      updateData.diagnosisCompleted = Boolean(body.diagnosisCompleted);
+    }
+
     const currentPayout = (typeof quote.payoutDetails === 'object' && quote.payoutDetails) ? quote.payoutDetails : {};
     const incomingPayout = (typeof payoutDetails === 'object' && payoutDetails) ? payoutDetails : {};
 

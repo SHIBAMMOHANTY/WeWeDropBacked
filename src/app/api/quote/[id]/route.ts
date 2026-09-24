@@ -119,6 +119,9 @@ export async function PATCH(
         bankAccountHolder: body.bankAccountHolder !== undefined ? body.bankAccountHolder : undefined,
         isDelayed: body.isDelayed !== undefined ? body.isDelayed : undefined,
         delayReason: body.delayReason !== undefined ? body.delayReason : undefined,
+        isDead: body.isDead !== undefined ? Boolean(body.isDead) : (body.isPhoneDead !== undefined ? Boolean(body.isPhoneDead) : undefined),
+        isPhoneDead: body.isPhoneDead !== undefined ? Boolean(body.isPhoneDead) : (body.isDead !== undefined ? Boolean(body.isDead) : undefined),
+        diagnosisCompleted: (body.isDead || body.isPhoneDead || body.diagnosisCompleted) ? true : undefined,
       },
     });
 
