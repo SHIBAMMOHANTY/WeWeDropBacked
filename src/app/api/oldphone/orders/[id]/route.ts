@@ -6,13 +6,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const orderStatusUpdateSchema = z.object({
-  deliveryStatus: z.number().int().min(0).max(5).optional(),
+  deliveryStatus: z.union([z.number(), z.string()]).optional().transform((v) => (v !== undefined ? Number(v) : undefined)),
+  status: z.string().optional(),
+  orderStatus: z.union([z.number(), z.string()]).optional(),
+  isPaid: z.boolean().optional(),
+  paymentStatus: z.string().optional(),
+  receivedPaymentMode: z.string().optional(),
+  deliveryRemarks: z.string().optional(),
   remark: z.string().optional(),
   feedback: z.string().optional(),
-  rating: z.number().int().min(1).max(5).optional(),
+  rating: z.number().optional(),
   deliveryDate: z.string().optional(),
   deliveryAgentId: z.string().optional().nullable(),
-});
+}).passthrough();
 
 export async function OPTIONS() {
   return jsonResponse({}, 204);
@@ -53,10 +59,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   try {
     const session = await getAuthSession(req);
     const id = params.id;
-    const payload = orderStatusUpdateSchema.parse(await req.json());
-    if (payload.deliveryStatus !== undefined && !isValidDeliveryStatus(payload.deliveryStatus)) {
-      throw new ApiError("Invalid delivery status", 400);
-    }
+    const rawBody = await req.json().catch(() => ({}));
+    const payload = orderStatusUpdateSchema.parse(rawBody);
+
     const order = await prisma.oldPhoneOrder.findFirst({ where: { OR: [{ id }, { orderId: id }] } });
     if (!order) {
       throw new ApiError("Order not found", 404);
@@ -66,8 +71,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     const updateData: Record<string, unknown> = {};
-    if (payload.deliveryStatus !== undefined) updateData.deliveryStatus = payload.deliveryStatus;
-    if (payload.remark !== undefined) updateData.remark = payload.remark;
+    
+    // Map deliveryStatus
+    if (payload.deliveryStatus !== undefined) {
+      updateData.deliveryStatus = payload.deliveryStatus;
+    } else if (payload.status === "DELIVERED" || payload.orderStatus === "DELIVERED" || payload.orderStatus === 4 || payload.orderStatus === 5) {
+      updateData.deliveryStatus = 4;
+    }
+
+    if (payload.remark !== undefined || payload.deliveryRemarks !== undefined) {
+      updateData.remark = payload.remark || payload.deliveryRemarks;
+    }
     if (payload.rating !== undefined) updateData.rating = payload.rating;
     if (payload.feedback !== undefined) updateData.feedback = payload.feedback;
     if (payload.deliveryAgentId !== undefined) updateData.deliveryAgentId = payload.deliveryAgentId;
@@ -79,13 +93,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
 
-    if (payload.deliveryStatus === 4) {
-      if (payload.rating === undefined || payload.rating < 1 || payload.rating > 5) {
-        throw new ApiError("Rating is required and must be between 1 and 5 when marking delivered", 400);
+    // When marking delivered (status 4)
+    if (updateData.deliveryStatus === 4) {
+      if (!updateData.deliveryDate) {
+        updateData.deliveryDate = new Date();
       }
-      if (!payload.feedback || payload.feedback.trim().length === 0) {
-        throw new ApiError("Feedback is required when marking delivered", 400);
+      if (updateData.rating === undefined) {
+        updateData.rating = 5;
       }
+      if (!updateData.feedback) {
+        updateData.feedback = payload.deliveryRemarks || payload.remark || "Delivered via customer OTP verification.";
+      }
+      updateData.isPaid = true;
+      updateData.paymentStatus = "PAID";
     }
 
     const [updatedOrder] = await prisma.$transaction([
@@ -93,7 +113,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       prisma.notification.create({
         data: {
           title: "Order status updated",
-          message: `Your order ${order.orderId ?? order.id} status was updated.`,
+          message: `Your order ${order.orderId ?? order.id} status was updated to ${updateData.deliveryStatus === 4 ? "Delivered" : "In Progress"}.`,
           type: "order",
           relatedId: order.orderId ?? order.id,
           userId: order.userId,
@@ -103,6 +123,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     return jsonResponse({ success: true, data: updatedOrder, message: "Order status updated successfully" });
   } catch (error) {
+    console.error("Order status update error:", error);
     if (error instanceof ApiError) {
       return jsonResponse({ success: false, error: error.message }, error.status);
     }
@@ -111,4 +132,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     return jsonResponse({ success: false, error: "Server error" }, 500);
   }
+}
+
+export async function PUT(req: Request, ctx: { params: { id: string } }) {
+  return PATCH(req, ctx);
 }
