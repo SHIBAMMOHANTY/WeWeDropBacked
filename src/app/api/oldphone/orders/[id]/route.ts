@@ -104,8 +104,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (!updateData.feedback) {
         updateData.feedback = payload.deliveryRemarks || payload.remark || "Delivered via customer OTP verification.";
       }
-      updateData.isPaid = true;
-      updateData.paymentStatus = "PAID";
+      if (payload.receivedPaymentMode || payload.paymentMethod) {
+        updateData.paymentMethod = payload.receivedPaymentMode || payload.paymentMethod;
+      }
+      if (!order.paymentDate) {
+        updateData.paymentDate = new Date();
+      }
     }
 
     const [updatedOrder] = await prisma.$transaction([
