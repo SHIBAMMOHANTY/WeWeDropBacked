@@ -43,11 +43,12 @@ export async function GET(
       return jsonResponse({ error: 'Quote not found' }, 404);
     }
 
-    // Role-based Access Control: User must be owner, or have SUPER_ADMIN role
+    // Role-based Access Control: User must be owner, or have SUPER_ADMIN or DELIVERY_AGENT role
     const isOwner = quote.userId === session.id;
     const isAdmin = session.role === 'SUPER_ADMIN';
+    const isAgent = session.role === 'DELIVERY_AGENT';
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && !isAdmin && !isAgent) {
       return jsonResponse({ error: 'Forbidden: Access denied' }, 403);
     }
 
@@ -93,7 +94,7 @@ export async function PATCH(
       return jsonResponse({ error: 'Quote not found' }, 404);
     }
 
-    if (quote.userId !== session.id && session.role !== 'SUPER_ADMIN') {
+    if (quote.userId !== session.id && session.role !== 'SUPER_ADMIN' && session.role !== 'DELIVERY_AGENT') {
       return jsonResponse({ error: 'Forbidden: Access denied' }, 403);
     }
 
