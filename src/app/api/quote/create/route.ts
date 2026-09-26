@@ -167,7 +167,7 @@ export async function POST(req: Request) {
           condition: 'dealer_inspected',
           estimatedPrice: finalAmount,
           finalPrice: finalAmount,
-          status: 'booked',
+          status: body.status ? String(body.status).toLowerCase() : 'pickup_completed',
           isDead: isDeadPhone,
           isPhoneDead: isDeadPhone,
           diagnosisCompleted: isDeadPhone ? true : false,
