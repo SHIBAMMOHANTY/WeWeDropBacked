@@ -150,6 +150,9 @@ export async function POST(req: Request) {
           estimatedPrice: calculation.estimatedPrice,
           finalPrice: calculation.estimatedPrice,
           status: 'pending',
+          isDead: Boolean(body.isDead || body.isPhoneDead),
+          isPhoneDead: Boolean(body.isDead || body.isPhoneDead),
+          diagnosisCompleted: Boolean(body.isDead || body.isPhoneDead || body.diagnosisCompleted),
           images: [],
         },
       });
@@ -157,6 +160,7 @@ export async function POST(req: Request) {
     }
 
     return jsonResponse({
+      success: true,
       ...calculation,
       priceSource: calculation.priceSource,
       quote: quote || undefined,

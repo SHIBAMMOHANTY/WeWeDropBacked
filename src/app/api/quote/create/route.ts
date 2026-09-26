@@ -285,6 +285,9 @@ export async function POST(req: Request) {
         bankIfsc: parsedData.bankIfsc,
         bankAccountHolder: parsedData.bankAccountHolder,
         description: parsedData.description,
+        isDead: body.isDead !== undefined ? Boolean(body.isDead) : (body.isPhoneDead !== undefined ? Boolean(body.isPhoneDead) : undefined),
+        isPhoneDead: body.isPhoneDead !== undefined ? Boolean(body.isPhoneDead) : (body.isDead !== undefined ? Boolean(body.isDead) : undefined),
+        diagnosisCompleted: Boolean(body.isDead || body.isPhoneDead || body.diagnosisCompleted),
       },
     });
 

@@ -80,28 +80,33 @@ export async function PATCH(
       return jsonResponse({ error: 'Quote ID is required' }, 400);
     }
 
-    // Must be object ID to update
+    // Attempt retrieval by MongoDB ObjectId or Unique Quote Number
+    let quote = null;
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
-    if (!isObjectId) {
-      return jsonResponse({ error: 'Invalid Quote ID for update' }, 400);
+    if (isObjectId) {
+      quote = await prisma.quote.findUnique({
+        where: { id },
+      });
     }
 
-    const quote = await prisma.quote.findUnique({
-      where: { id },
-    });
+    if (!quote) {
+      quote = await prisma.quote.findUnique({
+        where: { quoteNumber: id },
+      });
+    }
 
     if (!quote) {
       return jsonResponse({ error: 'Quote not found' }, 404);
     }
 
-    if (quote.userId !== session.id && session.role !== 'SUPER_ADMIN' && session.role !== 'DELIVERY_AGENT') {
+    if (quote.userId && quote.userId !== session.id && session.role !== 'SUPER_ADMIN' && session.role !== 'DELIVERY_AGENT') {
       return jsonResponse({ error: 'Forbidden: Access denied' }, 403);
     }
 
     const body = await req.json();
 
     const updatedQuote = await prisma.quote.update({
-      where: { id },
+      where: { id: quote.id },
       data: {
         customerName: body.customerName !== undefined ? body.customerName : undefined,
         customerAddress: body.customerAddress !== undefined ? body.customerAddress : undefined,
