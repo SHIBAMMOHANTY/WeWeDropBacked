@@ -144,13 +144,23 @@ export async function POST(req: Request) {
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       const quoteNumber = `DLR-${timestampStr}-${randomSuffix}`;
 
-      const isAgent = session?.role === 'AGENT' || session?.role === 'DELIVERY_PARTNER';
+      const isAgent = session?.role === 'AGENT' || session?.role === 'DELIVERY_PARTNER' || session?.role === 'DELIVERY_AGENT';
+      const assignedAgentId = body.agentId || (isAgent ? session?.id : undefined);
+      const assignedAgentName = body.agentName || body.assignedAgentName || body.createdByAgent || session?.name || session?.username || '';
+      const isObjectId = assignedAgentId && /^[0-9a-fA-F]{24}$/.test(String(assignedAgentId));
+
+      const isDeadPhone = Boolean(primaryDevice.isPhoneDead || primaryDevice.isDead || body.isPhoneDead || body.isDead);
+
+      const agentSnippet = assignedAgentName ? ` | Agent: ${assignedAgentName}` : '';
+      const descriptionText = shopName !== 'N/A'
+        ? `Shop: ${shopName} | Dealer Intake (${devicesList.length} device(s))${agentSnippet}`
+        : `Dealer Intake (${devicesList.length} device(s))${agentSnippet}`;
 
       const quote = await prisma.quote.create({
         data: {
           quoteNumber,
           userId: session?.id || undefined,
-          agentId: isAgent ? session?.id : undefined,
+          agentId: isObjectId ? String(assignedAgentId) : undefined,
           brand: primaryBrand,
           model: primaryModel,
           storage: primaryStorage,
@@ -158,21 +168,24 @@ export async function POST(req: Request) {
           estimatedPrice: finalAmount,
           finalPrice: finalAmount,
           status: 'booked',
+          isDead: isDeadPhone,
+          isPhoneDead: isDeadPhone,
+          diagnosisCompleted: isDeadPhone ? true : false,
           images: allImages,
           customerName,
           customerAddress,
           customerPincode: body.customerPincode || '',
           contactNumber,
-          imeiNumber: primaryDevice.imei || primaryDevice.imeiNumber || undefined,
-          imei: primaryDevice.imei || primaryDevice.imeiNumber || undefined,
+          imeiNumber: isDeadPhone ? undefined : (primaryDevice.imei || primaryDevice.imeiNumber || undefined),
+          imei: isDeadPhone ? undefined : (primaryDevice.imei || primaryDevice.imeiNumber || undefined),
           paymentMode: body.paymentMode || body.payoutMethod || 'CASH',
           payoutMethod: body.payoutMethod || body.paymentMode || 'CASH',
-          description: shopName !== 'N/A'
-            ? `Shop: ${shopName} | Dealer Intake (${devicesList.length} device(s))`
-            : `Dealer Intake (${devicesList.length} device(s))`,
+          description: descriptionText,
           breakdown: {
             customerType: 'dealer',
             shopName,
+            agentName: assignedAgentName || null,
+            agentId: assignedAgentId || null,
             totalDevices: devicesList.length,
             totalAmount: finalAmount,
             devices: devicesList,
@@ -180,6 +193,8 @@ export async function POST(req: Request) {
           conditionAnswers: {
             customerType: 'dealer',
             shopName,
+            agentName: assignedAgentName || null,
+            agentId: assignedAgentId || null,
             idProofType: body.idProofType || 'Aadhaar Card',
             idProofNumber: body.idProofNumber || 'N/A',
             idProofFront: body.idProofFront || null,
