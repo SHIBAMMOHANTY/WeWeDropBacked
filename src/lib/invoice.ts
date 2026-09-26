@@ -6,9 +6,9 @@ import { uploadToCloudinary } from './upload';
 import { prisma } from './prisma';
 
 function getR2Client() {
-  const endpoint = process.env.CLOUDFLARE_R2_ENDPOINT;
-  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+  const endpoint = process.env.CLOUDFLARE_R2_ENDPOINT || 'https://2ecf668a62f8c8df5b85bbe3c3368f5c.r2.cloudflarestorage.com';
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || 'ec927c9858329b5e3aa0d04730e33ebf';
+  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || 'b78a67734d4ad6bf96559ab351a93da8febf1066133fdc7abb5296233cababea';
 
   if (!endpoint || !accessKeyId || !secretAccessKey) {
     return null;
@@ -304,7 +304,6 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
         );
         invoiceUrl = `${publicUrlBase}/${key}`;
         uploaded = true;
-        console.log('✅ [Invoice Uploaded to Cloudflare R2]:', invoiceUrl);
       } catch (r2Err) {
         console.warn('[Invoice Cloudflare R2 Upload Warning]:', r2Err);
       }
@@ -329,13 +328,11 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
     console.warn('[Invoice PDF Generation Warning] (using live stream route URL):', pdfErr);
   }
 
-  console.log('📄 [Generated Invoice PDF Link]:', invoiceUrl);
-
   if (quote.id) {
     await prisma.quote.update({
       where: { id: quote.id },
       data: { invoicePdf: invoiceUrl }
-    }).catch((e) => console.warn('[Invoice] DB update warning:', e?.message));
+    }).catch((e: any) => console.warn('[Invoice] DB update warning:', e?.message));
   }
 
   // 3. Dispatch WhatsApp via MSG91 Template (invoice_sent)
@@ -371,9 +368,13 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
             to: [mobileNumber],
             components: {
               header_1: {
-                filename: filename,
                 type: 'document',
-                value: invoiceUrl
+                value: invoiceUrl,
+                filename: filename,
+                document: {
+                  link: invoiceUrl,
+                  filename: filename
+                }
               },
               body_1: {
                 type: 'text',
@@ -394,8 +395,10 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
     }
   };
 
-  console.log('[MSG91] Sending WhatsApp Invoice to:', mobileNumber);
-  console.log('[MSG91] Payload:', JSON.stringify(payload, null, 2));
+  let msg91Status: number | null = null;
+  let msg91ResponseText: string | null = null;
+  let whatsappDispatched = false;
+  let dispatchError: string | null = null;
 
   if (authKey && authKey !== 'your_msg91_authkey_here') {
     try {
@@ -412,13 +415,28 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
       );
 
       const responseText = await res.text();
-      console.log('[MSG91] Payout Invoice WhatsApp Status:', res.status, '| Response:', responseText);
-    } catch (err) {
-      console.error('[MSG91] WhatsApp Invoice Dispatch Failed:', err);
+      msg91Status = res.status;
+      msg91ResponseText = responseText;
+
+      if (res.ok || res.status === 200) {
+        whatsappDispatched = true;
+      } else {
+        dispatchError = `MSG91 HTTP ${res.status}: ${responseText}`;
+      }
+    } catch (err: any) {
+      dispatchError = err?.message || String(err);
     }
   } else {
-    console.warn('[MSG91] Auth Key missing or placeholder in .env - WhatsApp dispatch payload ready.');
+    dispatchError = 'MSG91 Auth Key missing or placeholder in .env';
   }
 
-  return invoiceUrl;
+  const result: any = new String(invoiceUrl);
+  result.invoiceUrl = invoiceUrl;
+  result.whatsappDispatched = whatsappDispatched;
+  result.mobileNumber = mobileNumber;
+  result.msg91Status = msg91Status;
+  result.msg91Response = msg91ResponseText;
+  result.error = dispatchError;
+
+  return result;
 }

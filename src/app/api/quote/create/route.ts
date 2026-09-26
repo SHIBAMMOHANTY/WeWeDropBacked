@@ -50,19 +50,22 @@ const createQuoteSchema = calculateSchema.extend({
 });
 
 function inferBrandFromModel(modelName: string): string {
-  if (!modelName) return 'Other';
-  const lower = modelName.toLowerCase();
-  if (lower.includes('iphone') || lower.includes('apple') || lower.includes('ipad')) return 'Apple';
-  if (lower.includes('samsung') || lower.includes('galaxy')) return 'Samsung';
-  if (lower.includes('oneplus')) return 'OnePlus';
-  if (lower.includes('xiaomi') || lower.includes('redmi') || lower.includes('poco') || lower.includes('mi ')) return 'Xiaomi';
-  if (lower.includes('vivo') || lower.includes('iqoo')) return 'Vivo';
-  if (lower.includes('oppo') || lower.includes('realme')) return 'Oppo';
-  if (lower.includes('google') || lower.includes('pixel')) return 'Google';
-  if (lower.includes('motorola') || lower.includes('moto')) return 'Motorola';
-  if (lower.includes('nothing')) return 'Nothing';
-  if (lower.includes('honor') || lower.includes('huawei')) return 'Honor';
-  return 'Other';
+  if (!modelName) return '';
+  const lower = modelName.toLowerCase().trim();
+  const clean = lower.replace(/[^a-z0-9]/g, '');
+
+  if (clean.includes('iphone') || clean.includes('apple') || clean.includes('ipad')) return 'Apple';
+  if (clean.includes('samsung') || clean.includes('galaxy')) return 'Samsung';
+  if (clean.includes('oneplus') || clean.includes('1plus')) return 'OnePlus';
+  if (clean.includes('xiaomi') || clean.includes('redmi') || clean.includes('poco') || lower.includes('mi ')) return 'Xiaomi';
+  if (clean.includes('vivo') || clean.includes('iqoo') || lower.startsWith('vio') || lower.startsWith('v2')) return 'Vivo';
+  if (clean.includes('oppo') || clean.includes('realme')) return 'Oppo';
+  if (clean.includes('google') || clean.includes('pixel')) return 'Google';
+  if (clean.includes('motorola') || clean.includes('moto')) return 'Motorola';
+  if (clean.includes('nothing')) return 'Nothing';
+  if (clean.includes('honor') || clean.includes('huawei')) return 'Honor';
+
+  return '';
 }
 
 export async function OPTIONS() {
@@ -137,7 +140,8 @@ export async function POST(req: Request) {
 
       const primaryDevice = devicesList[0] || {};
       const primaryModel = primaryDevice.model || (devicesList.length > 1 ? `${devicesList.length} Devices (Dealer Intake)` : 'Dealer Procurement');
-      const primaryBrand = primaryDevice.brand || inferBrandFromModel(primaryModel);
+      const rawBrand = (primaryDevice.brand && String(primaryDevice.brand).toLowerCase() !== 'other') ? primaryDevice.brand : '';
+      const primaryBrand = rawBrand || inferBrandFromModel(primaryModel);
       const primaryStorage = primaryDevice.storage || 'Multiple';
 
       const timestampStr = Date.now().toString().slice(-6);
@@ -217,7 +221,8 @@ export async function POST(req: Request) {
     const parseResult = createQuoteSchema.safeParse(body);
     const parsedData = parseResult.success ? parseResult.data : body;
 
-    const brand = parsedData.brand || inferBrandFromModel(parsedData.model || '');
+    const rawBrand = (parsedData.brand && String(parsedData.brand).toLowerCase() !== 'other') ? parsedData.brand : '';
+    const brand = rawBrand || inferBrandFromModel(parsedData.model || '');
     const model = parsedData.model || 'Unknown Phone';
     const storage = parsedData.storage || '128 GB';
     const finalPrice = typeof parsedData.finalPrice === 'number'

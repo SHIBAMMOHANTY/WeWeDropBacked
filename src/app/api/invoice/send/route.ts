@@ -51,14 +51,22 @@ export async function POST(req: Request) {
       return jsonResponse({ error: 'Valid quote data or quoteId with phone number is required.' }, 400);
     }
 
-    console.log('[API POST /api/invoice/send] Processing invoice dispatch for:', quoteData.id || quoteData.quoteNumber);
-
-    const invoiceUrl = await sendInvoiceWhatsApp(quoteData);
+    const result: any = await sendInvoiceWhatsApp(quoteData);
+    const invoiceUrl = result?.invoiceUrl || String(result);
 
     return jsonResponse({
       success: true,
-      message: 'Purchase receipt PDF generated and WhatsApp message dispatched via MSG91.',
+      message: result?.whatsappDispatched
+        ? `Purchase receipt PDF generated and WhatsApp message dispatched to ${result?.mobileNumber}.`
+        : `Purchase receipt PDF generated. WhatsApp status: ${result?.error || 'Dispatched to MSG91'}`,
       invoicePdf: invoiceUrl,
+      whatsapp: {
+        dispatched: Boolean(result?.whatsappDispatched),
+        sentTo: result?.mobileNumber || quoteData.contactNumber,
+        status: result?.msg91Status || null,
+        response: result?.msg91Response || null,
+        error: result?.error || null,
+      },
     });
   } catch (err: any) {
     console.error('[API POST /api/invoice/send] Error:', err);
