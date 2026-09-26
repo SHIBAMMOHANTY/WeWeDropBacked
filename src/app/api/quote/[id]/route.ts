@@ -70,9 +70,11 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getAuthSession(req);
-    if (!session || !session.id) {
-      return jsonResponse({ error: 'Unauthorized: Authentication required' }, 401);
+    let session: any = null;
+    try {
+      session = await getAuthSession(req);
+    } catch (_) {
+      // Optional auth: allows guest customers to complete booking details
     }
 
     const { id } = params;
@@ -99,7 +101,7 @@ export async function PATCH(
       return jsonResponse({ error: 'Quote not found' }, 404);
     }
 
-    if (quote.userId && quote.userId !== session.id && session.role !== 'SUPER_ADMIN' && session.role !== 'DELIVERY_AGENT') {
+    if (quote.userId && session && quote.userId !== session.id && session.role !== 'SUPER_ADMIN' && session.role !== 'DELIVERY_AGENT') {
       return jsonResponse({ error: 'Forbidden: Access denied' }, 403);
     }
 
@@ -108,6 +110,7 @@ export async function PATCH(
     const updatedQuote = await prisma.quote.update({
       where: { id: quote.id },
       data: {
+        userId: (!quote.userId && session?.id) ? session.id : undefined,
         customerName: body.customerName !== undefined ? body.customerName : undefined,
         customerAddress: body.customerAddress !== undefined ? body.customerAddress : undefined,
         customerPincode: body.customerPincode !== undefined ? body.customerPincode : undefined,

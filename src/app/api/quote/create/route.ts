@@ -271,7 +271,9 @@ export async function POST(req: Request) {
         estimatedPrice: calculatedEstPrice,
         finalPrice: finalPrice || calculatedEstPrice,
         status: parsedData.status || (parsedData.customerName ? 'booked' : 'submitted'),
-        images: Array.isArray(parsedData.images) ? parsedData.images : [],
+        images: Array.isArray(parsedData.images)
+          ? parsedData.images.filter((img: any) => typeof img === 'string' && img.trim().length > 0)
+          : [],
         customerName: parsedData.customerName,
         customerAddress: parsedData.customerAddress,
         customerPincode: parsedData.customerPincode,
