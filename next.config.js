@@ -5,6 +5,9 @@ const nextConfig = {
   },
   experimental: {
     serverComponentsExternalPackages: ['pdfkit'],
+    outputFileTracingIncludes: {
+      '/api/**/*': ['./node_modules/pdfkit/**/*'],
+    },
   },
   async headers() {
     return [

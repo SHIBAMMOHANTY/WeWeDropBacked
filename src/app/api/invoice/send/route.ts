@@ -35,7 +35,15 @@ export async function POST(req: Request) {
         where: { id: body.quoteId },
       });
       if (dbQuote) {
-        quoteData = dbQuote;
+        quoteData = {
+          ...dbQuote,
+          ...body,
+          customerName: body.customerName || dbQuote.customerName,
+          contactNumber: body.contactNumber || body.phone || dbQuote.contactNumber,
+          phone: body.phone || body.contactNumber || dbQuote.phone || dbQuote.contactNumber,
+          payoutDetails: body.payoutDetails || dbQuote.payoutDetails,
+          finalPrice: body.finalPrice || dbQuote.finalPrice,
+        };
       }
     }
 

@@ -1,8 +1,28 @@
 import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { uploadToCloudinary } from './upload';
 import { prisma } from './prisma';
+
+function getR2Client() {
+  const endpoint = process.env.CLOUDFLARE_R2_ENDPOINT;
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+
+  if (!endpoint || !accessKeyId || !secretAccessKey) {
+    return null;
+  }
+
+  return new S3Client({
+    region: 'auto',
+    endpoint,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
+}
 
 /**
  * Generates a high-fidelity PDF purchase receipt matching WEPICK WEDROP used mobile template.
@@ -264,16 +284,46 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   // 1. Generate PDF buffer safely with fallback
   try {
     const pdfBuffer = await generateInvoicePDF(quote);
-    try {
-      const uploadRes = await uploadToCloudinary(pdfBuffer, {
-        folder: 'invoices',
-        public_id: `invoice_${targetId}`
-      });
-      if (uploadRes?.secure_url) {
-        invoiceUrl = uploadRes.secure_url;
+    let uploaded = false;
+
+    // A. Priority 1: Cloudflare R2 (configured storage bucket & CDN)
+    const r2 = getR2Client();
+    if (r2) {
+      try {
+        const bucket = process.env.CLOUDFLARE_R2_BUCKET || 'crm';
+        const publicUrlBase = process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE || 'https://pub-3980550907254b0a90694547699c11dd.r2.dev';
+        const cleanTargetId = String(targetId).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const key = `invoices/${Date.now()}_invoice_${cleanTargetId}.pdf`;
+        await r2.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: pdfBuffer,
+            ContentType: 'application/pdf',
+          })
+        );
+        invoiceUrl = `${publicUrlBase}/${key}`;
+        uploaded = true;
+        console.log('✅ [Invoice Uploaded to Cloudflare R2]:', invoiceUrl);
+      } catch (r2Err) {
+        console.warn('[Invoice Cloudflare R2 Upload Warning]:', r2Err);
       }
-    } catch (uploadErr) {
-      console.warn('[Invoice Cloudinary Upload Warning] (using live stream route URL):', uploadErr);
+    }
+
+    // B. Priority 2: Cloudinary fallback if R2 is not available
+    if (!uploaded && process.env.CLOUDINARY_CLOUD_NAME) {
+      try {
+        const uploadRes = await uploadToCloudinary(pdfBuffer, {
+          folder: 'invoices',
+          public_id: `invoice_${targetId}`
+        });
+        if (uploadRes?.secure_url) {
+          invoiceUrl = uploadRes.secure_url;
+          uploaded = true;
+        }
+      } catch (uploadErr) {
+        console.warn('[Invoice Cloudinary Upload Warning]:', uploadErr);
+      }
     }
   } catch (pdfErr) {
     console.warn('[Invoice PDF Generation Warning] (using live stream route URL):', pdfErr);
