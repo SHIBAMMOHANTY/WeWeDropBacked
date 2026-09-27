@@ -141,3 +141,32 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 export async function PUT(req: Request, ctx: { params: { id: string } }) {
   return PATCH(req, ctx);
 }
+
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+  try {
+    const id = params.id;
+    if (!id) {
+      return jsonResponse({ success: false, error: "Order ID is required" }, 400);
+    }
+    const order = await prisma.oldPhoneOrder.findFirst({
+      where: { OR: [{ id }, { orderId: id }] },
+    });
+    if (!order) {
+      return jsonResponse({ success: false, error: "Order not found" }, 404);
+    }
+
+    await prisma.oldPhoneOrder.delete({
+      where: { id: order.id },
+    });
+
+    return jsonResponse({
+      success: true,
+      message: "Order deleted successfully",
+      deletedId: order.id,
+    });
+  } catch (error: any) {
+    console.error("Order delete error:", error);
+    return jsonResponse({ success: false, error: error.message || "Failed to delete order" }, 500);
+  }
+}
+

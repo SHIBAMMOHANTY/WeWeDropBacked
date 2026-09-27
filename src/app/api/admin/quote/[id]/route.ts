@@ -202,7 +202,7 @@ export async function PUT(
       data: updateData,
     });
 
-    if (updateData.status === 'payment_completed') {
+    if (updateData.status === 'payment_completed' && body.skipWhatsAppInvoice !== true && body.skipWhatsApp !== true) {
       try {
         sendInvoiceWhatsApp(updatedQuote).then((url) => {
           console.log('[MSG91] Background WhatsApp Invoice sent successfully. PDF URL:', url);
@@ -227,3 +227,45 @@ export async function PUT(
     );
   }
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { id } = params;
+    if (!id) {
+      return jsonResponse({ error: 'Quote ID is required' }, 400);
+    }
+
+    let quote = null;
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    if (isObjectId) {
+      quote = await prisma.quote.findUnique({ where: { id } });
+    }
+    if (!quote) {
+      quote = await prisma.quote.findUnique({ where: { quoteNumber: id } });
+    }
+
+    if (!quote) {
+      return jsonResponse({ error: 'Quote not found' }, 404);
+    }
+
+    await prisma.quote.delete({
+      where: { id: quote.id },
+    });
+
+    return jsonResponse({
+      success: true,
+      message: 'Quote deleted successfully',
+      deletedId: quote.id,
+    });
+  } catch (err: any) {
+    console.error('Delete Quote Error:', err);
+    return jsonResponse(
+      { error: err.message || 'Internal server error while deleting quote' },
+      500
+    );
+  }
+}
+

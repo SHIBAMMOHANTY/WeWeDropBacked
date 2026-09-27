@@ -171,7 +171,9 @@ export async function POST(req: Request) {
           condition: 'dealer_inspected',
           estimatedPrice: finalAmount,
           finalPrice: finalAmount,
-          status: body.status ? String(body.status).toLowerCase() : 'pickup_completed',
+          status: body.status
+            ? (String(body.status).toUpperCase() === 'PICKUP_SUCCESSFUL' ? 'PICKUP_SUCCESSFUL' : String(body.status).toLowerCase())
+            : 'PICKUP_SUCCESSFUL',
           isDead: isDeadPhone,
           isPhoneDead: isDeadPhone,
           diagnosisCompleted: isDeadPhone ? true : false,

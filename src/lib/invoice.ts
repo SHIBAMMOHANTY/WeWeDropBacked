@@ -267,6 +267,9 @@ export async function generateInvoicePDF(quote: any): Promise<Buffer> {
   });
 }
 
+// Module-level deduplication cache to prevent duplicate WhatsApp invoice dispatches
+const recentInvoiceDispatches = new Map<string, { timestamp: number; url: string }>();
+
 /**
  * Generates purchase receipt PDF, uploads to Cloudinary/Storage, links to Quote in database,
  * and dispatches outbound template WhatsApp message via MSG91 API (invoice_sent template).
@@ -280,6 +283,64 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wepick-rho.vercel.app';
   const targetId = quote.id || quote.quoteNumber || quote.orderId || 'receipt';
   let invoiceUrl = `${baseUrl}/api/invoice/pdf/${targetId}`;
+
+  // Normalize phone number (adds 91 prefix if it's 10-digits)
+  let mobileNumber = customerPhone.replace(/\D/g, '');
+  if (mobileNumber.length === 10) {
+    mobileNumber = `91${mobileNumber}`;
+  }
+
+  // Deduplication check: prevent multiple sends for the same quote and phone within 120 seconds
+  const dispatchKey = `${targetId}_${mobileNumber}`;
+  const existingDispatch = recentInvoiceDispatches.get(dispatchKey);
+  const now = Date.now();
+
+  if (existingDispatch && (now - existingDispatch.timestamp < 120000)) {
+    console.log(`⚡ [MSG91 Deduplication] Preventing duplicate WhatsApp dispatch for ${dispatchKey}. Already sent ${Math.round((now - existingDispatch.timestamp) / 1000)}s ago.`);
+    const dupResult: any = new String(existingDispatch.url);
+    dupResult.invoiceUrl = existingDispatch.url;
+    dupResult.whatsappDispatched = true;
+    dupResult.alreadyDispatched = true;
+    dupResult.mobileNumber = mobileNumber;
+    dupResult.msg91Status = 200;
+    dupResult.msg91Response = 'Duplicate dispatch prevented - WhatsApp invoice already sent.';
+    dupResult.error = null;
+    return dupResult;
+  }
+
+  // Cleanup old entries from cache
+  if (recentInvoiceDispatches.size > 200) {
+    recentInvoiceDispatches.forEach((v, k) => {
+      if (now - v.timestamp > 600000) {
+        recentInvoiceDispatches.delete(k);
+      }
+    });
+  }
+
+  // DB-level deduplication: If this quote already has an invoicePdf generated, do not re-dispatch
+  try {
+    const quoteIdLookup = quote.id || (/^[0-9a-fA-F]{24}$/.test(targetId) ? targetId : null);
+    if (quoteIdLookup) {
+      const existingDbQuote = await prisma.quote.findUnique({
+        where: { id: quoteIdLookup },
+        select: { invoicePdf: true },
+      });
+      if (existingDbQuote?.invoicePdf) {
+        console.log(`⚡ [DB Deduplication] Quote ${quoteIdLookup} already has invoicePdf (${existingDbQuote.invoicePdf}). Skipping duplicate WhatsApp dispatch.`);
+        const dupResult: any = new String(existingDbQuote.invoicePdf);
+        dupResult.invoiceUrl = existingDbQuote.invoicePdf;
+        dupResult.whatsappDispatched = true;
+        dupResult.alreadyDispatched = true;
+        dupResult.mobileNumber = mobileNumber;
+        dupResult.msg91Status = 200;
+        dupResult.msg91Response = 'Duplicate dispatch prevented - Invoice already generated and dispatched.';
+        dupResult.error = null;
+        return dupResult;
+      }
+    }
+  } catch (dbCheckErr) {
+    console.warn('[Invoice DB Deduplication Check Warning]:', dbCheckErr);
+  }
 
   // 1. Generate PDF buffer safely with fallback
   try {
@@ -340,11 +401,6 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   const intNumber = process.env.MSG91_INTEGRATED_NUMBER || '919318411796';
   const namespace = process.env.MSG91_NAMESPACE || 'e67365fb_e80f_4118_a3da_6701091246fa';
 
-  // Normalize phone number (adds 91 prefix if it's 10-digits)
-  let mobileNumber = customerPhone.replace(/\D/g, '');
-  if (mobileNumber.length === 10) {
-    mobileNumber = `91${mobileNumber}`;
-  }
 
   const orderId = quote.quoteNumber || quote.orderId || (quote.id ? quote.id.slice(-6).toUpperCase() : '') || 'WWP';
   const customerName = quote.personName || quote.beneficiaryName || quote.customerName || quote.name || '';
@@ -420,6 +476,7 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
 
       if (res.ok || res.status === 200) {
         whatsappDispatched = true;
+        recentInvoiceDispatches.set(dispatchKey, { timestamp: Date.now(), url: invoiceUrl });
       } else {
         dispatchError = `MSG91 HTTP ${res.status}: ${responseText}`;
       }
