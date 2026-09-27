@@ -17,12 +17,28 @@ export async function POST(req: Request) {
       return jsonResponse({ error: 'Array of order IDs is required' }, 400);
     }
 
+    const objectIds = ids.filter((id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id));
+    const orderIds = ids.filter((id) => typeof id === 'string' && !/^[0-9a-fA-F]{24}$/.test(id));
+
+    const orConditions: any[] = [];
+    if (objectIds.length > 0) {
+      orConditions.push({ id: { in: objectIds } });
+    }
+    if (orderIds.length > 0) {
+      orConditions.push({ orderId: { in: orderIds } });
+    }
+
+    if (orConditions.length === 0) {
+      return jsonResponse({
+        success: true,
+        message: 'No matching orders found to delete',
+        count: 0,
+      });
+    }
+
     const result = await prisma.oldPhoneOrder.deleteMany({
       where: {
-        OR: [
-          { id: { in: ids } },
-          { orderId: { in: ids } },
-        ],
+        OR: orConditions,
       },
     });
 

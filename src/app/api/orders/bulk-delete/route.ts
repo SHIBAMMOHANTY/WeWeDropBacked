@@ -20,12 +20,30 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
+    const objectIds = ids.filter((id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id));
+    const orderIds = ids.filter((id) => typeof id === 'string' && !/^[0-9a-fA-F]{24}$/.test(id));
+
+    const orConditions: any[] = [];
+    if (objectIds.length > 0) {
+      orConditions.push({ id: { in: objectIds } });
+    }
+    if (orderIds.length > 0) {
+      orConditions.push({ orderId: { in: orderIds } });
+    }
+
+    if (orConditions.length === 0) {
+      const response = NextResponse.json({
+        success: true,
+        message: 'No matching orders found to delete',
+        count: 0,
+      });
+      response.headers.set('Access-Control-Allow-Origin', '*');
+      return response;
+    }
+
     const updated = await prisma.order.updateMany({
       where: {
-        OR: [
-          { id: { in: ids } },
-          { orderId: { in: ids } },
-        ],
+        OR: orConditions,
       },
       data: { deleted: true },
     });

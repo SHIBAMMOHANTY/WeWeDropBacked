@@ -241,10 +241,20 @@ export async function DELETE(
     let quote = null;
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
     if (isObjectId) {
-      quote = await prisma.quote.findUnique({ where: { id } });
+      quote = await prisma.quote.findUnique({ where: { id } }).catch(() => null);
     }
     if (!quote) {
-      quote = await prisma.quote.findUnique({ where: { quoteNumber: id } });
+      quote = await prisma.quote.findUnique({ where: { quoteNumber: id } }).catch(() => null);
+    }
+    if (!quote) {
+      quote = await prisma.quote.findFirst({
+        where: {
+          OR: [
+            { quoteNumber: id },
+            { quoteNumber: { equals: id, mode: 'insensitive' } },
+          ],
+        },
+      }).catch(() => null);
     }
 
     if (!quote) {

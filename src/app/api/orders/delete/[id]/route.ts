@@ -26,7 +26,22 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 			return response;
 		}
 
-		const existingOrder = await prisma.order.findUnique({ where: { id } });
+		const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+		let existingOrder = null;
+		if (isObjectId) {
+			existingOrder = await prisma.order.findUnique({ where: { id } }).catch(() => null);
+		}
+		if (!existingOrder) {
+			existingOrder = await prisma.order.findFirst({
+				where: {
+					OR: [
+						{ orderId: id },
+						{ orderId: { equals: id, mode: 'insensitive' } },
+					],
+				},
+			}).catch(() => null);
+		}
+
 		if (!existingOrder) {
 			const response = NextResponse.json({ error: "Order not found" }, { status: 404 });
 			response.headers.set('Access-Control-Allow-Origin', '*');
@@ -36,7 +51,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 		}
 
 		const updated = await prisma.order.update({
-			where: { id },
+			where: { id: existingOrder.id },
 			data: { deleted: true },
 		});
 

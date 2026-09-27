@@ -20,13 +20,25 @@ export async function POST(req: Request) {
     const objectIds = ids.filter((id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id));
     const quoteNumbers = ids.filter((id) => typeof id === 'string' && !/^[0-9a-fA-F]{24}$/.test(id));
 
+    const orConditions: any[] = [];
+    if (objectIds.length > 0) {
+      orConditions.push({ id: { in: objectIds } });
+    }
+    if (quoteNumbers.length > 0) {
+      orConditions.push({ quoteNumber: { in: quoteNumbers } });
+    }
+
+    if (orConditions.length === 0) {
+      return jsonResponse({
+        success: true,
+        message: 'No matching quotes found to delete',
+        count: 0,
+      });
+    }
+
     const result = await prisma.quote.deleteMany({
       where: {
-        OR: [
-          { id: { in: objectIds } },
-          { quoteNumber: { in: quoteNumbers } },
-          { id: { in: ids } },
-        ],
+        OR: orConditions,
       },
     });
 

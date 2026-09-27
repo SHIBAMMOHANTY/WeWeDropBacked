@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-role',
 };
 
@@ -101,3 +101,43 @@ export async function GET(
     );
   }
 }
+
+// DELETE: Delete device intake quote record
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+
+    const existing = await (prisma as any).quote.findFirst({
+      where: isObjectId
+        ? { OR: [{ id }, { quoteNumber: id }] }
+        : { quoteNumber: id },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: 'Device record not found' },
+        { status: 404, headers: corsHeaders }
+      );
+    }
+
+    await (prisma as any).quote.delete({
+      where: { id: existing.id },
+    });
+
+    return NextResponse.json(
+      { success: true, message: 'Device deleted successfully' },
+      { headers: corsHeaders }
+    );
+  } catch (error: any) {
+    console.error('[DELETE /api/refurbish/devices/[id] error]:', error);
+    return NextResponse.json(
+      { success: false, error: error?.message || 'Failed to delete device' },
+      { status: 500, headers: corsHeaders }
+    );
+  }
+}
+

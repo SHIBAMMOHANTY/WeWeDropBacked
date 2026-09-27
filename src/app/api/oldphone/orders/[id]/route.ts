@@ -148,9 +148,21 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     if (!id) {
       return jsonResponse({ success: false, error: "Order ID is required" }, 400);
     }
-    const order = await prisma.oldPhoneOrder.findFirst({
-      where: { OR: [{ id }, { orderId: id }] },
-    });
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    let order = null;
+    if (isObjectId) {
+      order = await prisma.oldPhoneOrder.findUnique({ where: { id } }).catch(() => null);
+    }
+    if (!order) {
+      order = await prisma.oldPhoneOrder.findFirst({
+        where: {
+          OR: [
+            { orderId: id },
+            { orderId: { equals: id, mode: 'insensitive' } },
+          ],
+        },
+      }).catch(() => null);
+    }
     if (!order) {
       return jsonResponse({ success: false, error: "Order not found" }, 404);
     }
