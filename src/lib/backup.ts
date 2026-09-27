@@ -1,6 +1,8 @@
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { prisma } from './prisma';
 
+export type BackupType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'MANUAL';
+
 function getR2Client() {
   const endpoint = process.env.CLOUDFLARE_R2_ENDPOINT || 'https://2ecf668a62f8c8df5b85bbe3c3368f5c.r2.cloudflarestorage.com';
   const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || 'ec927c9858329b5e3aa0d04730e33ebf';
@@ -23,7 +25,7 @@ function getR2Client() {
 const BUCKET = process.env.CLOUDFLARE_R2_BUCKET || 'crm';
 const PUBLIC_BASE = process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE || 'https://pub-3980550907254b0a90694547699c11dd.r2.dev';
 
-export async function createDatabaseBackup(type: 'WEEKLY' | 'MANUAL' = 'WEEKLY') {
+export async function createDatabaseBackup(type: BackupType = 'DAILY') {
   const timestamp = new Date().toISOString();
   const dateFormatted = timestamp.split('T')[0];
 
@@ -154,9 +156,16 @@ export async function listDatabaseBackups() {
       .map((obj) => {
         const key = obj.Key!;
         const filename = key.replace('backups/', '');
+        let type: BackupType = 'MANUAL';
+        const lower = filename.toLowerCase();
+        if (lower.includes('_daily_')) type = 'DAILY';
+        else if (lower.includes('_weekly_')) type = 'WEEKLY';
+        else if (lower.includes('_monthly_')) type = 'MONTHLY';
+
         return {
           key,
           filename,
+          type,
           fileUrl: `${PUBLIC_BASE}/${key}`,
           sizeBytes: obj.Size || 0,
           sizeFormatted: ((obj.Size || 0) / 1024).toFixed(2) + ' KB',
