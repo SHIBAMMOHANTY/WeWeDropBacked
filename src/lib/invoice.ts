@@ -426,11 +426,6 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
               header_1: {
                 type: 'document',
                 value: invoiceUrl,
-                filename: filename,
-                document: {
-                  link: invoiceUrl,
-                  filename: filename
-                }
               },
               body_1: {
                 type: 'text',

@@ -26,23 +26,37 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(url.searchParams.get('limit') || '50', 10);
     const skip = (page - 1) * limit;
 
-    // Strict rule: ONLY devices where physical pickup & payment is completed
+    // Strict rule: ONLY devices where physical pickup & payment is completed (support both uppercase and lowercase)
+    const validStatuses = [
+      'pickup_successful',
+      'pickup_completed',
+      'payment_completed',
+      'paid',
+      'picked_up',
+      'in_repair',
+      'repairing',
+      'ready_for_sale',
+      'refurbishing',
+      'refurbished',
+      'sold',
+      'listed_on_app',
+      'PICKUP_SUCCESSFUL',
+      'PICKUP_COMPLETED',
+      'PAYMENT_COMPLETED',
+      'PAID',
+      'PICKED_UP',
+      'IN_REPAIR',
+      'REPAIRING',
+      'READY_FOR_SALE',
+      'REFURBISHING',
+      'REFURBISHED',
+      'SOLD',
+      'LISTED_ON_APP'
+    ];
+
     const where: any = {
       status: {
-        in: [
-          'pickup_successful',
-          'pickup_completed',
-          'payment_completed',
-          'paid',
-          'picked_up',
-          'in_repair',
-          'repairing',
-          'ready_for_sale',
-          'refurbishing',
-          'refurbished',
-          'sold',
-          'listed_on_app'
-        ],
+        in: validStatuses,
       },
     };
 
@@ -74,16 +88,19 @@ export async function GET(req: NextRequest) {
       const initialPrice = q.finalPrice || q.estimatedPrice || breakdown.totalAmount || 0;
       const subDevices = breakdown.devices || conditionAnswers.devices || [];
 
-      // Determine refurb status accurately
+      // Determine refurb status accurately (case-insensitive check)
+      const statusUpper = String(q.status || '').toUpperCase();
+      const refurbStatusUpper = String(refurbData.refurbStatus || '').toUpperCase();
+
       let refurbStatus = 'PENDING_INSPECTION';
-      if (q.status === 'ready_for_sale' || refurbData.refurbStatus === 'READY_FOR_SALE') {
+      if (statusUpper === 'READY_FOR_SALE' || refurbStatusUpper === 'READY_FOR_SALE') {
         refurbStatus = 'READY_FOR_SALE';
       } else if (
-        q.status === 'in_repair' ||
-        q.status === 'repairing' ||
-        q.status === 'refurbishing' ||
-        refurbData.refurbStatus === 'IN_REPAIR' ||
-        refurbData.refurbStatus === 'in_repair'
+        statusUpper === 'IN_REPAIR' ||
+        statusUpper === 'REPAIRING' ||
+        statusUpper === 'REFURBISHING' ||
+        refurbStatusUpper === 'IN_REPAIR' ||
+        refurbStatusUpper === 'REPAIRING'
       ) {
         refurbStatus = 'IN_REPAIR';
       } else if (refurbData.refurbStatus) {
