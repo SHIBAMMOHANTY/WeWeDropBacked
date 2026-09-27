@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       return jsonResponse({ error: 'Valid quote data or quoteId with phone number is required.' }, 400);
     }
 
-    const result: any = await sendInvoiceWhatsApp(quoteData);
+    const result: any = await sendInvoiceWhatsApp({ ...quoteData, forceDispatch: true });
     const invoiceUrl = result?.invoiceUrl || String(result);
 
     return jsonResponse({

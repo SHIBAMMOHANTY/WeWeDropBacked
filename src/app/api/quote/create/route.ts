@@ -138,84 +138,140 @@ export async function POST(req: Request) {
         if (d.ceirScreenshot) allImages.push(d.ceirScreenshot);
       });
 
-      const primaryDevice = devicesList[0] || {};
-      const primaryModel = primaryDevice.model || (devicesList.length > 1 ? `${devicesList.length} Devices (Dealer Intake)` : 'Dealer Procurement');
-      const rawBrand = (primaryDevice.brand && String(primaryDevice.brand).toLowerCase() !== 'other') ? primaryDevice.brand : '';
-      const primaryBrand = rawBrand || inferBrandFromModel(primaryModel);
-      const primaryStorage = primaryDevice.storage || 'Multiple';
-
-      const timestampStr = Date.now().toString().slice(-6);
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const quoteNumber = `DLR-${timestampStr}-${randomSuffix}`;
-
       const isAgent = session?.role === 'AGENT' || session?.role === 'DELIVERY_PARTNER' || session?.role === 'DELIVERY_AGENT';
       const assignedAgentId = body.agentId || (isAgent ? session?.id : undefined);
       const assignedAgentName = body.agentName || body.assignedAgentName || body.createdByAgent || session?.name || session?.username || '';
       const isObjectId = assignedAgentId && /^[0-9a-fA-F]{24}$/.test(String(assignedAgentId));
-
-      const isDeadPhone = Boolean(primaryDevice.isPhoneDead || primaryDevice.isDead || body.isPhoneDead || body.isDead);
-
       const agentSnippet = assignedAgentName ? ` | Agent: ${assignedAgentName}` : '';
-      const descriptionText = shopName !== 'N/A'
-        ? `Shop: ${shopName} | Dealer Intake (${devicesList.length} device(s))${agentSnippet}`
-        : `Dealer Intake (${devicesList.length} device(s))${agentSnippet}`;
 
-      const quote = await prisma.quote.create({
-        data: {
-          quoteNumber,
-          userId: session?.id || undefined,
-          agentId: isObjectId ? String(assignedAgentId) : undefined,
-          brand: primaryBrand,
-          model: primaryModel,
-          storage: primaryStorage,
-          condition: 'dealer_inspected',
-          estimatedPrice: finalAmount,
-          finalPrice: finalAmount,
-          status: body.status
-            ? (String(body.status).toUpperCase() === 'PICKUP_SUCCESSFUL' ? 'PICKUP_SUCCESSFUL' : String(body.status).toLowerCase())
-            : 'PICKUP_SUCCESSFUL',
-          isDead: isDeadPhone,
-          isPhoneDead: isDeadPhone,
-          diagnosisCompleted: isDeadPhone ? true : false,
-          images: allImages,
-          customerName,
-          customerAddress,
-          customerPincode: body.customerPincode || '',
-          contactNumber,
-          imeiNumber: isDeadPhone ? undefined : (primaryDevice.imei || primaryDevice.imeiNumber || undefined),
-          imei: isDeadPhone ? undefined : (primaryDevice.imei || primaryDevice.imeiNumber || undefined),
-          paymentMode: body.paymentMode || body.payoutMethod || 'CASH',
-          payoutMethod: body.payoutMethod || body.paymentMode || 'CASH',
-          description: descriptionText,
-          breakdown: {
-            customerType: 'dealer',
-            shopName,
-            agentName: assignedAgentName || null,
-            agentId: assignedAgentId || null,
-            totalDevices: devicesList.length,
-            totalAmount: finalAmount,
-            devices: devicesList,
-          } as any,
-          conditionAnswers: {
-            customerType: 'dealer',
-            shopName,
-            agentName: assignedAgentName || null,
-            agentId: assignedAgentId || null,
-            idProofType: body.idProofType || 'Aadhaar Card',
-            idProofNumber: body.idProofNumber || 'N/A',
-            idProofFront: body.idProofFront || null,
-            idProofBack: body.idProofBack || null,
-            devices: devicesList,
-          } as any,
-        },
-      });
+      const timestampStr = Date.now().toString().slice(-6);
+      const batchRef = `BATCH-${timestampStr}`;
+
+      const createdQuotes: any[] = [];
+
+      for (let i = 0; i < devicesList.length; i++) {
+        const d = devicesList[i];
+
+        const devModel = d.model || 'Unknown Handset';
+        const rawBrand = (d.brand && String(d.brand).toLowerCase() !== 'other') ? d.brand : '';
+        const devBrand = rawBrand || inferBrandFromModel(devModel);
+        const devStorage = d.storage || '128 GB';
+        const devRam = d.ram || '';
+
+        const devPrice = typeof d.buyingPrice === 'number'
+          ? d.buyingPrice
+          : parseFloat(d.buyingPrice || 0) || Math.round(finalAmount / devicesList.length);
+
+        const devCustomer = d.customer || {};
+        const devCustomerName = devCustomer.name || d.customerName || customerName;
+        const devContactNumber = devCustomer.phone || d.customerPhone || contactNumber;
+        const devCustomerAddress = devCustomer.address || d.customerAddress || customerAddress;
+
+        // Collect device specific images
+        const devImages: string[] = [];
+        const devIdFront = d.idProofFront || devCustomer.idFront || body.idProofFront;
+        const devIdBack = d.idProofBack || devCustomer.idBack || body.idProofBack;
+        if (devIdFront) devImages.push(devIdFront);
+        if (devIdBack) devImages.push(devIdBack);
+
+        if (d.photos6Sides) {
+          Object.values(d.photos6Sides).forEach((val) => {
+            if (typeof val === 'string' && val.trim()) devImages.push(val.trim());
+          });
+        }
+        if (Array.isArray(d.photos)) {
+          d.photos.forEach((p: any) => {
+            if (typeof p === 'string' && p.trim()) devImages.push(p.trim());
+          });
+        }
+        if (d.ceirScreenshot) devImages.push(d.ceirScreenshot);
+
+        // If no device specific images, fallback to body images
+        if (devImages.length === 0 && Array.isArray(body.images)) {
+          devImages.push(...body.images);
+        }
+
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+        const devQuoteNumber = devicesList.length > 1
+          ? `DLR-${timestampStr}-${randomSuffix}-${i + 1}`
+          : `DLR-${timestampStr}-${randomSuffix}`;
+
+        const isDeadPhone = Boolean(d.isPhoneDead || d.isDead || body.isPhoneDead || body.isDead);
+
+        const devDescription = shopName !== 'N/A'
+          ? `Shop: ${shopName} | Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`
+          : `Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`;
+
+        const quote = await prisma.quote.create({
+          data: {
+            quoteNumber: devQuoteNumber,
+            userId: session?.id || undefined,
+            agentId: isObjectId ? String(assignedAgentId) : undefined,
+            brand: devBrand,
+            model: devModel,
+            storage: devStorage,
+            ram: devRam,
+            condition: 'dealer_inspected',
+            estimatedPrice: devPrice,
+            finalPrice: devPrice,
+            status: body.status
+              ? (String(body.status).toUpperCase() === 'PICKUP_SUCCESSFUL' ? 'PICKUP_SUCCESSFUL' : String(body.status).toLowerCase())
+              : 'PICKUP_SUCCESSFUL',
+            isDead: isDeadPhone,
+            isPhoneDead: isDeadPhone,
+            diagnosisCompleted: isDeadPhone ? true : false,
+            images: devImages,
+            customerName: devCustomerName,
+            customerAddress: devCustomerAddress,
+            customerPincode: body.customerPincode || '',
+            contactNumber: devContactNumber,
+            imeiNumber: isDeadPhone ? undefined : (d.imei || d.imeiNumber || undefined),
+            imei: isDeadPhone ? undefined : (d.imei || d.imeiNumber || undefined),
+            paymentMode: body.paymentMode || body.payoutMethod || 'CASH',
+            payoutMethod: body.payoutMethod || body.paymentMode || 'CASH',
+            description: devDescription,
+            breakdown: {
+              customerType: 'dealer',
+              shopName,
+              dealerName: customerName,
+              agentName: assignedAgentName || null,
+              agentId: assignedAgentId || null,
+              batchReference: batchRef,
+              deviceIndex: i + 1,
+              totalDevicesInBatch: devicesList.length,
+              totalBatchAmount: finalAmount,
+              deviceData: d,
+              devices: [d],
+            } as any,
+            conditionAnswers: {
+              customerType: 'dealer',
+              shopName,
+              dealerName: customerName,
+              agentName: assignedAgentName || null,
+              agentId: assignedAgentId || null,
+              idProofType: d.idProofType || devCustomer.idType || body.idProofType || 'Aadhaar Card',
+              idProofNumber: d.idProofNumber || devCustomer.idNumber || body.idProofNumber || 'N/A',
+              idProofFront: devIdFront || null,
+              idProofBack: devIdBack || null,
+              deviceData: d,
+              devices: [d],
+            } as any,
+          },
+        });
+
+        createdQuotes.push(quote);
+      }
+
+      const primaryQuote = createdQuotes[0];
 
       return jsonResponse({
         success: true,
-        message: 'Dealer quote created successfully',
-        quoteId: quote.id,
-        quoteNumber: quote.quoteNumber,
-        quote,
+        message: `Dealer intake: ${createdQuotes.length} individual device quote(s) created successfully`,
+        quoteId: primaryQuote.id,
+        quoteNumber: primaryQuote.quoteNumber,
+        quote: primaryQuote,
+        quotes: createdQuotes,
+        totalCreated: createdQuotes.length,
       }, 201);
     }
 

@@ -317,29 +317,31 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
     });
   }
 
-  // DB-level deduplication: If this quote already has an invoicePdf generated, do not re-dispatch
-  try {
-    const quoteIdLookup = quote.id || (/^[0-9a-fA-F]{24}$/.test(targetId) ? targetId : null);
-    if (quoteIdLookup) {
-      const existingDbQuote = await prisma.quote.findUnique({
-        where: { id: quoteIdLookup },
-        select: { invoicePdf: true },
-      });
-      if (existingDbQuote?.invoicePdf) {
-        console.log(`⚡ [DB Deduplication] Quote ${quoteIdLookup} already has invoicePdf (${existingDbQuote.invoicePdf}). Skipping duplicate WhatsApp dispatch.`);
-        const dupResult: any = new String(existingDbQuote.invoicePdf);
-        dupResult.invoiceUrl = existingDbQuote.invoicePdf;
-        dupResult.whatsappDispatched = true;
-        dupResult.alreadyDispatched = true;
-        dupResult.mobileNumber = mobileNumber;
-        dupResult.msg91Status = 200;
-        dupResult.msg91Response = 'Duplicate dispatch prevented - Invoice already generated and dispatched.';
-        dupResult.error = null;
-        return dupResult;
+  // DB-level deduplication: If this quote already has an invoicePdf generated, do not re-dispatch (unless forceDispatch is true)
+  if (!quote.forceDispatch) {
+    try {
+      const quoteIdLookup = quote.id || (/^[0-9a-fA-F]{24}$/.test(targetId) ? targetId : null);
+      if (quoteIdLookup) {
+        const existingDbQuote = await prisma.quote.findUnique({
+          where: { id: quoteIdLookup },
+          select: { invoicePdf: true },
+        });
+        if (existingDbQuote?.invoicePdf) {
+          console.log(`⚡ [DB Deduplication] Quote ${quoteIdLookup} already has invoicePdf (${existingDbQuote.invoicePdf}). Skipping duplicate WhatsApp dispatch.`);
+          const dupResult: any = new String(existingDbQuote.invoicePdf);
+          dupResult.invoiceUrl = existingDbQuote.invoicePdf;
+          dupResult.whatsappDispatched = true;
+          dupResult.alreadyDispatched = true;
+          dupResult.mobileNumber = mobileNumber;
+          dupResult.msg91Status = 200;
+          dupResult.msg91Response = 'Duplicate dispatch prevented - Invoice already generated and dispatched.';
+          dupResult.error = null;
+          return dupResult;
+        }
       }
+    } catch (dbCheckErr) {
+      console.warn('[Invoice DB Deduplication Check Warning]:', dbCheckErr);
     }
-  } catch (dbCheckErr) {
-    console.warn('[Invoice DB Deduplication Check Warning]:', dbCheckErr);
   }
 
   // 1. Generate PDF buffer safely with fallback
@@ -426,20 +428,25 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
               header_1: {
                 type: 'document',
                 value: invoiceUrl,
+                filename: filename,
+                document: {
+                  link: invoiceUrl,
+                  filename: filename,
+                },
               },
               body_1: {
                 type: 'text',
-                value: customerName
+                value: customerName || 'Valued Customer',
               },
               body_2: {
                 type: 'text',
-                value: orderId
+                value: orderId,
               },
               body_3: {
                 type: 'text',
-                value: totalAmount
-              }
-            }
+                value: totalAmount,
+              },
+            },
           }
         ]
       }
