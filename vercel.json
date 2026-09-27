@@ -1,8 +1,16 @@
 {
   "crons": [
     {
-      "path": "/api/cron/backup",
+      "path": "/api/cron/backup?type=DAILY",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/backup?type=WEEKLY",
       "schedule": "0 0 * * 0"
+    },
+    {
+      "path": "/api/cron/backup?type=MONTHLY",
+      "schedule": "0 0 1 * *"
     }
   ]
 }
