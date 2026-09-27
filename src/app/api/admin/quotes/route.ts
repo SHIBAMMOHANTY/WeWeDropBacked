@@ -21,12 +21,15 @@ export async function GET(req: Request) {
     }
 
     // 2. Parse query parameters (pagination + status filter)
-    const { page, limit, skip } = buildPagination(req.url);
     const url = new URL(req.url);
+    const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
+    const requestedLimit = Number(url.searchParams.get('limit'));
+    const limit = requestedLimit ? Math.min(1000, Math.max(1, requestedLimit)) : 200;
+    const skip = (page - 1) * limit;
     const status = url.searchParams.get('status');
 
     const query: any = {};
-    if (status) {
+    if (status && status !== 'all') {
       const validStatuses = [
         'pending',
         'requested',
@@ -60,17 +63,25 @@ export async function GET(req: Request) {
       take: limit,
     });
 
-    // 4. Return paginated quotes
-    return jsonResponse({
-      success: true,
-      quotes,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
+    // 4. Return paginated quotes with strict no-cache headers
+    return jsonResponse(
+      {
+        success: true,
+        quotes,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit),
+        },
       },
-    });
+      200,
+      {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
+      }
+    );
   } catch (err: any) {
     console.error('Fetch Admin Quotes Error:', err);
     return jsonResponse(

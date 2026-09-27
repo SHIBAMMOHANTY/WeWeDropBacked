@@ -11,7 +11,16 @@ export async function OPTIONS() {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { ids } = body;
+    const { ids, all } = body;
+
+    if (all === true) {
+      const result = await prisma.quote.deleteMany({});
+      return jsonResponse({
+        success: true,
+        message: `Successfully deleted all ${result.count} quotes`,
+        count: result.count,
+      });
+    }
 
     if (!Array.isArray(ids) || ids.length === 0) {
       return jsonResponse({ error: 'Array of quote IDs is required' }, 400);
@@ -26,6 +35,9 @@ export async function POST(req: Request) {
     }
     if (quoteNumbers.length > 0) {
       orConditions.push({ quoteNumber: { in: quoteNumbers } });
+      quoteNumbers.forEach((qn) => {
+        orConditions.push({ quoteNumber: { equals: qn, mode: 'insensitive' } });
+      });
     }
 
     if (orConditions.length === 0) {
