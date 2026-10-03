@@ -264,6 +264,10 @@ model OldPhoneListing {
   // Images
   images       String[] // Array of image URLs
   billImage    String? // Purchase bill image URL
+  boxImage     String? // Box image URL
+  chargerImage String? // Charger image URL
+  accessoriesPhotos Json? // Accessories photos map
+  accessoriesImages String[] @default([]) // Accessories images list
   purchaseDate String?
   gift         String?
   exactPrice   Float?

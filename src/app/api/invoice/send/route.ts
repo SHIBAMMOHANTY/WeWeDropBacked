@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { sendInvoiceWhatsApp } from '@/lib/invoice';
+import { sendInvoiceWhatsApp, sendMobileSaleConfirmationWhatsApp } from '@/lib/invoice';
 
 function jsonResponse(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -47,8 +47,27 @@ export async function POST(req: Request) {
       }
     }
 
-    if (!quoteData || (!quoteData.contactNumber && !quoteData.phone)) {
-      return jsonResponse({ error: 'Valid quote data or quoteId with phone number is required.' }, 400);
+    // If mobile_sale_confirmation template is requested
+    if (
+      body.templateName === 'mobile_sale_confirmation' ||
+      body.template === 'mobile_sale_confirmation' ||
+      body.payload?.template?.name === 'mobile_sale_confirmation'
+    ) {
+      const resSale = await sendMobileSaleConfirmationWhatsApp({
+        phone: quoteData.phone || quoteData.contactNumber,
+        customerName: quoteData.customerName,
+        deviceModel: quoteData.deviceModel || quoteData.model,
+        imei: quoteData.imei || quoteData.imeiNumber,
+        devices: quoteData.devices,
+      });
+
+      return jsonResponse({
+        success: resSale.success,
+        message: resSale.success
+          ? `Sale confirmation WhatsApp dispatched to ${resSale.mobileNumber}.`
+          : `Sale confirmation failed: ${resSale.error || 'Check MSG91 config'}`,
+        whatsapp: resSale,
+      });
     }
 
     const result: any = await sendInvoiceWhatsApp({ ...quoteData, forceDispatch: true });

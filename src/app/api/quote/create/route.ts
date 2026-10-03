@@ -136,6 +136,10 @@ export async function POST(req: Request) {
           });
         }
         if (d.ceirScreenshot) allImages.push(d.ceirScreenshot);
+        const acc = d.accessories || {};
+        if (d.billPhoto || acc.billPhoto) allImages.push(d.billPhoto || acc.billPhoto);
+        if (d.boxPhoto || acc.boxPhoto) allImages.push(d.boxPhoto || acc.boxPhoto);
+        if (d.chargerPhoto || acc.chargerPhoto) allImages.push(d.chargerPhoto || acc.chargerPhoto);
       });
 
       const isAgent = session?.role === 'AGENT' || session?.role === 'DELIVERY_PARTNER' || session?.role === 'DELIVERY_AGENT';
@@ -185,6 +189,10 @@ export async function POST(req: Request) {
           });
         }
         if (d.ceirScreenshot) devImages.push(d.ceirScreenshot);
+        const devAcc = d.accessories || {};
+        if (d.billPhoto || devAcc.billPhoto) devImages.push(d.billPhoto || devAcc.billPhoto);
+        if (d.boxPhoto || devAcc.boxPhoto) devImages.push(d.boxPhoto || devAcc.boxPhoto);
+        if (d.chargerPhoto || devAcc.chargerPhoto) devImages.push(d.chargerPhoto || devAcc.chargerPhoto);
 
         // If no device specific images, fallback to body images
         if (devImages.length === 0 && Array.isArray(body.images)) {

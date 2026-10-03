@@ -356,14 +356,15 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
         const bucket = process.env.CLOUDFLARE_R2_BUCKET || 'crm';
         const publicUrlBase = process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE || 'https://pub-3980550907254b0a90694547699c11dd.r2.dev';
         const cleanTargetId = String(targetId).replace(/[^a-zA-Z0-9_-]/g, '_');
-        const key = `invoices/${Date.now()}_invoice_${cleanTargetId}.pdf`;
+        const fileName = `invoice_${cleanTargetId}.pdf`;
+        const key = `invoices/${Date.now()}_${fileName}`;
         await r2.send(
           new PutObjectCommand({
             Bucket: bucket,
             Key: key,
             Body: pdfBuffer,
             ContentType: 'application/pdf',
-            ContentDisposition: `attachment; filename="${filename}"`,
+            ContentDisposition: `attachment; filename="${fileName}"`,
           })
         );
         invoiceUrl = `${publicUrlBase}/${key}`;
@@ -405,10 +406,22 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   const namespace = process.env.MSG91_NAMESPACE || 'e67365fb_e80f_4118_a3da_6701091246fa';
 
 
-  const orderId = quote.quoteNumber || quote.orderId || (quote.id ? quote.id.slice(-6).toUpperCase() : '') || 'WWP';
-  const customerName = quote.personName || quote.beneficiaryName || quote.customerName || quote.name || '';
-  const totalAmount = `Rs. ${quote.finalPrice || quote.agreedPrice || quote.amount || quote.estimatedPrice || 0}`;
-  const filename = `Used_Mobile_Purchase_Receipt_${orderId}.pdf`;
+  const orderId = quote.quoteNumber || quote.orderId || (quote.id ? String(quote.id) : '');
+  const customerName = (quote.customerName || quote.custName || quote.dealerName || quote.shopName || quote.personName || quote.beneficiaryName || quote.name || '').trim();
+
+  let deviceName = (quote.model || quote.brand || quote.productName || '').trim();
+  if (Array.isArray(quote.devices) && quote.devices.length > 0) {
+    deviceName = quote.devices.map((d: any) => `${d.brand || ''} ${d.model || d.phoneModel || ''}`.trim()).filter(Boolean).join(', ') || deviceName;
+  }
+
+  let imeiNumber = (quote.imeiNumber || quote.imei || '').trim();
+  if (Array.isArray(quote.devices) && quote.devices.length > 0) {
+    const imeis = quote.devices.map((d: any) => d.imei || d.imeiNumber).filter(Boolean).join(', ');
+    if (imeis) imeiNumber = imeis;
+  }
+
+  const rawAmount = quote.finalPrice ?? quote.agreedPrice ?? quote.amount ?? quote.totalAmount ?? quote.estimatedPrice ?? 0;
+  const invoiceAmount = `Rs. ${Number(rawAmount).toLocaleString('en-IN')}`;
 
   const payload = {
     integrated_number: intNumber,
@@ -432,15 +445,27 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
               },
               body_1: {
                 type: 'text',
-                value: customerName || 'Valued Customer',
+                value: String(customerName),
               },
               body_2: {
                 type: 'text',
-                value: orderId,
+                value: String(orderId),
               },
               body_3: {
                 type: 'text',
-                value: totalAmount,
+                value: String(customerName),
+              },
+              body_4: {
+                type: 'text',
+                value: String(deviceName),
+              },
+              body_5: {
+                type: 'text',
+                value: String(imeiNumber),
+              },
+              body_6: {
+                type: 'text',
+                value: String(invoiceAmount),
               },
             },
           }
@@ -494,4 +519,128 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   result.error = dispatchError;
 
   return result;
+}
+
+/**
+ * Send WhatsApp mobile_sale_confirmation via MSG91 Template (Exact 3-variable payload):
+ *
+ * Hi {{1}},
+ *
+ * Your mobile has been successfully sold
+ * to WePick WeDrop.
+ *
+ * Your Device Details:
+ * Phone: {{2}}
+ * IMEI Number: {{3}}
+ *
+ * Thank you for choosing WePick WeDrop.
+ *
+ * Download our app from the Play Store
+ * and enjoy our services
+ */
+export async function sendMobileSaleConfirmationWhatsApp(data: {
+  phone: string;
+  customerName?: string;
+  deviceModel?: string;
+  imei?: string;
+  devices?: any[];
+}) {
+  const authKey = process.env.MSG91_AUTH_KEY;
+  const intNumber = process.env.MSG91_INTEGRATED_NUMBER || '919318411796';
+  const namespace = process.env.MSG91_NAMESPACE || 'e67365fb_e80f_4118_a3da_6701091246fa';
+
+  let cleanPhone = String(data.phone || '').replace(/\D/g, '');
+  if (cleanPhone.length === 10) {
+    cleanPhone = `91${cleanPhone}`;
+  }
+
+  const customerName = (data.customerName || '').trim();
+  let deviceModel = (data.deviceModel || '').trim();
+  let imei = (data.imei || '').trim();
+
+  if (Array.isArray(data.devices) && data.devices.length > 0) {
+    const d0 = data.devices[0];
+    deviceModel = `${d0.brand || ''} ${d0.model || d0.phoneModel || ''}`.trim() || deviceModel;
+    imei = d0.imei || d0.imeiNumber || imei;
+  }
+
+  const payload = {
+    integrated_number: intNumber,
+    content_type: 'template',
+    payload: {
+      messaging_product: 'whatsapp',
+      type: 'template',
+      template: {
+        name: 'mobile_sale_confirmation',
+        language: {
+          code: 'en',
+          policy: 'deterministic',
+        },
+        namespace: namespace,
+        to_and_components: [
+          {
+            to: [cleanPhone],
+            components: {
+              body_1: {
+                type: 'text',
+                value: String(customerName),
+              },
+              body_2: {
+                type: 'text',
+                value: String(deviceModel),
+              },
+              body_3: {
+                type: 'text',
+                value: String(imei),
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
+
+  let msg91Status: number | null = null;
+  let msg91ResponseText: string | null = null;
+  let whatsappDispatched = false;
+  let dispatchError: string | null = null;
+
+  if (authKey && authKey !== 'your_msg91_authkey_here') {
+    try {
+      const res = await fetch(
+        'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
+        {
+          method: 'POST',
+          headers: {
+            authkey: authKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const responseText = await res.text();
+      msg91Status = res.status;
+      msg91ResponseText = responseText;
+
+      if (res.ok || res.status === 200) {
+        whatsappDispatched = true;
+      } else {
+        dispatchError = `MSG91 HTTP ${res.status}: ${responseText}`;
+      }
+    } catch (err: any) {
+      dispatchError = err?.message || String(err);
+    }
+  } else {
+    dispatchError = 'MSG91 Auth Key missing or placeholder in .env';
+  }
+
+  return {
+    success: whatsappDispatched,
+    whatsappDispatched,
+    mobileNumber: cleanPhone,
+    status: msg91Status,
+    response: msg91ResponseText,
+    error: dispatchError,
+  };
 }
