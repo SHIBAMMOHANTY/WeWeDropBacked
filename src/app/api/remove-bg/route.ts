@@ -69,7 +69,8 @@ export async function POST(request: Request) {
 
     // Process AI background removal
     console.log(`✨ [POST /api/remove-bg] Removing background for image (${buffer.length} bytes)...`);
-    const cleanBlob = await removeBackground(buffer);
+    const inputBlob = new Blob([buffer], { type: "image/jpeg" });
+    const cleanBlob = await removeBackground(inputBlob);
     const arrayBuf = await cleanBlob.arrayBuffer();
     const resultBuffer = Buffer.from(arrayBuf);
     const resultBase64 = `data:image/png;base64,${resultBuffer.toString("base64")}`;

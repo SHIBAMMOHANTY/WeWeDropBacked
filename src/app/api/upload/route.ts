@@ -97,7 +97,8 @@ export async function POST(request: Request) {
     if (shouldRemoveBg || isProductOrDeviceFolder) {
       try {
         console.log(`✨ [BgRemoval] Processing AI background removal for ${fileName}...`);
-        const cleanBlob = await removeBackground(buffer);
+        const inputBlob = new Blob([buffer], { type: fileType || "image/jpeg" });
+        const cleanBlob = await removeBackground(inputBlob);
         const arrayBuf = await cleanBlob.arrayBuffer();
         buffer = Buffer.from(arrayBuf);
         fileType = "image/png";
