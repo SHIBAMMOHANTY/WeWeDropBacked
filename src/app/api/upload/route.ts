@@ -1,4 +1,5 @@
-﻿import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { uploadToCloudinary } from "@/lib/upload";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,7 +20,7 @@ function getR2Client() {
   const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
 
   if (!endpoint || !accessKeyId || !secretAccessKey) {
-    throw new Error("Cloudflare R2 environment variables are missing");
+    return null;
   }
 
   return new S3Client({
@@ -62,31 +63,84 @@ export async function POST(request: Request) {
       if (name) fileName = name;
       if (type) fileType = type;
 
-      const base64Data = rawImage.replace(/^data:image\/\w+;base64,/, "");
-      buffer = Buffer.from(base64Data, "base64");
+      let base64Clean = String(rawImage).trim();
+      if (base64Clean.includes("base64,")) {
+        const parts = base64Clean.split("base64,");
+        base64Clean = parts[1];
+        const mimeMatch = parts[0].match(/data:([^;]+)/);
+        if (mimeMatch && mimeMatch[1]) {
+          fileType = mimeMatch[1];
+          if (!name) {
+            const ext = fileType.split("/")[1] || "jpg";
+            fileName = `upload_${Date.now()}.${ext}`;
+          }
+        }
+      }
+
+      base64Clean = base64Clean.replace(/[\r\n\s]+/g, "");
+      buffer = Buffer.from(base64Clean, "base64");
     }
 
-    const bucket = process.env.CLOUDFLARE_R2_BUCKET || "crm";
-    const publicUrlBase = process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE || "https://pub-3980550907254b0a90694547699c11dd.r2.dev";
+    let fileUrl: string | null = null;
 
-    const cleanFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const key = `${folder}/${Date.now()}_${cleanFileName}`;
-
+    // Strategy 1: Attempt Cloudflare R2 Upload
     const s3 = getR2Client();
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: buffer,
-        ContentType: fileType,
-      })
+    if (s3) {
+      try {
+        const bucket = process.env.CLOUDFLARE_R2_BUCKET || "crm";
+        const publicUrlBase =
+          process.env.CLOUDFLARE_R2_PUBLIC_URL_BASE ||
+          "https://pub-3980550907254b0a90694547699c11dd.r2.dev";
+
+        const cleanFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `${folder}/${Date.now()}_${cleanFileName}`;
+
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: buffer,
+            ContentType: fileType,
+          })
+        );
+
+        fileUrl = `${publicUrlBase}/${key}`;
+      } catch (r2Err: any) {
+        console.warn("⚠️ Cloudflare R2 upload failed, attempting Cloudinary fallback:", r2Err?.message || r2Err);
+      }
+    }
+
+    // Strategy 2: Fallback to Cloudinary if R2 failed or not configured
+    if (!fileUrl) {
+      try {
+        const cldRes = await uploadToCloudinary(buffer, { folder });
+        if (cldRes?.secure_url) {
+          fileUrl = cldRes.secure_url;
+        }
+      } catch (cldErr: any) {
+        console.warn("⚠️ Cloudinary fallback failed:", cldErr?.message || cldErr);
+      }
+    }
+
+    if (!fileUrl) {
+      throw new Error("All upload providers (R2 and Cloudinary) failed to store image");
+    }
+
+    return Response.json(
+      {
+        success: true,
+        url: fileUrl,
+        fileUrl: fileUrl,
+        imageUrl: fileUrl,
+        secure_url: fileUrl,
+      },
+      { headers: corsHeaders }
     );
-
-    const fileUrl = `${publicUrlBase}/${key}`;
-
-    return Response.json({ success: true, url: fileUrl, fileUrl }, { headers: corsHeaders });
   } catch (error: any) {
-    console.error("Cloudflare R2 Upload error:", error);
-    return Response.json({ success: false, error: error?.message || "Upload failed" }, { status: 500, headers: corsHeaders });
+    console.error("❌ Upload error:", error);
+    return Response.json(
+      { success: false, error: error?.message || "Upload failed" },
+      { status: 500, headers: corsHeaders }
+    );
   }
 }

@@ -85,8 +85,15 @@ export async function GET(req: NextRequest) {
       const breakdown = q.breakdown || {};
       const refurbData = q.refurbishData || {};
 
-      const initialPrice = q.finalPrice || q.estimatedPrice || breakdown.totalAmount || 0;
       const subDevices = breakdown.devices || conditionAnswers.devices || [];
+      const initialPrice = Number(
+        refurbData.initialBuyingPrice ||
+        subDevices[0]?.buyingPrice ||
+        breakdown.totalAmount ||
+        q.estimatedPrice ||
+        q.finalPrice ||
+        0
+      );
 
       // Determine refurb status accurately (case-insensitive check)
       const statusUpper = String(q.status || '').toUpperCase();
@@ -106,6 +113,47 @@ export async function GET(req: NextRequest) {
       } else if (refurbData.refurbStatus) {
         refurbStatus = refurbData.refurbStatus;
       }
+
+      // Collect known KYC ID photos to exclude them from device catalog images
+      const kycImages = new Set([
+        q.idProofFront,
+        q.idProofBack,
+        conditionAnswers.idProofFront,
+        conditionAnswers.idProofBack,
+        subDevices[0]?.customer?.idFront,
+        subDevices[0]?.customer?.idBack,
+        subDevices[0]?.idProofFront,
+        subDevices[0]?.idProofBack,
+      ].filter(Boolean));
+
+      const rawDeviceImages = [
+        ...(Array.isArray(q.images) ? q.images : (q.images ? [q.images] : [])),
+        ...(q.image ? [q.image] : []),
+        ...(q.deviceImage ? [q.deviceImage] : []),
+        ...(refurbData?.photos8to10 ? Object.values(refurbData.photos8to10) : []),
+        ...(subDevices[0]?.photos6Sides ? Object.values(subDevices[0].photos6Sides) : []),
+        ...(Array.isArray(refurbData?.images) ? refurbData.images : (refurbData?.images ? [refurbData.images] : [])),
+      ].filter((img: any) => typeof img === 'string' && img.trim().length > 0 && !kycImages.has(img));
+
+      const uniqueImages = Array.from(new Set(rawDeviceImages));
+
+      // Clean redundant flat customer fields from subDevices
+      const cleanedSubDevices = subDevices.map((sd: any) => {
+        if (!sd || typeof sd !== 'object') return sd;
+        const { customerName, customerPhone, customerAddress, idProofType, idProofNumber, idProofFront, idProofBack, ...rest } = sd;
+        return {
+          ...rest,
+          customer: sd.customer || {
+            name: customerName,
+            phone: customerPhone,
+            address: customerAddress,
+            idType: idProofType,
+            idNumber: idProofNumber,
+            idFront: idProofFront,
+            idBack: idProofBack,
+          },
+        };
+      });
 
       const item: any = {
         id: q.id,
@@ -131,22 +179,9 @@ export async function GET(req: NextRequest) {
         accessories: subDevices[0]?.accessories || { bill: false, box: false, charger: false },
         lockStatus: subDevices[0]?.lockStatus || 'Unlocked',
         photos6Sides: subDevices[0]?.photos6Sides || {},
-        images: (() => {
-          const raw = [
-            ...(Array.isArray(q.images) ? q.images : (q.images ? [q.images] : [])),
-            ...(q.image ? [q.image] : []),
-            ...(q.deviceImage ? [q.deviceImage] : []),
-            ...(Array.isArray(conditionAnswers?.photos) ? conditionAnswers.photos : (conditionAnswers?.photos ? [conditionAnswers.photos] : [])),
-            ...(Array.isArray(conditionAnswers?.images) ? conditionAnswers.images : (conditionAnswers?.images ? [conditionAnswers.images] : [])),
-            ...(refurbData?.photos8to10 ? Object.values(refurbData.photos8to10).filter(Boolean) : []),
-            ...(Array.isArray(refurbData?.images) ? refurbData.images : (refurbData?.images ? [refurbData.images] : [])),
-            ...(subDevices[0]?.images ? (Array.isArray(subDevices[0].images) ? subDevices[0].images : [subDevices[0].images]) : []),
-            ...(subDevices[0]?.image ? [subDevices[0].image] : [])
-          ].filter(Boolean);
-          return Array.from(new Set(raw));
-        })(),
+        images: uniqueImages,
         totalDevices: breakdown.totalDevices || subDevices.length || 1,
-        subDevices: subDevices,
+        subDevices: cleanedSubDevices,
       };
 
       if (!isRefurbRole) {

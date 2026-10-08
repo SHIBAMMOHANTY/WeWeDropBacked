@@ -171,12 +171,10 @@ export async function POST(req: Request) {
         const devContactNumber = devCustomer.phone || d.customerPhone || contactNumber;
         const devCustomerAddress = devCustomer.address || d.customerAddress || customerAddress;
 
-        // Collect device specific images
+        // Collect device specific images (EXCLUDING KYC ID cards)
         const devImages: string[] = [];
         const devIdFront = d.idProofFront || devCustomer.idFront || body.idProofFront;
         const devIdBack = d.idProofBack || devCustomer.idBack || body.idProofBack;
-        if (devIdFront) devImages.push(devIdFront);
-        if (devIdBack) devImages.push(devIdBack);
 
         if (d.photos6Sides) {
           Object.values(d.photos6Sides).forEach((val) => {
@@ -194,10 +192,16 @@ export async function POST(req: Request) {
         if (d.boxPhoto || devAcc.boxPhoto) devImages.push(d.boxPhoto || devAcc.boxPhoto);
         if (d.chargerPhoto || devAcc.chargerPhoto) devImages.push(d.chargerPhoto || devAcc.chargerPhoto);
 
-        // If no device specific images, fallback to body images
+        // If no device specific images, fallback to body images (filtered to exclude ID proofs)
         if (devImages.length === 0 && Array.isArray(body.images)) {
-          devImages.push(...body.images);
+          body.images.forEach((img: any) => {
+            if (typeof img === 'string' && img !== devIdFront && img !== devIdBack) {
+              devImages.push(img);
+            }
+          });
         }
+
+        const uniqueDevImages = Array.from(new Set(devImages.filter(Boolean)));
 
         const randomSuffix = Math.floor(1000 + Math.random() * 9000);
         const devQuoteNumber = devicesList.length > 1
@@ -228,7 +232,7 @@ export async function POST(req: Request) {
             isDead: isDeadPhone,
             isPhoneDead: isDeadPhone,
             diagnosisCompleted: isDeadPhone ? true : false,
-            images: devImages,
+            images: uniqueDevImages,
             customerName: devCustomerName,
             customerAddress: devCustomerAddress,
             customerPincode: body.customerPincode || '',

@@ -98,17 +98,28 @@ export async function GET(req: NextRequest) {
         refurbishData: rd,
         saleDetails: rd.saleDetails || null,
         images: (() => {
-        const raw = [
-          ...(Array.isArray(q.images) ? q.images : (q.images ? [q.images] : [])),
-          ...(q.image ? [q.image] : []),
-          ...(q.deviceImage ? [q.deviceImage] : []),
-          ...(Array.isArray(q.conditionAnswers?.photos) ? q.conditionAnswers.photos : (q.conditionAnswers?.photos ? [q.conditionAnswers.photos] : [])),
-          ...(Array.isArray(q.conditionAnswers?.images) ? q.conditionAnswers.images : (q.conditionAnswers?.images ? [q.conditionAnswers.images] : [])),
-          ...(rd?.photos8to10 ? Object.values(rd.photos8to10).filter(Boolean) : []),
-          ...(Array.isArray(rd?.images) ? rd.images : (rd?.images ? [rd.images] : [])),
-        ].filter(Boolean);
-        return Array.from(new Set(raw));
-      })(),
+          const kycImages = new Set([
+            q.idProofFront,
+            q.idProofBack,
+            conditionAnswers.idProofFront,
+            conditionAnswers.idProofBack,
+            subDevices[0]?.customer?.idFront,
+            subDevices[0]?.customer?.idBack,
+            subDevices[0]?.idProofFront,
+            subDevices[0]?.idProofBack,
+          ].filter(Boolean));
+
+          const raw = [
+            ...(Array.isArray(q.images) ? q.images : (q.images ? [q.images] : [])),
+            ...(q.image ? [q.image] : []),
+            ...(q.deviceImage ? [q.deviceImage] : []),
+            ...(rd?.photos8to10 ? Object.values(rd.photos8to10) : []),
+            ...(subDevices[0]?.photos6Sides ? Object.values(subDevices[0].photos6Sides) : []),
+            ...(Array.isArray(rd?.images) ? rd.images : (rd?.images ? [rd.images] : [])),
+          ].filter((img: any) => typeof img === 'string' && img.trim().length > 0 && !kycImages.has(img));
+
+          return Array.from(new Set(raw));
+        })(),
         createdAt: q.createdAt,
         updatedAt: q.updatedAt,
       };

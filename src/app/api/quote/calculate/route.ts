@@ -160,8 +160,8 @@ export async function POST(req: Request) {
     }
 
     return jsonResponse({
-      success: true,
       ...calculation,
+      success: true,
       priceSource: calculation.priceSource,
       quote: quote || undefined,
     });
