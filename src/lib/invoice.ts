@@ -407,7 +407,8 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
 
 
   const orderId = quote.quoteNumber || quote.orderId || (quote.id ? String(quote.id) : '');
-  const customerName = (quote.customerName || quote.custName || quote.dealerName || quote.shopName || quote.personName || quote.beneficiaryName || quote.name || '').trim();
+  const greetingRecipientName = (quote.templateData?.var1 || quote.ownerName || quote.dealerName || quote.shopName || quote.customerName || 'Valued Partner').trim();
+  const customerSellerName = (quote.templateData?.var3 || quote.customerName || quote.custName || quote.sellerName || quote.breakdown?.customerName || quote.conditionAnswers?.customerName || 'Customer').trim();
 
   let deviceName = (quote.model || quote.brand || quote.productName || '').trim();
   if (Array.isArray(quote.devices) && quote.devices.length > 0) {
@@ -447,27 +448,27 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
               },
               body_1: {
                 type: 'text',
-                value: String(customerName || 'Valued Customer'),
+                value: String(quote.templateData?.var1 || greetingRecipientName || 'Valued Partner'),
               },
               body_2: {
                 type: 'text',
-                value: String(orderId || 'Order'),
+                value: String(quote.templateData?.var2 || orderId || 'Order'),
               },
               body_3: {
                 type: 'text',
-                value: String(customerName || 'Valued Customer'),
+                value: String(quote.templateData?.var3 || customerSellerName || 'Customer'),
               },
               body_4: {
                 type: 'text',
-                value: String(deviceName || 'Smartphone'),
+                value: String(quote.templateData?.var4 || deviceName || 'Smartphone'),
               },
               body_5: {
                 type: 'text',
-                value: String(imeiNumber || 'N/A'),
+                value: String(quote.templateData?.var5 || imeiNumber || 'N/A'),
               },
               body_6: {
                 type: 'text',
-                value: String(invoiceAmount || 'Rs. 0'),
+                value: String(quote.templateData?.var6 || invoiceAmount || 'Rs. 0'),
               },
             },
           }
