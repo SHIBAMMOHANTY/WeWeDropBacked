@@ -1,6 +1,5 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { uploadToCloudinary } from "@/lib/upload";
-import { removeBackground } from "@imgly/background-removal-node";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,7 +40,6 @@ export async function POST(request: Request) {
     let fileName = `upload_${Date.now()}.jpg`;
     let fileType = "image/jpeg";
     let folder = "verifications";
-    let shouldRemoveBg = false;
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
@@ -53,10 +51,9 @@ export async function POST(request: Request) {
       fileName = file.name || fileName;
       fileType = file.type || fileType;
       folder = (formData.get("folder") as string) || folder;
-      const removeBgFlag = formData.get("removeBg") as string;
-      shouldRemoveBg = removeBgFlag === "true" || removeBgFlag === "1";
+    } else {
       const body = await request.json();
-      const { image, base64, name, type, folder: bodyFolder, removeBg } = body;
+      const { image, base64, name, type, folder: bodyFolder } = body;
       const rawImage = image || base64;
       if (!rawImage) {
         return Response.json({ error: "No image or base64 data provided" }, { status: 400, headers: corsHeaders });
@@ -79,9 +76,6 @@ export async function POST(request: Request) {
       if (bodyFolder) folder = bodyFolder;
       if (name) fileName = name;
       if (type) fileType = type;
-      if (typeof removeBg === "boolean") {
-        shouldRemoveBg = removeBg;
-      }
 
       let base64Clean = String(rawImage).trim();
       if (base64Clean.includes("base64,")) {
@@ -99,21 +93,6 @@ export async function POST(request: Request) {
 
       base64Clean = base64Clean.replace(/[\r\n\s]+/g, "");
       buffer = Buffer.from(base64Clean, "base64");
-    }
-
-    if (shouldRemoveBg) {
-      try {
-        console.log(`✨ [BgRemoval] Processing AI background removal for ${fileName}...`);
-        const inputBlob = new Blob([buffer], { type: fileType || "image/jpeg" });
-        const cleanBlob = await removeBackground(inputBlob);
-        const arrayBuf = await cleanBlob.arrayBuffer();
-        buffer = Buffer.from(arrayBuf);
-        fileType = "image/png";
-        fileName = fileName.replace(/\.[^/.]+$/, "") + ".png";
-        console.log(`✅ [BgRemoval] Background successfully removed for ${fileName}`);
-      } catch (bgErr: any) {
-        console.warn("⚠️ [BgRemoval] Background removal skipped (using original buffer):", bgErr?.message || bgErr);
-      }
     }
 
     let fileUrl: string | null = null;

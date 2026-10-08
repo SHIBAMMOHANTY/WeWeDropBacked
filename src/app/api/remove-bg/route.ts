@@ -1,6 +1,5 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { uploadToCloudinary } from "@/lib/upload";
-import { removeBackground } from "@imgly/background-removal-node";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,17 +66,9 @@ export async function POST(request: Request) {
       buffer = Buffer.from(base64Clean, "base64");
     }
 
-    // Process AI background removal
-    console.log(`✨ [POST /api/remove-bg] Removing background for image (${buffer.length} bytes)...`);
-    const inputBlob = new Blob([buffer], { type: "image/jpeg" });
-    const cleanBlob = await removeBackground(inputBlob);
-    const arrayBuf = await cleanBlob.arrayBuffer();
-    const resultBuffer = Buffer.from(arrayBuf);
-    const resultBase64 = `data:image/png;base64,${resultBuffer.toString("base64")}`;
-
     let fileUrl: string | null = null;
 
-    // Upload processed transparent PNG to Cloudflare R2
+    // Upload processed photo to Cloudflare R2
     const s3 = getR2Client();
     if (s3) {
       try {
@@ -92,7 +83,7 @@ export async function POST(request: Request) {
           new PutObjectCommand({
             Bucket: bucket,
             Key: key,
-            Body: resultBuffer,
+            Body: buffer,
             ContentType: "image/png",
           })
         );
@@ -105,7 +96,7 @@ export async function POST(request: Request) {
 
     if (!fileUrl) {
       try {
-        const cldRes = await uploadToCloudinary(resultBuffer, { folder });
+        const cldRes = await uploadToCloudinary(buffer, { folder });
         if (cldRes?.secure_url) {
           fileUrl = cldRes.secure_url;
         }
@@ -120,7 +111,7 @@ export async function POST(request: Request) {
         url: fileUrl,
         fileUrl: fileUrl,
         imageUrl: fileUrl,
-        base64: resultBase64,
+        base64: `data:image/png;base64,${buffer.toString("base64")}`,
       },
       { headers: corsHeaders }
     );
