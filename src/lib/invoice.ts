@@ -432,7 +432,8 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
       template: {
         name: 'invoice_sent',
         language: {
-          code: 'en'
+          code: 'en',
+          policy: 'deterministic',
         },
         namespace: namespace,
         to_and_components: [
@@ -442,30 +443,31 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
               header_1: {
                 type: 'document',
                 value: invoiceUrl,
+                filename: `Purchase_Receipt_${String(orderId).replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
               },
               body_1: {
                 type: 'text',
-                value: String(customerName),
+                value: String(customerName || 'Valued Customer'),
               },
               body_2: {
                 type: 'text',
-                value: String(orderId),
+                value: String(orderId || 'Order'),
               },
               body_3: {
                 type: 'text',
-                value: String(customerName),
+                value: String(customerName || 'Valued Customer'),
               },
               body_4: {
                 type: 'text',
-                value: String(deviceName),
+                value: String(deviceName || 'Smartphone'),
               },
               body_5: {
                 type: 'text',
-                value: String(imeiNumber),
+                value: String(imeiNumber || 'N/A'),
               },
               body_6: {
                 type: 'text',
-                value: String(invoiceAmount),
+                value: String(invoiceAmount || 'Rs. 0'),
               },
             },
           }
@@ -478,6 +480,12 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
   let msg91ResponseText: string | null = null;
   let whatsappDispatched = false;
   let dispatchError: string | null = null;
+
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('📤 [MSG91 WhatsApp Dispatch: invoice_sent]');
+  console.log(`📱 Recipient: ${mobileNumber}`);
+  console.log('📦 Outbound Request Payload:\n', JSON.stringify(payload, null, 2));
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   if (authKey && authKey !== 'your_msg91_authkey_here') {
     try {
@@ -497,6 +505,11 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
       msg91Status = res.status;
       msg91ResponseText = responseText;
 
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📥 [MSG91 WhatsApp Response: invoice_sent] HTTP Status: ${res.status}`);
+      console.log('📄 Response Body:\n', responseText);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       if (res.ok || res.status === 200) {
         whatsappDispatched = true;
         recentInvoiceDispatches.set(dispatchKey, { timestamp: Date.now(), url: invoiceUrl });
@@ -504,10 +517,12 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
         dispatchError = `MSG91 HTTP ${res.status}: ${responseText}`;
       }
     } catch (err: any) {
+      console.error('❌ [MSG91 WhatsApp Network Error]:', err);
       dispatchError = err?.message || String(err);
     }
   } else {
     dispatchError = 'MSG91 Auth Key missing or placeholder in .env';
+    console.warn('⚠️ [MSG91 Warning]:', dispatchError);
   }
 
   const result: any = new String(invoiceUrl);
@@ -554,9 +569,9 @@ export async function sendMobileSaleConfirmationWhatsApp(data: {
     cleanPhone = `91${cleanPhone}`;
   }
 
-  const customerName = (data.customerName || '').trim();
-  let deviceModel = (data.deviceModel || '').trim();
-  let imei = (data.imei || '').trim();
+  const customerName = (data.customerName || '').trim() || 'Valued Customer';
+  let deviceModel = (data.deviceModel || '').trim() || 'Handset';
+  let imei = (data.imei || '').trim() || 'N/A';
 
   if (Array.isArray(data.devices) && data.devices.length > 0) {
     const d0 = data.devices[0];
@@ -605,6 +620,12 @@ export async function sendMobileSaleConfirmationWhatsApp(data: {
   let whatsappDispatched = false;
   let dispatchError: string | null = null;
 
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('📤 [MSG91 WhatsApp Dispatch: mobile_sale_confirmation]');
+  console.log(`📱 Recipient: ${cleanPhone}`);
+  console.log('📦 Outbound Request Payload:\n', JSON.stringify(payload, null, 2));
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
   if (authKey && authKey !== 'your_msg91_authkey_here') {
     try {
       const res = await fetch(
@@ -623,16 +644,23 @@ export async function sendMobileSaleConfirmationWhatsApp(data: {
       msg91Status = res.status;
       msg91ResponseText = responseText;
 
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📥 [MSG91 WhatsApp Response: mobile_sale_confirmation] HTTP Status: ${res.status}`);
+      console.log('📄 Response Body:\n', responseText);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       if (res.ok || res.status === 200) {
         whatsappDispatched = true;
       } else {
         dispatchError = `MSG91 HTTP ${res.status}: ${responseText}`;
       }
     } catch (err: any) {
+      console.error('❌ [MSG91 WhatsApp Network Error]:', err);
       dispatchError = err?.message || String(err);
     }
   } else {
     dispatchError = 'MSG91 Auth Key missing or placeholder in .env';
+    console.warn('⚠️ [MSG91 Warning]:', dispatchError);
   }
 
   return {

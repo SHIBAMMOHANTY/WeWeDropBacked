@@ -203,16 +203,23 @@ export async function POST(req: Request) {
 
         const uniqueDevImages = Array.from(new Set(devImages.filter(Boolean)));
 
+        const isDealer =
+          body.customerType === 'dealer' ||
+          (Boolean(body.shopName) && body.shopName.trim() !== 'N/A' && body.shopName.trim().length > 0);
+        const prefix = isDealer ? 'DLR' : 'CUST';
+
         const randomSuffix = Math.floor(1000 + Math.random() * 9000);
         const devQuoteNumber = devicesList.length > 1
-          ? `DLR-${timestampStr}-${randomSuffix}-${i + 1}`
-          : `DLR-${timestampStr}-${randomSuffix}`;
+          ? `${prefix}-${timestampStr}-${randomSuffix}-${i + 1}`
+          : `${prefix}-${timestampStr}-${randomSuffix}`;
 
         const isDeadPhone = Boolean(d.isPhoneDead || d.isDead || body.isPhoneDead || body.isDead);
 
-        const devDescription = shopName !== 'N/A'
-          ? `Shop: ${shopName} | Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`
-          : `Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`;
+        const devDescription = isDealer
+          ? (shopName !== 'N/A'
+              ? `Shop: ${shopName} | Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`
+              : `Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`)
+          : `Customer Sell Intake [${devBrand} ${devModel}]${agentSnippet}`;
 
         const quote = await prisma.quote.create({
           data: {
@@ -223,7 +230,7 @@ export async function POST(req: Request) {
             model: devModel,
             storage: devStorage,
             ram: devRam,
-            condition: 'dealer_inspected',
+            condition: isDealer ? 'dealer_inspected' : 'customer_inspected',
             estimatedPrice: devPrice,
             finalPrice: devPrice,
             status: body.status
@@ -243,9 +250,9 @@ export async function POST(req: Request) {
             payoutMethod: body.payoutMethod || body.paymentMode || 'CASH',
             description: devDescription,
             breakdown: {
-              customerType: 'dealer',
-              shopName,
-              dealerName: customerName,
+              customerType: isDealer ? 'dealer' : 'customer',
+              shopName: isDealer ? shopName : 'N/A',
+              dealerName: isDealer ? customerName : null,
               agentName: assignedAgentName || null,
               agentId: assignedAgentId || null,
               batchReference: batchRef,
@@ -256,9 +263,9 @@ export async function POST(req: Request) {
               devices: [d],
             } as any,
             conditionAnswers: {
-              customerType: 'dealer',
-              shopName,
-              dealerName: customerName,
+              customerType: isDealer ? 'dealer' : 'customer',
+              shopName: isDealer ? shopName : 'N/A',
+              dealerName: isDealer ? customerName : null,
               agentName: assignedAgentName || null,
               agentId: assignedAgentId || null,
               idProofType: d.idProofType || devCustomer.idType || body.idProofType || 'Aadhaar Card',
