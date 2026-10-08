@@ -203,27 +203,33 @@ export async function GET(req: NextRequest) {
 
     // Filtering logic:
     // 1. If requester is a REFURBISH_TEAM member (technician), ONLY show devices assigned to their specific userId!
-    let filteredList = formattedDevices;
-    if (isRefurbRole && userId) {
-      filteredList = filteredList.filter((d: any) => d.assignedMemberId === userId);
+    let memberFilteredDevices = formattedDevices;
+    if (isRefurbRole) {
+      if (userId) {
+        memberFilteredDevices = formattedDevices.filter((d: any) => d.assignedMemberId === userId);
+      } else {
+        memberFilteredDevices = [];
+      }
     } else if (assignedMemberFilter) {
       if (assignedMemberFilter === 'UNASSIGNED') {
-        filteredList = filteredList.filter((d: any) => !d.assignedMemberId);
+        memberFilteredDevices = formattedDevices.filter((d: any) => !d.assignedMemberId);
       } else if (assignedMemberFilter !== 'ALL') {
-        filteredList = filteredList.filter((d: any) => d.assignedMemberId === assignedMemberFilter);
+        memberFilteredDevices = formattedDevices.filter((d: any) => d.assignedMemberId === assignedMemberFilter);
       }
     }
 
+    // Calculate stats strictly on memberFilteredDevices (so if not assigned to this member, stats are 0!)
+    const stats = {
+      totalReceived: memberFilteredDevices.length,
+      pendingInspection: memberFilteredDevices.filter((d: any) => d.refurbStatus === 'PENDING_INSPECTION').length,
+      inRepair: memberFilteredDevices.filter((d: any) => d.refurbStatus === 'IN_REPAIR').length,
+      readyForSale: memberFilteredDevices.filter((d: any) => d.refurbStatus === 'READY_FOR_SALE').length,
+    };
+
+    let filteredList = memberFilteredDevices;
     if (statusFilter !== 'ALL') {
       filteredList = filteredList.filter((d: any) => d.refurbStatus === statusFilter);
     }
-
-    const stats = {
-      totalReceived: formattedDevices.length,
-      pendingInspection: formattedDevices.filter((d: any) => d.refurbStatus === 'PENDING_INSPECTION').length,
-      inRepair: formattedDevices.filter((d: any) => d.refurbStatus === 'IN_REPAIR').length,
-      readyForSale: formattedDevices.filter((d: any) => d.refurbStatus === 'READY_FOR_SALE').length,
-    };
 
     const paginated = filteredList.slice(skip, skip + limit);
 
