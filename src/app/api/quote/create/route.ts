@@ -320,7 +320,7 @@ export async function POST(req: Request) {
 
     const timestampStr = Date.now().toString().slice(-6);
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const quoteNumber = `QB-${timestampStr}-${randomSuffix}`;
+    const quoteNumber = `CUST-${timestampStr}-${randomSuffix}`;
     const imeiVal = parsedData.imeiNumber || parsedData.imei;
 
     const quote = await prisma.quote.create({

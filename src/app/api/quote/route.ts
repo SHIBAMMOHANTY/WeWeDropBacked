@@ -82,7 +82,7 @@ export async function POST(req: Request) {
     // 4. Generate Quote Number
     const timestampStr = Date.now().toString().slice(-6);
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const quoteNumber = `QE-${timestampStr}-${randomSuffix}`;
+    const quoteNumber = `CUST-${timestampStr}-${randomSuffix}`;
 
     // 5. Save to DB
     const isBooking = !!customerName;
