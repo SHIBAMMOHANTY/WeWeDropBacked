@@ -30,8 +30,8 @@ export async function POST(req: Request) {
     const intNumber = process.env.MSG91_INTEGRATED_NUMBER || '919318411796';
     const namespace = process.env.MSG91_NAMESPACE || 'e67365fb_e80f_4118_a3da_6701091246fa';
 
-    // 1. Mobile Sale Confirmation Template
-    if (templateName === 'mobile_sale_confirmation') {
+    // 1. Sale Confirmation Template (sale_confirmation / mobile_sale_confirmation)
+    if (templateName === 'sale_confirmation' || templateName === 'mobile_sale_confirmation') {
       const phone = body.phone || body.contactNumber || body.recipient || body.payload?.template?.to_and_components?.[0]?.to?.[0] || '';
       const customerName = body.customerName || body.templateData?.var1 || body.payload?.template?.to_and_components?.[0]?.components?.body_1?.value || 'Valued Customer';
       const deviceModel = body.deviceModel || body.model || body.templateData?.var2 || body.payload?.template?.to_and_components?.[0]?.components?.body_2?.value || 'Handset';
@@ -42,6 +42,7 @@ export async function POST(req: Request) {
         customerName,
         deviceModel,
         imei,
+        templateName: templateName || 'sale_confirmation',
         devices: body.devices,
       });
 

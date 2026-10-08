@@ -73,17 +73,18 @@ export async function POST(req: Request) {
 
     console.log(`📤 [POST /api/invoice/send] Processing request for template: "${templateName || 'invoice_sent'}", phone: ${quoteData.phone || quoteData.contactNumber}`);
 
-    // 2. If mobile_sale_confirmation template is requested
-    if (templateName === 'mobile_sale_confirmation') {
+    // 2. If sale_confirmation or mobile_sale_confirmation template is requested
+    if (templateName === 'sale_confirmation' || templateName === 'mobile_sale_confirmation') {
       const resSale = await sendMobileSaleConfirmationWhatsApp({
         phone: quoteData.phone || quoteData.contactNumber || body.recipient,
         customerName: quoteData.customerName || body.templateData?.var1 || 'Valued Customer',
         deviceModel: quoteData.deviceModel || quoteData.model || body.templateData?.var2 || 'Handset',
         imei: quoteData.imei || quoteData.imeiNumber || body.templateData?.var3 || 'N/A',
+        templateName: templateName || 'sale_confirmation',
         devices: quoteData.devices,
       });
 
-      console.log('📲 [MSG91 mobile_sale_confirmation Result]:', resSale);
+      console.log(`📲 [MSG91 ${templateName} Result]:`, resSale);
 
       return jsonResponse({
         success: resSale.success,

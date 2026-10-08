@@ -33,6 +33,42 @@ function getR2Client() {
   });
 }
 
+async function processAiBackgroundRemoval(imageBuffer: Buffer): Promise<Buffer> {
+  try {
+    const hfEndpoints = [
+      "https://router.huggingface.co/hf-inference/models/briaai/RMBG-1.4",
+      "https://api-inference.huggingface.co/models/briaai/RMBG-1.4",
+    ];
+
+    for (const endpoint of hfEndpoints) {
+      try {
+        const hfRes = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+          },
+          body: imageBuffer,
+        });
+
+        if (hfRes.ok) {
+          const contentType = hfRes.headers.get("content-type") || "";
+          if (contentType.includes("image") || contentType.includes("octet-stream")) {
+            const arrayBuf = await hfRes.arrayBuffer();
+            if (arrayBuf.byteLength > 1000) {
+              console.log(`✨ [AI RemoveBG: RMBG-1.4] Background removed successfully (${arrayBuf.byteLength} bytes)`);
+              return Buffer.from(arrayBuf);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+  } catch (err: any) {
+    console.warn("⚠️ [AI RemoveBG] Error in RMBG-1.4 API:", err?.message);
+  }
+
+  return imageBuffer;
+}
+
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") || "";
@@ -40,6 +76,7 @@ export async function POST(request: Request) {
     let fileName = `upload_${Date.now()}.jpg`;
     let fileType = "image/jpeg";
     let folder = "verifications";
+    let shouldRemoveBg = false;
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
@@ -51,9 +88,11 @@ export async function POST(request: Request) {
       fileName = file.name || fileName;
       fileType = file.type || fileType;
       folder = (formData.get("folder") as string) || folder;
+      const removeBgFlag = formData.get("removeBg") as string;
+      shouldRemoveBg = removeBgFlag === "true" || removeBgFlag === "1" || folder === "device_photos";
     } else {
       const body = await request.json();
-      const { image, base64, name, type, folder: bodyFolder } = body;
+      const { image, base64, name, type, folder: bodyFolder, removeBg } = body;
       const rawImage = image || base64;
       if (!rawImage) {
         return Response.json({ error: "No image or base64 data provided" }, { status: 400, headers: corsHeaders });
@@ -76,6 +115,7 @@ export async function POST(request: Request) {
       if (bodyFolder) folder = bodyFolder;
       if (name) fileName = name;
       if (type) fileType = type;
+      shouldRemoveBg = typeof removeBg === "boolean" ? removeBg : folder === "device_photos";
 
       let base64Clean = String(rawImage).trim();
       if (base64Clean.includes("base64,")) {
@@ -93,6 +133,12 @@ export async function POST(request: Request) {
 
       base64Clean = base64Clean.replace(/[\r\n\s]+/g, "");
       buffer = Buffer.from(base64Clean, "base64");
+    }
+
+    if (shouldRemoveBg) {
+      buffer = await processAiBackgroundRemoval(buffer);
+      fileType = "image/png";
+      fileName = fileName.replace(/\.[^/.]+$/, "") + ".png";
     }
 
     let fileUrl: string | null = null;

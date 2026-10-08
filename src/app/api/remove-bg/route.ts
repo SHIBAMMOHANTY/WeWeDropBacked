@@ -33,6 +33,43 @@ function getR2Client() {
   });
 }
 
+async function processAiBackgroundRemoval(imageBuffer: Buffer): Promise<Buffer> {
+  // Strategy 1: HuggingFace BRIA RMBG-1.4 Inference API (Free, high accuracy AI segmentation)
+  try {
+    const hfEndpoints = [
+      "https://router.huggingface.co/hf-inference/models/briaai/RMBG-1.4",
+      "https://api-inference.huggingface.co/models/briaai/RMBG-1.4",
+    ];
+
+    for (const endpoint of hfEndpoints) {
+      try {
+        const hfRes = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+          },
+          body: imageBuffer,
+        });
+
+        if (hfRes.ok) {
+          const contentType = hfRes.headers.get("content-type") || "";
+          if (contentType.includes("image") || contentType.includes("octet-stream")) {
+            const arrayBuf = await hfRes.arrayBuffer();
+            if (arrayBuf.byteLength > 1000) {
+              console.log(`✨ [AI RemoveBG: RMBG-1.4] Background removed successfully (${arrayBuf.byteLength} bytes)`);
+              return Buffer.from(arrayBuf);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+  } catch (err: any) {
+    console.warn("⚠️ [AI RemoveBG] Error in RMBG-1.4 API:", err?.message);
+  }
+
+  return imageBuffer;
+}
+
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") || "";
@@ -66,6 +103,9 @@ export async function POST(request: Request) {
       buffer = Buffer.from(base64Clean, "base64");
     }
 
+    // Process AI background removal
+    const processedBuffer = await processAiBackgroundRemoval(buffer);
+
     let fileUrl: string | null = null;
 
     // Upload processed photo to Cloudflare R2
@@ -83,7 +123,7 @@ export async function POST(request: Request) {
           new PutObjectCommand({
             Bucket: bucket,
             Key: key,
-            Body: buffer,
+            Body: processedBuffer,
             ContentType: "image/png",
           })
         );
@@ -96,7 +136,7 @@ export async function POST(request: Request) {
 
     if (!fileUrl) {
       try {
-        const cldRes = await uploadToCloudinary(buffer, { folder });
+        const cldRes = await uploadToCloudinary(processedBuffer, { folder });
         if (cldRes?.secure_url) {
           fileUrl = cldRes.secure_url;
         }
@@ -111,7 +151,7 @@ export async function POST(request: Request) {
         url: fileUrl,
         fileUrl: fileUrl,
         imageUrl: fileUrl,
-        base64: `data:image/png;base64,${buffer.toString("base64")}`,
+        base64: `data:image/png;base64,${processedBuffer.toString("base64")}`,
       },
       { headers: corsHeaders }
     );

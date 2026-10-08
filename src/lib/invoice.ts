@@ -577,8 +577,7 @@ export async function sendMobileSaleConfirmationWhatsApp(data: {
   if (Array.isArray(data.devices) && data.devices.length > 0) {
     const d0 = data.devices[0];
     deviceModel = `${d0.brand || ''} ${d0.model || d0.phoneModel || ''}`.trim() || deviceModel;
-    imei = d0.imei || d0.imeiNumber || imei;
-  }
+  const templateName = data.templateName || data.template || 'sale_confirmation';
 
   const payload = {
     integrated_number: intNumber,
@@ -587,7 +586,7 @@ export async function sendMobileSaleConfirmationWhatsApp(data: {
       messaging_product: 'whatsapp',
       type: 'template',
       template: {
-        name: 'mobile_sale_confirmation',
+        name: templateName,
         language: {
           code: 'en',
           policy: 'deterministic',
@@ -622,7 +621,7 @@ export async function sendMobileSaleConfirmationWhatsApp(data: {
   let dispatchError: string | null = null;
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📤 [MSG91 WhatsApp Dispatch: mobile_sale_confirmation]');
+  console.log(`📤 [MSG91 WhatsApp Dispatch: ${templateName}]`);
   console.log(`📱 Recipient: ${cleanPhone}`);
   console.log('📦 Outbound Request Payload:\n', JSON.stringify(payload, null, 2));
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
