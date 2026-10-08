@@ -55,12 +55,25 @@ export async function POST(request: Request) {
       folder = (formData.get("folder") as string) || folder;
       const removeBgFlag = formData.get("removeBg") as string;
       shouldRemoveBg = removeBgFlag === "true" || removeBgFlag === "1";
-    } else {
       const body = await request.json();
       const { image, base64, name, type, folder: bodyFolder, removeBg } = body;
       const rawImage = image || base64;
       if (!rawImage) {
         return Response.json({ error: "No image or base64 data provided" }, { status: 400, headers: corsHeaders });
+      }
+
+      // If image is already a remote URL, return it directly
+      if (typeof rawImage === "string" && (rawImage.startsWith("http://") || rawImage.startsWith("https://"))) {
+        return Response.json(
+          {
+            success: true,
+            url: rawImage,
+            fileUrl: rawImage,
+            imageUrl: rawImage,
+            secure_url: rawImage,
+          },
+          { headers: corsHeaders }
+        );
       }
 
       if (bodyFolder) folder = bodyFolder;
@@ -88,13 +101,7 @@ export async function POST(request: Request) {
       buffer = Buffer.from(base64Clean, "base64");
     }
 
-    // Auto-enable background removal for product / device photos unless explicitly turned off
-    const isProductOrDeviceFolder =
-      folder.includes("device") ||
-      folder.includes("product") ||
-      folder.includes("refurb");
-
-    if (shouldRemoveBg || isProductOrDeviceFolder) {
+    if (shouldRemoveBg) {
       try {
         console.log(`✨ [BgRemoval] Processing AI background removal for ${fileName}...`);
         const inputBlob = new Blob([buffer], { type: fileType || "image/jpeg" });
