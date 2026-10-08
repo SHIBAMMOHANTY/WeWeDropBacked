@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { jsonResponse, getAuthSession, buildPagination } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
 import { PricingService } from '@/services/pricing.service';
+import { sendMobileSaleConfirmationWhatsApp } from '@/lib/invoice';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -292,6 +293,34 @@ export async function POST(req: Request) {
       }
 
       const primaryQuote = createdQuotes[0];
+
+      // Automatic WhatsApp Customer Confirmation Dispatch (Background / Async)
+      try {
+        for (let i = 0; i < createdQuotes.length; i++) {
+          const q = createdQuotes[i];
+          const d = devicesList[i] || {};
+          const devCust = d.customer || {};
+          const targetCustPhone = devCust.phone || d.customerPhone || body.customerPhone || q.contactNumber;
+          const targetCustName = devCust.name || d.customerName || body.ownerName || body.customerName || q.customerName || 'Valued Customer';
+          const targetModel = `${q.brand || ''} ${q.model || ''}`.trim() || 'Handset';
+          const targetImei = q.imei || q.imeiNumber || 'N/A';
+
+          if (targetCustPhone) {
+            sendMobileSaleConfirmationWhatsApp({
+              phone: targetCustPhone,
+              customerName: targetCustName,
+              deviceModel: targetModel,
+              imei: targetImei,
+            }).then((res) => {
+              console.log(`✅ [Backend Auto-Dispatch] mobile_sale_confirmation sent to customer ${targetCustPhone}:`, res.success);
+            }).catch((err) => {
+              console.warn('⚠️ [Backend Auto-Dispatch] mobile_sale_confirmation error:', err?.message);
+            });
+          }
+        }
+      } catch (autoErr) {
+        console.warn('⚠️ [Backend Auto-Dispatch] Error in dispatch loop:', autoErr);
+      }
 
       return jsonResponse({
         success: true,
