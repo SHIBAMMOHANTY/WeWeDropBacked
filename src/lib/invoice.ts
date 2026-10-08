@@ -557,9 +557,13 @@ export async function sendInvoiceWhatsApp(quote: any): Promise<string> {
 export async function sendMobileSaleConfirmationWhatsApp(data: {
   phone: string;
   customerName?: string;
+  ownerName?: string;
   deviceModel?: string;
   imei?: string;
   devices?: any[];
+  templateName?: string;
+  template?: string;
+  templateData?: any;
 }) {
   const authKey = process.env.MSG91_AUTH_KEY;
   const intNumber = process.env.MSG91_INTEGRATED_NUMBER || '919318411796';
@@ -570,13 +574,14 @@ export async function sendMobileSaleConfirmationWhatsApp(data: {
     cleanPhone = `91${cleanPhone}`;
   }
 
-  const customerName = (data.customerName || '').trim() || 'Valued Customer';
+  let customerName = (data.ownerName || data.customerName || '').trim() || 'Valued Customer';
   let deviceModel = (data.deviceModel || '').trim() || 'Handset';
   let imei = (data.imei || '').trim() || 'N/A';
 
   if (Array.isArray(data.devices) && data.devices.length > 0) {
     const d0 = data.devices[0];
     deviceModel = `${d0.brand || ''} ${d0.model || d0.phoneModel || ''}`.trim() || deviceModel;
+  }
   const templateName = data.templateName || data.template || 'sale_confirmation';
 
   const payload = {

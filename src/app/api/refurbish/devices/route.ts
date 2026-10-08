@@ -19,6 +19,8 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const roleHeader = req.headers.get('x-role') || req.headers.get('x-user-role') || url.searchParams.get('role') || '';
+    const userId = req.headers.get('x-user-id') || url.searchParams.get('userId') || url.searchParams.get('memberId') || '';
+    const assignedMemberFilter = url.searchParams.get('assignedMemberId')?.trim() || '';
     const isRefurbRole = roleHeader.toUpperCase().includes('REFURBISH');
     const search = url.searchParams.get('search')?.trim() || '';
     const statusFilter = url.searchParams.get('status')?.trim() || 'ALL'; // PENDING_INSPECTION, IN_REPAIR, READY_FOR_SALE, ALL
@@ -171,6 +173,12 @@ export async function GET(req: NextRequest) {
         intakeStatus: q.status,
         refurbStatus,
         refurbishData: q.refurbishData || null,
+        // Refurbish technician assignment details
+        assignedMemberId: refurbData.assignedMemberId || null,
+        assignedMemberName: refurbData.assignedMemberName || null,
+        assignedMemberPhone: refurbData.assignedMemberPhone || null,
+        assignedMemberAt: refurbData.assignedMemberAt || null,
+        // Selling team assignment details
         assignedSellerId: refurbData.assignedSellerId || null,
         assignedSellerName: refurbData.assignedSellerName || (refurbData.assignedTeam === 'SELLING_TEAM' ? 'Selling Team' : null),
         assignedSellingGroup: refurbData.assignedSellingGroup || null,
@@ -193,9 +201,21 @@ export async function GET(req: NextRequest) {
       return item;
     });
 
+    // Filtering logic:
+    // 1. If requester is a REFURBISH_TEAM member (technician), ONLY show devices assigned to their specific userId!
     let filteredList = formattedDevices;
+    if (isRefurbRole && userId) {
+      filteredList = filteredList.filter((d: any) => d.assignedMemberId === userId);
+    } else if (assignedMemberFilter) {
+      if (assignedMemberFilter === 'UNASSIGNED') {
+        filteredList = filteredList.filter((d: any) => !d.assignedMemberId);
+      } else if (assignedMemberFilter !== 'ALL') {
+        filteredList = filteredList.filter((d: any) => d.assignedMemberId === assignedMemberFilter);
+      }
+    }
+
     if (statusFilter !== 'ALL') {
-      filteredList = formattedDevices.filter((d: any) => d.refurbStatus === statusFilter);
+      filteredList = filteredList.filter((d: any) => d.refurbStatus === statusFilter);
     }
 
     const stats = {

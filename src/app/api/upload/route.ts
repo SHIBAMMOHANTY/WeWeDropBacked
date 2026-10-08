@@ -47,7 +47,7 @@ async function processAiBackgroundRemoval(imageBuffer: Buffer): Promise<Buffer> 
           headers: {
             "Content-Type": "application/octet-stream",
           },
-          body: imageBuffer,
+          body: new Uint8Array(imageBuffer),
         });
 
         if (hfRes.ok) {
