@@ -22,11 +22,7 @@ export async function OPTIONS() {
 // GET: List active Refurbish Team members (technicians)
 export async function GET(req: NextRequest) {
   try {
-    const members = await (prisma as any).user.findMany({
-      where: {
-        role: { in: ['REFURBISH_TEAM', 'REFURBISH'] },
-        isActive: { not: false },
-      },
+    const allUsers = await (prisma as any).user.findMany({
       select: {
         id: true,
         username: true,
@@ -35,21 +31,29 @@ export async function GET(req: NextRequest) {
         role: true,
         isActive: true,
       },
-      orderBy: { username: 'asc' },
+      orderBy: { createdAt: 'desc' },
     });
 
-    const formattedMembers = members.map((m: any) => {
-      const staffId = generateRefurbStaffId(m.role, m.id);
+    const refurbMembers = allUsers.filter((u: any) => {
+      const roleUpper = String(u.role || '').toUpperCase();
+      const isActive = u.isActive !== false && (u as any).status !== 'DISABLED' && (u as any).status !== 'INACTIVE';
+      return isActive && (roleUpper === 'REFURBISH_TEAM' || roleUpper.includes('REFURBISH'));
+    });
+
+    const formattedMembers = refurbMembers.map((m: any) => {
+      const staffId = generateRefurbStaffId(m.role || 'REFURBISH_TEAM', m.id);
       const displayName = m.username || (m.phone ? `Technician (${m.phone.slice(-4)})` : 'Refurbish Tech');
       return {
         id: m.id,
+        _id: m.id,
         staffId,
         name: `${displayName} (${staffId})`,
         rawName: displayName,
-        phone: m.phone,
-        email: m.email,
-        role: m.role,
-        isActive: m.isActive !== false,
+        username: displayName,
+        phone: m.phone || '',
+        email: m.email || '',
+        role: m.role || 'REFURBISH_TEAM',
+        isActive: true,
       };
     });
 
@@ -57,6 +61,8 @@ export async function GET(req: NextRequest) {
       {
         success: true,
         members: formattedMembers,
+        users: formattedMembers,
+        count: formattedMembers.length,
       },
       { headers: corsHeaders }
     );
