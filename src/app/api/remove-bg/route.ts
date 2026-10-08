@@ -136,7 +136,7 @@ export async function POST(request: Request) {
 
     if (!fileUrl) {
       try {
-        const cldRes = await uploadToCloudinary(processedBuffer, { folder });
+        const cldRes = await uploadToCloudinary(processedBuffer, { folder, background_removal: true });
         if (cldRes?.secure_url) {
           fileUrl = cldRes.secure_url;
         }
