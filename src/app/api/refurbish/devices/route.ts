@@ -128,12 +128,21 @@ export async function GET(req: NextRequest) {
         subDevices[0]?.idProofBack,
       ].filter(Boolean));
 
+      const rawAccessories = subDevices[0]?.accessories || { bill: false, box: false, charger: false };
+      const accessoryPhotos = {
+        bill: subDevices[0]?.accessories?.billPhoto || subDevices[0]?.billPhoto || q.billPhoto || q.billImage || null,
+        box: subDevices[0]?.accessories?.boxPhoto || subDevices[0]?.boxPhoto || q.boxPhoto || q.boxImage || null,
+        charger: subDevices[0]?.accessories?.chargerPhoto || subDevices[0]?.chargerPhoto || q.chargerPhoto || q.chargerImage || null,
+        ceirScreenshot: subDevices[0]?.ceirScreenshot || q.ceirScreenshot || null,
+      };
+
       const rawDeviceImages = [
         ...(Array.isArray(q.images) ? q.images : (q.images ? [q.images] : [])),
         ...(q.image ? [q.image] : []),
         ...(q.deviceImage ? [q.deviceImage] : []),
         ...(refurbData?.photos8to10 ? Object.values(refurbData.photos8to10) : []),
         ...(subDevices[0]?.photos6Sides ? Object.values(subDevices[0].photos6Sides) : []),
+        ...Object.values(accessoryPhotos),
         ...(Array.isArray(refurbData?.images) ? refurbData.images : (refurbData?.images ? [refurbData.images] : [])),
       ].filter((img: any) => typeof img === 'string' && img.trim().length > 0 && !kycImages.has(img));
 
@@ -184,9 +193,18 @@ export async function GET(req: NextRequest) {
         assignedSellingGroup: refurbData.assignedSellingGroup || null,
         assignedAt: refurbData.assignedAt || null,
         defects: subDevices[0]?.defects || (q.screenCracked ? ['Screen Cracked'] : []) || [],
-        accessories: subDevices[0]?.accessories || { bill: false, box: false, charger: false },
+        accessories: {
+          bill: Boolean(rawAccessories.bill || accessoryPhotos.bill),
+          box: Boolean(rawAccessories.box || accessoryPhotos.box),
+          charger: Boolean(rawAccessories.charger || accessoryPhotos.charger),
+          billPhoto: accessoryPhotos.bill,
+          boxPhoto: accessoryPhotos.box,
+          chargerPhoto: accessoryPhotos.charger,
+        },
+        accessoryPhotos,
         lockStatus: subDevices[0]?.lockStatus || 'Unlocked',
         photos6Sides: subDevices[0]?.photos6Sides || {},
+        photos8to10: refurbData?.photos8to10 || {},
         images: uniqueImages,
         totalDevices: breakdown.totalDevices || subDevices.length || 1,
         subDevices: cleanedSubDevices,
@@ -206,7 +224,12 @@ export async function GET(req: NextRequest) {
     let memberFilteredDevices = formattedDevices;
     if (isRefurbRole) {
       if (userId) {
-        memberFilteredDevices = formattedDevices.filter((d: any) => d.assignedMemberId === userId);
+        const uidStr = String(userId).trim();
+        memberFilteredDevices = formattedDevices.filter((d: any) => {
+          const mId = d.assignedMemberId ? String(d.assignedMemberId).trim() : '';
+          const tId = d.refurbishData?.technicianId ? String(d.refurbishData.technicianId).trim() : '';
+          return mId === uidStr || tId === uidStr;
+        });
       } else {
         memberFilteredDevices = [];
       }

@@ -66,6 +66,30 @@ export async function GET(
       // Non-blocking fallback
     }
 
+    const rawAccessories = subDevices[0]?.accessories || { bill: false, box: false, charger: false };
+    const accessoryPhotos = {
+      bill: subDevices[0]?.accessories?.billPhoto || subDevices[0]?.billPhoto || quote.billPhoto || quote.billImage || null,
+      box: subDevices[0]?.accessories?.boxPhoto || subDevices[0]?.boxPhoto || quote.boxPhoto || quote.boxImage || null,
+      charger: subDevices[0]?.accessories?.chargerPhoto || subDevices[0]?.chargerPhoto || quote.chargerPhoto || quote.chargerImage || null,
+      ceirScreenshot: subDevices[0]?.ceirScreenshot || quote.ceirScreenshot || null,
+    };
+
+    const refurbData = quote.refurbishData || {};
+    const photos6Sides = subDevices[0]?.photos6Sides || {};
+    const photos8to10 = refurbData.photos8to10 || {};
+
+    const rawDeviceImages = [
+      ...(Array.isArray(quote.images) ? quote.images : (quote.images ? [quote.images] : [])),
+      ...(quote.image ? [quote.image] : []),
+      ...(quote.deviceImage ? [quote.deviceImage] : []),
+      ...Object.values(photos8to10),
+      ...Object.values(photos6Sides),
+      ...Object.values(accessoryPhotos),
+      ...(Array.isArray(refurbData.images) ? refurbData.images : (refurbData.images ? [refurbData.images] : [])),
+    ].filter((img: any) => typeof img === 'string' && img.trim().length > 0);
+
+    const uniqueImages = Array.from(new Set(rawDeviceImages));
+
     const deviceData: any = {
       id: quote.id,
       quoteNumber: quote.quoteNumber,
@@ -77,9 +101,19 @@ export async function GET(
       initialBuyingPrice: quote.finalPrice || quote.estimatedPrice || breakdown.totalAmount || 0,
       pickupDate: quote.pickupDate || quote.createdAt,
       defects: subDevices[0]?.defects || [],
-      accessories: subDevices[0]?.accessories || { bill: false, box: false, charger: false },
+      accessories: {
+        bill: Boolean(rawAccessories.bill || accessoryPhotos.bill),
+        box: Boolean(rawAccessories.box || accessoryPhotos.box),
+        charger: Boolean(rawAccessories.charger || accessoryPhotos.charger),
+        billPhoto: accessoryPhotos.bill,
+        boxPhoto: accessoryPhotos.box,
+        chargerPhoto: accessoryPhotos.charger,
+      },
+      accessoryPhotos,
       lockStatus: subDevices[0]?.lockStatus || 'Unlocked',
-      photos6Sides: subDevices[0]?.photos6Sides || {},
+      photos6Sides,
+      photos8to10,
+      images: uniqueImages,
       intakeImages: quote.images || [],
       refurbishData: quote.refurbishData || null,
       refurbStatus: quote.refurbishData?.refurbStatus || 'PENDING_INSPECTION',
