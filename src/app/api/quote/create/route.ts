@@ -252,6 +252,7 @@ export async function POST(req: Request) {
             breakdown: {
               customerType: isDealer ? 'dealer' : 'customer',
               shopName: isDealer ? shopName : 'N/A',
+              ownerName: (body.ownerName?.trim() || (isDealer ? (body.dealerName?.trim() || shopName) : (devCustomerName || customerName)) || '').trim(),
               dealerName: isDealer ? (body.dealerName?.trim() || shopName || 'Registered Dealer') : null,
               dealerPhone: isDealer ? (body.dealerPhone || contactNumber) : null,
               customerName: devCustomerName || customerName,
@@ -269,6 +270,7 @@ export async function POST(req: Request) {
             conditionAnswers: {
               customerType: isDealer ? 'dealer' : 'customer',
               shopName: isDealer ? shopName : 'N/A',
+              ownerName: (body.ownerName?.trim() || (isDealer ? (body.dealerName?.trim() || shopName) : (devCustomerName || customerName)) || '').trim(),
               dealerName: isDealer ? (body.dealerName?.trim() || shopName || 'Registered Dealer') : null,
               dealerPhone: isDealer ? (body.dealerPhone || contactNumber) : null,
               customerName: devCustomerName || customerName,
