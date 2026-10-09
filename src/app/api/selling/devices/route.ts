@@ -26,11 +26,41 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(url.searchParams.get('limit') || '100', 10);
     const skip = (page - 1) * limit;
 
+    const validStatuses = [
+      'ready_for_sale',
+      'READY_FOR_SALE',
+      'listed_on_app',
+      'LISTED_ON_APP',
+      'sold',
+      'SOLD',
+      'SOLD_IN_MARKET',
+      'LISTED_ON_STORE',
+      'completed',
+      'COMPLETED',
+      'pickup_successful',
+      'PICKUP_SUCCESSFUL',
+      'pickup_completed',
+      'PICKUP_COMPLETED',
+      'payment_completed',
+      'PAYMENT_COMPLETED',
+      'paid',
+      'PAID',
+      'picked_up',
+      'PICKED_UP',
+      'in_repair',
+      'IN_REPAIR',
+      'repairing',
+      'REPAIRING',
+      'refurbishing',
+      'REFURBISHING',
+      'refurbished',
+      'REFURBISHED'
+    ];
+
     const where: any = {
-      OR: [
-        { status: { in: ['ready_for_sale', 'READY_FOR_SALE', 'listed_on_app', 'LISTED_ON_APP', 'sold', 'SOLD', 'SOLD_IN_MARKET', 'LISTED_ON_STORE', 'completed', 'COMPLETED'] } },
-        { refurbishData: { isSet: true } },
-      ],
+      status: {
+        in: validStatuses,
+      },
     };
 
     if (search) {
