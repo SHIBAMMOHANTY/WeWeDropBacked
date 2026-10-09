@@ -122,18 +122,33 @@ export async function POST(
     }
 
     // 2. Build complete Refurbishment Data payload
+    // 2. Build complete Refurbishment Data payload
     const existingRefurbData = quote.refurbishData || {};
     const resolvedSellerName = sellerName || (assignType === 'GROUP' ? sellingGroup : 'Selling Team');
 
+    let resolvedRefurbStatus = 'READY_FOR_SALE';
+    let resolvedQuoteStatus = 'ready_for_sale';
+
+    if (refurbStatus === 'SOLD_IN_MARKET' || refurbStatus === 'SOLD' || body.saleDetails || existingRefurbData.saleDetails) {
+      resolvedRefurbStatus = 'SOLD_IN_MARKET';
+      resolvedQuoteStatus = 'sold';
+    } else if (refurbStatus === 'LISTED_ON_STORE' || body.isListedOnApp || existingRefurbData.isListedOnApp) {
+      resolvedRefurbStatus = 'LISTED_ON_STORE';
+      resolvedQuoteStatus = 'listed_on_app';
+    } else if (isUnderRepair) {
+      resolvedRefurbStatus = 'IN_REPAIR';
+      resolvedQuoteStatus = 'in_repair';
+    }
+
     const refurbPayload = {
       ...existingRefurbData,
-      refurbStatus: isUnderRepair ? 'IN_REPAIR' : 'READY_FOR_SALE',
+      refurbStatus: resolvedRefurbStatus,
       assignedTeam: isUnderRepair ? 'REFURBISH_TEAM' : 'SELLING_TEAM',
       assignedSellerId: isUnderRepair ? null : (sellerId || existingRefurbData.assignedSellerId || null),
       assignedSellerName: isUnderRepair ? null : resolvedSellerName,
       assignedSellingGroup: isUnderRepair ? null : (sellingGroup || existingRefurbData.assignedSellingGroup || 'All Selling Team'),
       assignType: isUnderRepair ? null : assignType,
-      assignedAt: isUnderRepair ? null : new Date().toISOString(),
+      assignedAt: isUnderRepair ? null : (existingRefurbData.assignedAt || new Date().toISOString()),
       repairedProblems: repairedProblems.length > 0 ? repairedProblems : (existingRefurbData.repairedProblems || []),
       replacedParts: replacedParts.length > 0 ? replacedParts : (existingRefurbData.replacedParts || []),
       photos8to10: Object.keys(photos8to10).length > 0 ? { ...(existingRefurbData.photos8to10 || {}), ...photos8to10 } : (existingRefurbData.photos8to10 || {}),
@@ -154,7 +169,7 @@ export async function POST(
       where: { id },
       data: {
         refurbishData: refurbPayload,
-        status: isUnderRepair ? 'in_repair' : 'ready_for_sale',
+        status: resolvedQuoteStatus,
         ...(finalSellingPrice ? { finalPrice: parseFloat(String(finalSellingPrice)) } : {}),
         updatedAt: new Date(),
       },
