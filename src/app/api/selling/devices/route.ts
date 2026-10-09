@@ -168,29 +168,65 @@ export async function GET(req: NextRequest) {
 
     let filtered = formattedDevices;
 
-    if (statusTab !== 'ALL') {
-      filtered = filtered.filter((d: any) => d.sellStatus === statusTab);
+    if (sellerId && sellerId !== 'ALL') {
+      const sId = sellerId.trim();
+      const sName = (url.searchParams.get('sellerName') || '').trim().toLowerCase();
+      const sStaff = (url.searchParams.get('staffId') || '').trim();
+      const sGroup = (url.searchParams.get('sellingGroup') || '').trim().toLowerCase();
+
+      filtered = filtered.filter((d: any) => {
+        const assignedId = d.assignedSellerId;
+        const assignedName = (d.assignedSellerName || '').trim().toLowerCase();
+        const assignedGroup = (d.assignedSellingGroup || '').trim().toLowerCase();
+
+        // 1. Direct match on Seller ID or Staff ID
+        if (assignedId && (assignedId === sId || (sStaff && assignedId === sStaff))) {
+          return true;
+        }
+
+        // 2. Direct match on Seller Name
+        if (
+          assignedName &&
+          assignedName !== 'selling team' &&
+          assignedName !== 'general pool' &&
+          assignedName !== 'all selling team'
+        ) {
+          return sName && (assignedName === sName || assignedName === sId.toLowerCase());
+        }
+
+        // 3. Match on Selling Group
+        if (
+          assignedGroup &&
+          assignedGroup !== 'all selling team' &&
+          assignedGroup !== 'main selling team'
+        ) {
+          return sGroup && assignedGroup === sGroup;
+        }
+
+        // 4. General unassigned pool
+        return true;
+      });
     }
 
-    if (sellerId && sellerId !== 'ALL') {
-      filtered = filtered.filter((d: any) => d.assignedSellerId === sellerId);
+    if (statusTab !== 'ALL') {
+      filtered = filtered.filter((d: any) => d.sellStatus === statusTab);
     }
 
     if (channel && channel !== 'ALL') {
       filtered = filtered.filter((d: any) => d.sellingChannel === channel);
     }
 
-    // Stats
-    const totalValuation = formattedDevices.reduce((sum: number, d: any) => sum + (d.sellingPrice || 0), 0);
-    const totalProfit = formattedDevices
+    // Stats based on filtered assigned scope
+    const totalValuation = filtered.reduce((sum: number, d: any) => sum + (d.sellingPrice || 0), 0);
+    const totalProfit = filtered
       .filter((d: any) => d.sellStatus === 'SOLD')
       .reduce((sum: number, d: any) => sum + ((d.saleDetails?.soldPrice || d.sellingPrice) - d.totalCost), 0);
 
     const stats = {
-      totalForSale: formattedDevices.length,
-      readyToPublish: formattedDevices.filter((d: any) => d.sellStatus === 'READY').length,
-      listedOnApp: formattedDevices.filter((d: any) => d.sellStatus === 'LISTED').length,
-      soldInMarket: formattedDevices.filter((d: any) => d.sellStatus === 'SOLD').length,
+      totalForSale: filtered.length,
+      readyToPublish: filtered.filter((d: any) => d.sellStatus === 'READY').length,
+      listedOnApp: filtered.filter((d: any) => d.sellStatus === 'LISTED').length,
+      soldInMarket: filtered.filter((d: any) => d.sellStatus === 'SOLD').length,
       totalValuation: Math.round(totalValuation),
       totalProfit: Math.round(totalProfit),
     };
