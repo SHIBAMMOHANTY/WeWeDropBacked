@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
       username, 
       name, 
       email,
+      role = 'DELIVERY_AGENT',
+      avatar,
+      profileImage,
       // Location & Address
       address,
       city,
@@ -37,7 +40,12 @@ export async function POST(req: NextRequest) {
       dlNumber,
       dlPhoto,
       otherDoc,
-      isActive, // optional override by admin
+      // Bank Details (Optional)
+      bankAccountNumber,
+      bankIfsc,
+      bankName,
+      accountHolderName,
+      isActive = true, // default active when admin registers
     } = body;
 
     if (!phone || !password) {
@@ -49,10 +57,30 @@ export async function POST(req: NextRequest) {
 
     const cleanPhone = String(phone).trim();
     const cleanPassword = String(password).trim();
-    const agentName = username || name || `Agent-${cleanPhone.slice(-4)}`;
+    const agentName = username || name || `Staff-${cleanPhone.slice(-4)}`;
+    const effectiveAvatar = avatar || profileImage || '';
 
-    // Default isActive to false (Disabled / Pending Approval) unless specified by admin
-    const defaultIsActive = typeof isActive === "boolean" ? isActive : false;
+    const normalizedRole = ['REFURBISH_TEAM', 'SELLING_TEAM', 'DELIVERY_AGENT', 'BUSINESS', 'USER', 'ADMIN'].includes(String(role).toUpperCase())
+      ? (String(role).toUpperCase() as any)
+      : 'DELIVERY_AGENT';
+
+    // Check mandatory fields for DELIVERY_AGENT
+    if (normalizedRole === 'DELIVERY_AGENT') {
+      if (!dlNumber && !dlPhoto) {
+        return NextResponse.json(
+          { success: false, error: "Driving License (DL Number and Photo) is mandatory for Delivery Agent" },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+      if (!effectiveAvatar) {
+        return NextResponse.json(
+          { success: false, error: "Profile Image is mandatory for Delivery Agent" },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+    }
+
+    const defaultIsActive = typeof isActive === "boolean" ? isActive : true;
 
     // Check if user with this phone already exists
     const existingUser = await prisma.user.findUnique({
@@ -62,28 +90,23 @@ export async function POST(req: NextRequest) {
     const hashedPassword = await bcrypt.hash(cleanPassword, 10);
 
     if (existingUser) {
-      if (existingUser.role === "DELIVERY_AGENT") {
+      if (existingUser.role === "SUPER_ADMIN") {
         return NextResponse.json(
-          { success: false, error: "A delivery agent account with this phone number already exists" },
-          { status: 400, headers: corsHeaders }
-        );
-      }
-      if (existingUser.role === "SUPER_ADMIN" || existingUser.role === "BUSINESS") {
-        return NextResponse.json(
-          { success: false, error: "This phone number is registered with an Admin or Business account and cannot be converted." },
+          { success: false, error: "This phone number is registered with a Super Admin account and cannot be modified." },
           { status: 400, headers: corsHeaders }
         );
       }
 
-      // If user exists as regular customer/user, convert/enable role to DELIVERY_AGENT with agent credentials
+      // Update existing user with staff role & credentials
       const updatedAgent = await prisma.user.update({
         where: { id: existingUser.id },
         data: {
-          role: ['REFURBISH_TEAM', 'SELLING_TEAM', 'DELIVERY_AGENT', 'BUSINESS', 'USER'].includes((body.role || '').toUpperCase()) ? (body.role.toUpperCase() as any) : 'DELIVERY_AGENT',
+          role: normalizedRole,
           password: hashedPassword,
           username: agentName,
           email: email || existingUser.email,
-          isActive: defaultIsActive, // Default Disabled until admin activates
+          avatar: effectiveAvatar || existingUser.avatar,
+          isActive: defaultIsActive,
           address: address || existingUser.address,
           city: city || existingUser.city,
           state: state || existingUser.state,
@@ -95,6 +118,10 @@ export async function POST(req: NextRequest) {
           dlNumber: dlNumber || existingUser.dlNumber,
           dlPhoto: dlPhoto || existingUser.dlPhoto,
           otherDoc: otherDoc || existingUser.otherDoc,
+          bankAccountNumber: bankAccountNumber || (existingUser as any).bankAccountNumber,
+          bankIfsc: bankIfsc || (existingUser as any).bankIfsc,
+          bankName: bankName || (existingUser as any).bankName,
+          accountHolderName: accountHolderName || (existingUser as any).accountHolderName,
         },
       });
 
@@ -103,35 +130,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          message: "Account registered as Delivery Agent (Pending Admin Activation)",
+          message: `Account updated and assigned role ${normalizedRole}`,
           agent: agentData,
         },
         { status: 200, headers: corsHeaders }
       );
     }
 
-    // Create new Agent user if phone does not exist in DB (Default Disabled: false)
+    // Create new user in DB
     const agent = await prisma.user.create({
       data: {
         phone: cleanPhone,
         password: hashedPassword,
         username: agentName,
         email: email || null,
-        role: ['REFURBISH_TEAM', 'SELLING_TEAM', 'DELIVERY_AGENT', 'BUSINESS', 'USER'].includes((body.role || '').toUpperCase()) ? (body.role.toUpperCase() as any) : 'DELIVERY_AGENT',
-        isActive: defaultIsActive, // Default Disabled until admin activates
-        // Location & Address
+        role: normalizedRole,
+        avatar: effectiveAvatar || '',
+        isActive: defaultIsActive,
         address: address || null,
         city: city || null,
         state: state || null,
         pincode: pincode || null,
         serviceArea: serviceArea || null,
-        // Verification Docs
         aadharNumber: aadharNumber || null,
         aadharFront: aadharFront || null,
         aadharBack: aadharBack || null,
         dlNumber: dlNumber || null,
         dlPhoto: dlPhoto || null,
         otherDoc: otherDoc || null,
+        bankAccountNumber: bankAccountNumber || null,
+        bankIfsc: bankIfsc || null,
+        bankName: bankName || null,
+        accountHolderName: accountHolderName || null,
       },
     });
 
@@ -140,15 +170,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: "Delivery Agent registered successfully (Pending Admin Activation)",
+        message: `Registered successfully as ${normalizedRole}`,
         agent: agentData,
       },
       { status: 201, headers: corsHeaders }
     );
   } catch (error: any) {
-    console.error("Agent Register Error:", error);
+    console.error("Staff Registration error:", error);
     return NextResponse.json(
-      { success: false, error: error?.message || "Failed to register delivery agent" },
+      { success: false, error: error?.message || "Failed to register staff" },
       { status: 500, headers: corsHeaders }
     );
   }

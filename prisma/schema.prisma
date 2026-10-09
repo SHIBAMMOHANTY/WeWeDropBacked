@@ -107,6 +107,10 @@ model User {
   dlNumber     String?
   dlPhoto      String?
   otherDoc     String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  bankName          String?
+  accountHolderName String?
 
   numericId Int?
 }
