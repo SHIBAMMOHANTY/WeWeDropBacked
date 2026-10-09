@@ -208,9 +208,9 @@ export async function verifyOTP(phoneOrEmail: string, otp: string): Promise<bool
 
   if (!record) return false;
 
-  // One-time use — delete safely without throwing record not found exception
+  // One-time use — delete all OTP cache entries for this phone/email safely
   try {
-    await prisma.oTP.deleteMany({ where: { id: record.id } });
+    await prisma.oTP.deleteMany({ where: { email: key } });
   } catch (e) {
     // Ignore deletion errors
   }
