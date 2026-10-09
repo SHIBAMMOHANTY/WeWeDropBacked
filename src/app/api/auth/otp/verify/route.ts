@@ -17,12 +17,25 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
-  const { phone, otp } = await req.json();
+  const body = await req.json();
+  const { phone, otp, checkOnly } = body;
+
+  if (!phone || !otp) {
+    return NextResponse.json({ error: "Phone number and OTP are required" }, { status: 400, headers: corsHeaders });
+  }
 
   // 1️⃣ Verify OTP (must await — it's async!)
   const valid = await verifyOTP(phone, otp);
   if (!valid) {
-    return NextResponse.json({ error: "Invalid OTP" }, { status: 401, headers: corsHeaders });
+    return NextResponse.json({ error: "Invalid OTP or expired" }, { status: 401, headers: corsHeaders });
+  }
+
+  // If checkOnly is true (used for Registration verification before account is created)
+  if (checkOnly) {
+    return NextResponse.json(
+      { success: true, verified: true, message: "Mobile number verified successfully via OTP" },
+      { headers: corsHeaders }
+    );
   }
 
   // Generate search variants for robust matching
@@ -96,34 +109,35 @@ export async function POST(req: Request) {
       id: userFound.id,
       phone: userFound.phone,
       role: userFound.role,
-      name: userFound.username || null,   // real name if set, null if not yet filled
+      name: userFound.username || null,
       username: userFound.username || null,
+      avatar: userFound.avatar || '',
       email: userFound.email || null,
-      avatar: userFound.avatar || "",
-      membership: userFound.membership || null,
-      type: userFound.role === 'BUSINESS' ? 'BUSINESS' : (userFound.role === 'SUPER_ADMIN' ? 'ADMIN' : 'USER'),
+      membership: userFound.membership || 'BASIC',
+      type: 'USER',
     }, { headers: corsHeaders });
-  } else if (businessFound) {
+  }
+
+  if (businessFound) {
     const token = signToken({
       id: businessFound.id,
       role: 'BUSINESS',
     });
 
     return NextResponse.json({
-      message: "Login successful",
+      message: "Business login successful",
       token,
       id: businessFound.id,
       phone: businessFound.contactNumber,
       role: 'BUSINESS',
       name: businessFound.dealerName || null,
       username: businessFound.dealerName || null,
+      avatar: '',
       email: businessFound.email || null,
-      avatar: "",
       membership: null,
       type: 'BUSINESS',
     }, { headers: corsHeaders });
   }
 
-  return NextResponse.json({ error: "Failed to authenticate" }, { status: 400, headers: corsHeaders });
+  return NextResponse.json({ error: "Failed to authenticate account" }, { status: 500, headers: corsHeaders });
 }
-
