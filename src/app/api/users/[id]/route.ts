@@ -165,6 +165,17 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       return NextResponse.json({ success: false, error: "User not found" }, { status: 404, headers: corsHeaders });
     }
 
+    // Safely delete or decouple dependent records to avoid constraint errors
+    await Promise.allSettled([
+      prisma.notification.deleteMany({ where: { userId: id } }),
+      prisma.order.updateMany({ where: { deliveryAgentId: id }, data: { deliveryAgentId: null } }),
+      prisma.oldPhoneOrder.updateMany({ where: { deliveryAgentId: id }, data: { deliveryAgentId: null } }),
+      prisma.payment.deleteMany({ where: { userId: id } }),
+      prisma.order.deleteMany({ where: { userId: id } }),
+      prisma.oldPhoneListing.deleteMany({ where: { userId: id } }),
+      prisma.oldPhoneOrder.deleteMany({ where: { userId: id } }),
+    ]);
+
     await prisma.user.delete({ where: { id } });
 
     return NextResponse.json({
