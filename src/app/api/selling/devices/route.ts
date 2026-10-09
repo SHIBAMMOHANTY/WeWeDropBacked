@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
 
     const where: any = {
       OR: [
-        { status: { in: ['ready_for_sale', 'listed_on_app', 'sold', 'SOLD', 'SOLD_IN_MARKET', 'LISTED_ON_STORE', 'completed', 'COMPLETED'] } },
-        { refurbishData: { isNot: null } },
+        { status: { in: ['ready_for_sale', 'READY_FOR_SALE', 'listed_on_app', 'LISTED_ON_APP', 'sold', 'SOLD', 'SOLD_IN_MARKET', 'LISTED_ON_STORE', 'completed', 'COMPLETED'] } },
+        { refurbishData: { isSet: true } },
       ],
     };
 
