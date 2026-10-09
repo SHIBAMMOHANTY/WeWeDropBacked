@@ -59,6 +59,11 @@ export async function GET(req: NextRequest) {
         const subDevices = breakdown.devices || conditionAnswers.devices || [];
         const rd = q.refurbishData || {};
 
+        // Skip deleted or cancelled devices
+        if (q.isDeleted || q.deletedAt || q.status === 'deleted' || q.status === 'cancelled') {
+          return null;
+        }
+
         // Skip devices that are explicitly in repair with no selling assignment or sale details
         if (
           (q.status === 'in_repair' || rd.refurbStatus === 'IN_REPAIR') &&
