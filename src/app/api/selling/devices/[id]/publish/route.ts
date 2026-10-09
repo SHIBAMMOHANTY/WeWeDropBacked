@@ -57,10 +57,11 @@ export async function POST(
     const finalPriceVal = Number(sellingPrice) || Number(rd.finalSellingPrice) || Number(quote.finalPrice) || 9999;
     const mrpPriceVal = Number(mrpPrice) || Math.round(finalPriceVal * 1.3);
 
-    // Collect device photos
+    // Collect device photos (Real uploaded CDN photos only, no dummy fallback)
+    const incomingPhotos = Array.isArray(photos) && photos.length > 0 ? photos : (Array.isArray((body as any).images) ? (body as any).images : []);
     let deviceImages: string[] = [];
-    if (Array.isArray(photos) && photos.length > 0) {
-      deviceImages = photos.filter((p: any) => typeof p === 'string' && p.startsWith('http'));
+    if (incomingPhotos.length > 0) {
+      deviceImages = incomingPhotos.filter((p: any) => typeof p === 'string' && (p.startsWith('http') || p.startsWith('data:')));
     }
     if (deviceImages.length === 0 && Array.isArray(quote.images) && quote.images.length > 0) {
       deviceImages = quote.images.filter((p: any) => typeof p === 'string' && p.startsWith('http'));
