@@ -26,8 +26,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const objectIds = ids.filter((id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id));
-    const quoteNumbers = ids.filter((id) => typeof id === 'string' && !/^[0-9a-fA-F]{24}$/.test(id));
+    const objectIds = ids.filter((id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id.replace(/^#/, '')));
+    const rawQuoteNumbers = ids.filter((id) => typeof id === 'string' && !/^[0-9a-fA-F]{24}$/.test(id.replace(/^#/, '')));
+    const quoteNumbers = Array.from(
+      new Set([
+        ...rawQuoteNumbers,
+        ...rawQuoteNumbers.map((q) => q.replace(/^#/, '')),
+        ...rawQuoteNumbers.map((q) => `#${q.replace(/^#/, '')}`),
+      ])
+    );
 
     const orConditions: any[] = [];
     if (objectIds.length > 0) {

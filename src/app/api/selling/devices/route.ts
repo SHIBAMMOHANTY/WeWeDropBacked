@@ -198,6 +198,10 @@ export async function GET(req: NextRequest) {
           grossProfit: rd.saleDetails?.grossProfit || (sellingPrice - totalCost),
           photos6Sides: subDevices[0]?.photos6Sides || {},
           photos8to10: rd?.photos8to10 || {},
+          salesPhotos: (() => {
+            const sp = rd?.salesPhotos || rd?.listingPhotos || q.salesPhotos || [];
+            return Array.isArray(sp) ? sp.filter((u: any) => typeof u === 'string' && u.startsWith('http')) : [];
+          })(),
           accessoryPhotos: {
             bill: subDevices[0]?.accessories?.billPhoto || subDevices[0]?.billPhoto || q.billPhoto || q.billImage || null,
             box: subDevices[0]?.accessories?.boxPhoto || subDevices[0]?.boxPhoto || q.boxPhoto || q.boxImage || null,

@@ -143,12 +143,22 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    const cleanId = String(id || '').replace(/^#/, '').trim();
+    const withHash = `#${cleanId}`;
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id) || /^[0-9a-fA-F]{24}$/.test(cleanId);
+
+    const conditions: any[] = [
+      { quoteNumber: id },
+      { quoteNumber: cleanId },
+      { quoteNumber: withHash },
+    ];
+    if (isObjectId) {
+      conditions.push({ id });
+      conditions.push({ id: cleanId });
+    }
 
     const existing = await (prisma as any).quote.findFirst({
-      where: isObjectId
-        ? { OR: [{ id }, { quoteNumber: id }] }
-        : { quoteNumber: id },
+      where: { OR: conditions },
     });
 
     if (!existing) {

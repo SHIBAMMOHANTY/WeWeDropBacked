@@ -57,18 +57,27 @@ export async function POST(
     const finalPriceVal = Number(sellingPrice) || Number(rd.finalSellingPrice) || Number(quote.finalPrice) || 9999;
     const mrpPriceVal = Number(mrpPrice) || Math.round(finalPriceVal * 1.3);
 
-    // Collect device photos (Real uploaded CDN photos only, no dummy fallback)
-    const incomingPhotos = Array.isArray(photos) && photos.length > 0 ? photos : (Array.isArray((body as any).images) ? (body as any).images : []);
-    let deviceImages: string[] = [];
-    if (incomingPhotos.length > 0) {
-      deviceImages = incomingPhotos.filter((p: any) => typeof p === 'string' && (p.startsWith('http') || p.startsWith('data:')));
-    }
-    if (deviceImages.length === 0 && Array.isArray(quote.images) && quote.images.length > 0) {
-      deviceImages = quote.images.filter((p: any) => typeof p === 'string' && p.startsWith('http'));
-    }
-    if (deviceImages.length === 0 && rd.photos8to10) {
-      deviceImages = Object.values(rd.photos8to10).filter((p: any) => typeof p === 'string' && p.startsWith('http')) as string[];
-    }
+    // Identify Intake Photos (from delivery/pickup) - STRICT: NEVER show intake photos in store listing
+    const intakeUrls = new Set([
+      ...(Array.isArray(quote.images) ? quote.images : []),
+      ...(quote.photos6Sides ? Object.values(quote.photos6Sides) : []),
+    ].filter((p): p is string => typeof p === 'string' && p.startsWith('http')));
+
+    // Collect device photos - Protect intake & QC photos, store sales photos distinctly
+    const incomingSalesPhotos = Array.isArray(body.salesPhotos) && body.salesPhotos.length > 0 
+      ? body.salesPhotos 
+      : (Array.isArray(photos) && photos.length > 0 ? photos : (Array.isArray((body as any).images) ? (body as any).images : []));
+
+    const existingSales = Array.isArray(rd.salesPhotos) ? rd.salesPhotos : [];
+
+    // Filter strictly to ensure ZERO intake photos enter the store listing
+    const validSalesPhotos = Array.from(new Set([
+      ...incomingSalesPhotos.filter((p: any) => typeof p === 'string' && (p.startsWith('http') || p.startsWith('data:'))),
+      ...existingSales.filter((p: any) => typeof p === 'string' && p.startsWith('http')),
+    ])).filter((url) => !intakeUrls.has(url));
+
+    // Store listing images must ONLY use clean store/sales photos (Never intake photos)
+    let deviceImages: string[] = [...validSalesPhotos];
 
     const targetImei = (imeiNumber || quote.imeiNumber || quote.imei || '').trim();
 
@@ -163,6 +172,7 @@ export async function POST(
     // Update quote record with listing and store status
     const updatedRefurbData = {
       ...rd,
+      salesPhotos: validSalesPhotos.length > 0 ? validSalesPhotos : (Array.isArray(rd.salesPhotos) ? rd.salesPhotos : []),
       isListedOnApp: true,
       listingId: activeListing ? activeListing.id : (quote.listingId || `listing_${Date.now()}`),
       listingNumber: activeListing ? activeListing.listingId : `WPWD-${Math.floor(1000 + Math.random() * 9000)}`,

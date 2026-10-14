@@ -226,6 +226,7 @@ export async function GET(req: NextRequest) {
         lockStatus: subDevices[0]?.lockStatus || 'Unlocked',
         photos6Sides: subDevices[0]?.photos6Sides || {},
         photos8to10: refurbData?.photos8to10 || {},
+        salesPhotos: Array.isArray(refurbData?.salesPhotos) ? refurbData.salesPhotos : (Array.isArray(q.salesPhotos) ? q.salesPhotos : []),
         images: uniqueImages,
         totalDevices: breakdown.totalDevices || subDevices.length || 1,
         subDevices: cleanedSubDevices,
