@@ -82,6 +82,21 @@ export async function GET(req: NextRequest) {
       orderBy: { updatedAt: 'desc' },
     });
 
+    // Lookup pickup/delivery agent names
+    const agentIds = Array.from(new Set(allQuotes.map((q: any) => q.agentId).filter(Boolean)));
+    let agentMap = new Map<string, any>();
+    if (agentIds.length > 0) {
+      try {
+        const agents = await (prisma as any).user.findMany({
+          where: { id: { in: agentIds } },
+          select: { id: true, username: true, phone: true }
+        });
+        agentMap = new Map(agents.map((a: any) => [String(a.id), a]));
+      } catch (e) {
+        console.warn('Could not batch fetch agent users:', e);
+      }
+    }
+
     const formattedDevices = allQuotes
       .map((q: any) => {
         const breakdown = q.breakdown || {};
@@ -163,6 +178,15 @@ export async function GET(req: NextRequest) {
           assignedSellerName: rd.assignedSellerName || (rd.assignedTeam === 'SELLING_TEAM' ? 'Selling Team' : 'General Pool'),
           assignedSellingGroup: rd.assignedSellingGroup || 'Main Selling Team',
           assignedAt: rd.assignedAt || q.updatedAt,
+          // Refurbish technician assignment details
+          assignedMemberId: rd.assignedMemberId || null,
+          assignedMemberName: rd.assignedMemberName || null,
+          // Delivery agent who collected the device from customer
+          pickupAgentName: (q.agentId && agentMap.get(String(q.agentId)) ? (agentMap.get(String(q.agentId))?.username || agentMap.get(String(q.agentId))?.phone) : q.assignedAgentName) || null,
+          pickupAgentPhone: (q.agentId && agentMap.get(String(q.agentId)) ? agentMap.get(String(q.agentId))?.phone : null) || null,
+          // Technician who inspected / repaired the device
+          inspectedTechnicianName: rd.technicianName || null,
+          inspectedAt: rd.completedAt || rd.updatedAt || null,
           refurbishData: rd,
           saleDetails: rd.saleDetails || null,
           soldAt: rd.saleDetails?.soldAt || (isSoldStatus ? q.updatedAt : null),
@@ -172,6 +196,14 @@ export async function GET(req: NextRequest) {
           paymentMode: rd.saleDetails?.paymentMode || 'UPI',
           invoiceNumber: rd.saleDetails?.invoiceNumber || null,
           grossProfit: rd.saleDetails?.grossProfit || (sellingPrice - totalCost),
+          photos6Sides: subDevices[0]?.photos6Sides || {},
+          photos8to10: rd?.photos8to10 || {},
+          accessoryPhotos: {
+            bill: subDevices[0]?.accessories?.billPhoto || subDevices[0]?.billPhoto || q.billPhoto || q.billImage || null,
+            box: subDevices[0]?.accessories?.boxPhoto || subDevices[0]?.boxPhoto || q.boxPhoto || q.boxImage || null,
+            charger: subDevices[0]?.accessories?.chargerPhoto || subDevices[0]?.chargerPhoto || q.chargerPhoto || q.chargerImage || null,
+            ceirScreenshot: subDevices[0]?.ceirScreenshot || q.ceirScreenshot || null,
+          },
           images: (() => {
             const kycImages = new Set([
               q.idProofFront,

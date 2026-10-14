@@ -81,6 +81,21 @@ export async function GET(req: NextRequest) {
       orderBy: { updatedAt: 'desc' },
     });
 
+    // Lookup pickup/delivery agent names
+    const agentIds = Array.from(new Set(allQuotes.map((q: any) => q.agentId).filter(Boolean)));
+    let agentMap = new Map<string, any>();
+    if (agentIds.length > 0) {
+      try {
+        const agents = await (prisma as any).user.findMany({
+          where: { id: { in: agentIds } },
+          select: { id: true, username: true, phone: true }
+        });
+        agentMap = new Map(agents.map((a: any) => [String(a.id), a]));
+      } catch (e) {
+        console.warn('Could not batch fetch agent users:', e);
+      }
+    }
+
     // Format devices & apply privacy mask for Refurbish Team
     const formattedDevices = allQuotes.map((q: any) => {
       const conditionAnswers = q.conditionAnswers || {};
@@ -192,6 +207,12 @@ export async function GET(req: NextRequest) {
         assignedSellerName: refurbData.assignedSellerName || (refurbData.assignedTeam === 'SELLING_TEAM' ? 'Selling Team' : null),
         assignedSellingGroup: refurbData.assignedSellingGroup || null,
         assignedAt: refurbData.assignedAt || null,
+        // Pickup/delivery agent who received the device from customer
+        pickupAgentName: (q.agentId && agentMap.get(String(q.agentId)) ? (agentMap.get(String(q.agentId))?.username || agentMap.get(String(q.agentId))?.phone) : q.assignedAgentName) || null,
+        pickupAgentPhone: (q.agentId && agentMap.get(String(q.agentId)) ? agentMap.get(String(q.agentId))?.phone : null) || null,
+        // Technician who inspected / completed QC
+        inspectedTechnicianName: refurbData.technicianName || null,
+        inspectedAt: refurbData.completedAt || refurbData.updatedAt || null,
         defects: subDevices[0]?.defects || (q.screenCracked ? ['Screen Cracked'] : []) || [],
         accessories: {
           bill: Boolean(rawAccessories.bill || accessoryPhotos.bill),
