@@ -1,10 +1,13 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { uploadToCloudinary } from "@/lib/upload";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-agent-key, *",
 };
 
 export async function OPTIONS() {
