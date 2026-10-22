@@ -281,9 +281,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const qtyNum = parseInt(String(quantity), 10) || 0;
-    const minNum = parseInt(String(minStockLevel), 10) || 5;
-
     let computedStatus = 'IN_STOCK';
     if (qtyNum <= 0) {
       computedStatus = 'OUT_OF_STOCK';
