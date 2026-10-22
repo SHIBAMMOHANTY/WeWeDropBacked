@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-agent-key, *',
 };
 
 export async function OPTIONS() {
@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
         { compatibleModels: { has: search } },
         { location: { contains: search, mode: 'insensitive' } },
         { supplier: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } },
       ];
     }
 

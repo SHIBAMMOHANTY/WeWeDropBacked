@@ -8,11 +8,31 @@ export const dynamic = 'force-dynamic';
 
 const updateQuoteSchema = z.object({
   finalPrice: z.number().min(0, 'Final price cannot be negative').optional(),
+  estimatedPrice: z.number().min(0).optional(),
   status: z.string().optional(),
   pickupDate: z.string().optional().nullable(),
   agentId: z.string().optional().nullable(),
   paymentMethod: z.string().optional().nullable(),
+  paymentMode: z.string().optional().nullable(),
   payoutDetails: z.any().optional().nullable(),
+  customerName: z.string().optional().nullable(),
+  contactNumber: z.string().optional().nullable(),
+  customerAddress: z.string().optional().nullable(),
+  customerPincode: z.string().optional().nullable(),
+  shopName: z.string().optional().nullable(),
+  dealerName: z.string().optional().nullable(),
+  brand: z.string().optional().nullable(),
+  model: z.string().optional().nullable(),
+  storage: z.string().optional().nullable(),
+  ram: z.string().optional().nullable(),
+  imeiNumber: z.string().optional().nullable(),
+  imei: z.string().optional().nullable(),
+  condition: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  upiId: z.string().optional().nullable(),
+  bankAccount: z.string().optional().nullable(),
+  bankIfsc: z.string().optional().nullable(),
+  bankAccountHolder: z.string().optional().nullable(),
 });
 
 export async function OPTIONS() {
@@ -112,7 +132,34 @@ export async function PUT(
       );
     }
 
-    const { finalPrice, status, pickupDate, agentId, paymentMethod, payoutDetails } = parseResult.data;
+    const {
+      finalPrice,
+      estimatedPrice,
+      status,
+      pickupDate,
+      agentId,
+      paymentMethod,
+      paymentMode,
+      payoutDetails,
+      customerName,
+      contactNumber,
+      customerAddress,
+      customerPincode,
+      shopName,
+      dealerName,
+      brand,
+      model,
+      storage,
+      ram,
+      imeiNumber,
+      imei,
+      condition,
+      description,
+      upiId,
+      bankAccount,
+      bankIfsc,
+      bankAccountHolder,
+    } = parseResult.data;
 
     // 3. Look up the Quote using Prisma
     let quote = null;
@@ -144,6 +191,9 @@ export async function PUT(
     if (finalPrice !== undefined) {
       updateData.finalPrice = finalPrice;
     }
+    if (estimatedPrice !== undefined) {
+      updateData.estimatedPrice = estimatedPrice;
+    }
     if (status !== undefined) {
       let mappedStatus = status.toLowerCase();
       if (status === 'PAID') mappedStatus = 'payment_completed';
@@ -155,12 +205,68 @@ export async function PUT(
       updateData.pickupDate = pickupDate ? new Date(pickupDate) : null;
     }
     if (agentId !== undefined) {
-      updateData.agentId = agentId;
+      updateData.agentId = agentId && /^[0-9a-fA-F]{24}$/.test(agentId) ? agentId : null;
     } else if (session.role === 'DELIVERY_AGENT' && !quote.agentId) {
       updateData.agentId = session.id;
     }
     if (paymentMethod !== undefined) {
       updateData.paymentMethod = paymentMethod;
+    }
+    if (paymentMode !== undefined) {
+      updateData.paymentMode = paymentMode;
+    }
+    if (customerName !== undefined) {
+      updateData.customerName = customerName ? customerName.trim() : null;
+    }
+    if (contactNumber !== undefined) {
+      updateData.contactNumber = contactNumber ? contactNumber.trim() : null;
+    }
+    if (customerAddress !== undefined) {
+      updateData.customerAddress = customerAddress ? customerAddress.trim() : null;
+    }
+    if (customerPincode !== undefined) {
+      updateData.customerPincode = customerPincode ? customerPincode.trim() : null;
+    }
+    if (shopName !== undefined) {
+      updateData.shopName = shopName ? shopName.trim() : null;
+    }
+    if (dealerName !== undefined) {
+      updateData.dealerName = dealerName ? dealerName.trim() : null;
+    }
+    if (brand !== undefined) {
+      updateData.brand = brand ? brand.trim() : null;
+    }
+    if (model !== undefined) {
+      updateData.model = model ? model.trim() : null;
+    }
+    if (storage !== undefined) {
+      updateData.storage = storage ? storage.trim() : null;
+    }
+    if (ram !== undefined) {
+      updateData.ram = ram ? ram.trim() : null;
+    }
+    if (imeiNumber !== undefined || imei !== undefined) {
+      const imeiVal = (imeiNumber || imei)?.trim() || null;
+      updateData.imeiNumber = imeiVal;
+      updateData.imei = imeiVal;
+    }
+    if (condition !== undefined) {
+      updateData.condition = condition ? condition.trim() : null;
+    }
+    if (description !== undefined) {
+      updateData.description = description ? description.trim() : null;
+    }
+    if (upiId !== undefined) {
+      updateData.upiId = upiId ? upiId.trim() : null;
+    }
+    if (bankAccount !== undefined) {
+      updateData.bankAccount = bankAccount ? bankAccount.trim() : null;
+    }
+    if (bankIfsc !== undefined) {
+      updateData.bankIfsc = bankIfsc ? bankIfsc.trim() : null;
+    }
+    if (bankAccountHolder !== undefined) {
+      updateData.bankAccountHolder = bankAccountHolder ? bankAccountHolder.trim() : null;
     }
 
     if (body.isDead !== undefined || body.isPhoneDead !== undefined || body.deadPhone !== undefined || body.phoneCondition === 'dead') {

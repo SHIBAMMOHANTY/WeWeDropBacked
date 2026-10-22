@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-agent-key, *',
 };
 
 export async function OPTIONS() {

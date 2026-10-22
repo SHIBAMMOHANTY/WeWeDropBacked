@@ -316,6 +316,22 @@ export async function POST(req: Request) {
               : `Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`)
           : `Customer Sell Intake [${devBrand} ${devModel}]${agentSnippet}`;
 
+        const rawStatus = String(body.status || body.quoteStatus || '').toLowerCase();
+        const isCustomerMarked = Boolean(
+          rawStatus === 'paid' ||
+          rawStatus === 'payment_completed' ||
+          body.paymentStatus === 'PAID' ||
+          body.payoutStatus === 'COMPLETED' ||
+          ((body.customerId || devCustomer.customerId || devCustomer.userId || devUserId) && (body.customerType === 'customer' || !isDealer))
+        );
+
+        let quoteStatus = 'PICKUP_SUCCESSFUL';
+        if (isCustomerMarked || rawStatus === 'paid' || rawStatus === 'payment_completed') {
+          quoteStatus = 'payment_completed';
+        } else if (body.status) {
+          quoteStatus = String(body.status).toUpperCase() === 'PICKUP_SUCCESSFUL' ? 'PICKUP_SUCCESSFUL' : String(body.status).toLowerCase();
+        }
+
         const quote = await prisma.quote.create({
           data: {
             quoteNumber: devQuoteNumber,
@@ -328,9 +344,15 @@ export async function POST(req: Request) {
             condition: isDealer ? 'dealer_inspected' : 'customer_inspected',
             estimatedPrice: devPrice,
             finalPrice: devPrice,
-            status: body.status
-              ? (String(body.status).toUpperCase() === 'PICKUP_SUCCESSFUL' ? 'PICKUP_SUCCESSFUL' : String(body.status).toLowerCase())
-              : 'PICKUP_SUCCESSFUL',
+            status: quoteStatus,
+            payoutDetails: (quoteStatus === 'payment_completed' || rawStatus === 'paid')
+              ? (body.payoutDetails || {
+                  status: 'PAID',
+                  date: new Date().toISOString(),
+                  amount: devPrice,
+                  paymentMethod: body.paymentMode || body.paymentMethod || 'CASH',
+                })
+              : (body.payoutDetails || null),
             isDead: isDeadPhone,
             isPhoneDead: isDeadPhone,
             diagnosisCompleted: isDeadPhone ? true : false,
@@ -345,7 +367,7 @@ export async function POST(req: Request) {
             imeiNumber: isDeadPhone ? undefined : (d.imei || d.imeiNumber || undefined),
             imei: isDeadPhone ? undefined : (d.imei || d.imeiNumber || undefined),
             paymentMode: body.paymentMode || body.payoutMethod || 'CASH',
-            payoutMethod: body.payoutMethod || body.paymentMode || 'CASH',
+            paymentMethod: body.paymentMethod || body.paymentMode || 'CASH',
             description: devDescription,
             breakdown: {
               customerType: isDealer ? 'dealer' : 'customer',
