@@ -143,11 +143,87 @@ export async function POST(req: Request) {
         if (d.chargerPhoto || acc.chargerPhoto) allImages.push(d.chargerPhoto || acc.chargerPhoto);
       });
 
-      const isAgent = session?.role === 'AGENT' || session?.role === 'DELIVERY_PARTNER' || session?.role === 'DELIVERY_AGENT';
+      const isAgent = session?.role === 'AGENT' || session?.role === 'DELIVERY_PARTNER' || session?.role === 'DELIVERY_AGENT' || session?.role === 'SUPER_ADMIN';
       const assignedAgentId = body.agentId || (isAgent ? session?.id : undefined);
       const assignedAgentName = body.agentName || body.assignedAgentName || body.createdByAgent || session?.name || session?.username || '';
       const isObjectId = assignedAgentId && /^[0-9a-fA-F]{24}$/.test(String(assignedAgentId));
       const agentSnippet = assignedAgentName ? ` | Agent: ${assignedAgentName}` : '';
+
+      // --- Robust Customer / User ID Resolution ---
+      let resolvedUserId: string | undefined = undefined;
+
+      // 1. Explicit userId or customerId from request body
+      const rawCandidateId = body.customerId || body.userId || body.customer?.id || body.customer?._id || body.customer?.userId;
+      if (rawCandidateId && typeof rawCandidateId === 'string' && /^[0-9a-fA-F]{24}$/.test(rawCandidateId)) {
+        resolvedUserId = rawCandidateId;
+      }
+
+      // 2. If called by a regular customer/business directly, use their session id
+      if (!resolvedUserId && !isAgent && session?.id && /^[0-9a-fA-F]{24}$/.test(String(session.id))) {
+        resolvedUserId = String(session.id);
+      }
+
+      // 3. If intake performed by an Agent or user not yet found, look up user by phone number
+      const phoneToMatch = contactNumber || body.customerPhone || body.contactNumber || body.phone || body.dealerPhone || '';
+      const clean10 = String(phoneToMatch).replace(/\D/g, '').slice(-10);
+
+      if ((!resolvedUserId || isAgent) && clean10.length === 10) {
+        const phoneVariants = [
+          clean10,
+          `+91${clean10}`,
+          `91${clean10}`,
+          `0${clean10}`,
+        ];
+
+        // 3a. Check User table
+        const existingUser = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { phone: { in: phoneVariants } },
+              { phone: { endsWith: clean10 } },
+            ],
+          },
+          select: { id: true },
+        });
+
+        if (existingUser?.id) {
+          resolvedUserId = existingUser.id;
+        } else {
+          // 3b. Check Business table (if dealer mode)
+          const existingBiz = await prisma.business.findFirst({
+            where: {
+              OR: [
+                { contactNumber: { in: phoneVariants } },
+                { contactNumber: { endsWith: clean10 } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (existingBiz?.id) {
+            resolvedUserId = existingBiz.id;
+          }
+        }
+
+        // 3c. If still not found and created by Agent, auto-create User record so customer will find their quotes upon login
+        if (!resolvedUserId && isAgent) {
+          try {
+            const newUser = await prisma.user.create({
+              data: {
+                phone: clean10,
+                username: customerName || body.ownerName || 'Customer',
+                role: body.customerType === 'dealer' ? 'BUSINESS' : 'USER',
+                address: customerAddress || undefined,
+              },
+              select: { id: true },
+            });
+            if (newUser?.id) {
+              resolvedUserId = newUser.id;
+            }
+          } catch (autoErr) {
+            console.warn('Auto create user during intake note:', autoErr);
+          }
+        }
+      }
 
       const timestampStr = Date.now().toString().slice(-6);
       const batchRef = `BATCH-${timestampStr}`;
@@ -171,6 +247,24 @@ export async function POST(req: Request) {
         const devCustomerName = devCustomer.name || d.customerName || customerName;
         const devContactNumber = devCustomer.phone || d.customerPhone || contactNumber;
         const devCustomerAddress = devCustomer.address || d.customerAddress || customerAddress;
+
+        // Check if per-device customer has a specific ID or phone
+        let devUserId = devCustomer.userId || devCustomer.customerId || devCustomer.id || devCustomer._id || resolvedUserId;
+        const devClean10 = devContactNumber ? String(devContactNumber).replace(/\D/g, '').slice(-10) : '';
+        if (devClean10 && devClean10.length === 10 && devClean10 !== clean10) {
+          const devMatchedUser = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { phone: { in: [devClean10, `+91${devClean10}`, `91${devClean10}`] } },
+                { phone: { endsWith: devClean10 } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (devMatchedUser?.id) {
+            devUserId = devMatchedUser.id;
+          }
+        }
 
         // Collect device specific images (EXCLUDING KYC ID cards)
         const devImages: string[] = [];
@@ -225,7 +319,7 @@ export async function POST(req: Request) {
         const quote = await prisma.quote.create({
           data: {
             quoteNumber: devQuoteNumber,
-            userId: session?.id || undefined,
+            userId: devUserId || resolvedUserId || undefined,
             agentId: isObjectId ? String(assignedAgentId) : undefined,
             brand: devBrand,
             model: devModel,
@@ -376,10 +470,37 @@ export async function POST(req: Request) {
     const quoteNumber = `CUST-${timestampStr}-${randomSuffix}`;
     const imeiVal = parsedData.imeiNumber || parsedData.imei;
 
+    // Resolve userId for single quote
+    let singleUserId: string | undefined = undefined;
+    const rawSingleId = parsedData.customerId || parsedData.userId || body.customerId || body.userId;
+    if (rawSingleId && typeof rawSingleId === 'string' && /^[0-9a-fA-F]{24}$/.test(rawSingleId)) {
+      singleUserId = rawSingleId;
+    }
+    const isSingleAgent = session?.role === 'AGENT' || session?.role === 'DELIVERY_PARTNER' || session?.role === 'DELIVERY_AGENT' || session?.role === 'SUPER_ADMIN';
+    if (!singleUserId && !isSingleAgent && session?.id && /^[0-9a-fA-F]{24}$/.test(String(session.id))) {
+      singleUserId = String(session.id);
+    }
+    const singleContact = parsedData.contactNumber || body.customerPhone || body.phone || '';
+    const singleClean10 = String(singleContact).replace(/\D/g, '').slice(-10);
+    if ((!singleUserId || isSingleAgent) && singleClean10.length === 10) {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { phone: { in: [singleClean10, `+91${singleClean10}`, `91${singleClean10}`, `0${singleClean10}`] } },
+            { phone: { endsWith: singleClean10 } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (existingUser?.id) {
+        singleUserId = existingUser.id;
+      }
+    }
+
     const quote = await prisma.quote.create({
       data: {
         quoteNumber,
-        userId: session?.id || undefined,
+        userId: singleUserId || undefined,
         brand,
         model,
         storage,
