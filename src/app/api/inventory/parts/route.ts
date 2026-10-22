@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const [allParts, totalCount] = await Promise.all([
+    const [allParts, totalCount, allForStats] = await Promise.all([
       (prisma as any).sparePart.findMany({
         where,
         orderBy: { updatedAt: 'desc' },
@@ -71,21 +71,17 @@ export async function GET(req: NextRequest) {
         take: limit,
       }),
       (prisma as any).sparePart.count({ where }),
+      (prisma as any).sparePart.findMany({
+        select: {
+          quantity: true,
+          costPrice: true,
+          sellingPrice: true,
+          minStockLevel: true,
+          isHighDemand: true,
+          usedCount: true,
+        },
+      }),
     ]);
-
-    // Calculate aggregated stats across all parts
-    const allForStats = await (prisma as any).sparePart.findMany({
-      select: {
-        id: true,
-        quantity: true,
-        costPrice: true,
-        sellingPrice: true,
-        minStockLevel: true,
-        status: true,
-        isHighDemand: true,
-        usedCount: true,
-      },
-    });
 
     let totalStockCount = 0;
     let totalStockValue = 0;
@@ -149,7 +145,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: Create a new spare part in inventory
+// POST: Create a new spare part batch in inventory
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -179,107 +175,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const trimmedPartName = String(partName).trim();
-    const trimmedCategory = String(category).trim();
-    const trimmedSku = sku ? String(sku).trim().toUpperCase() : undefined;
-    const trimmedBrand = brand ? String(brand).trim() : undefined;
-    const trimmedQualityGrade = qualityGrade ? String(qualityGrade).trim() : undefined;
-
-    // Check if matching part already exists (by SKU or partName + category)
-    let existingTarget: any = null;
-    if (trimmedSku) {
-      existingTarget = await (prisma as any).sparePart.findFirst({
-        where: {
-          sku: { equals: trimmedSku, mode: 'insensitive' },
-        },
-      });
-    }
-
-    if (!existingTarget) {
-      existingTarget = await (prisma as any).sparePart.findFirst({
-        where: {
-          partName: { equals: trimmedPartName, mode: 'insensitive' },
-          category: { equals: trimmedCategory, mode: 'insensitive' },
-          ...(trimmedBrand ? { brand: { equals: trimmedBrand, mode: 'insensitive' } } : {}),
-          ...(trimmedQualityGrade ? { qualityGrade: { equals: trimmedQualityGrade, mode: 'insensitive' } } : {}),
-        },
-      });
-    }
-
     const qtyNum = parseInt(String(quantity), 10) || 0;
     const minNum = parseInt(String(minStockLevel), 10) || 5;
-
-    // If part already exists, seamlessly merge stock and update details without throwing an error
-    if (existingTarget) {
-      const prevQty = existingTarget.quantity || 0;
-      const newQty = prevQty + qtyNum;
-
-      let computedStatus = 'IN_STOCK';
-      if (newQty <= 0) {
-        computedStatus = 'OUT_OF_STOCK';
-      } else if (newQty <= (minNum || existingTarget.minStockLevel || 5)) {
-        computedStatus = 'LOW_STOCK';
-      }
-
-      const existingLogs = Array.isArray(existingTarget.stockLogs) ? existingTarget.stockLogs : [];
-      const restockLog = {
-        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        date: new Date().toISOString(),
-        type: 'STOCK_IN_ADD',
-        quantity: qtyNum,
-        previousQuantity: prevQty,
-        newQuantity: newQty,
-        reason: qtyNum > 0
-          ? `Stock restocked / added via inventory submission (+${qtyNum} units)`
-          : 'Part details updated in inventory',
-        performedBy: 'Admin / Inventory Manager',
-      };
-
-      const incomingModels = Array.isArray(compatibleModels)
-        ? compatibleModels.map((m: any) => String(m).trim()).filter(Boolean)
-        : String(compatibleModels || '')
-            .split(',')
-            .map((m: string) => m.trim())
-            .filter(Boolean);
-      const currentModels = Array.isArray(existingTarget.compatibleModels) ? existingTarget.compatibleModels : [];
-      const mergedModels = Array.from(new Set([...currentModels, ...incomingModels]));
-
-      const incomingImages = Array.isArray(images) ? images : images ? [images] : [];
-      const currentImages = Array.isArray(existingTarget.images) ? existingTarget.images : [];
-      const mergedImages = Array.from(new Set([...currentImages, ...incomingImages]));
-
-      const updatedPart = await (prisma as any).sparePart.update({
-        where: { id: existingTarget.id },
-        data: {
-          quantity: newQty,
-          status: computedStatus,
-          minStockLevel: minNum || existingTarget.minStockLevel || 5,
-          stockLogs: [restockLog, ...existingLogs],
-          compatibleModels: mergedModels,
-          images: mergedImages,
-          ...(costPrice ? { costPrice: parseFloat(String(costPrice)) || existingTarget.costPrice } : {}),
-          ...(sellingPrice ? { sellingPrice: parseFloat(String(sellingPrice)) || existingTarget.sellingPrice } : {}),
-          ...(mrp ? { mrp: parseFloat(String(mrp)) || existingTarget.mrp } : {}),
-          ...(location ? { location: String(location).trim() } : {}),
-          ...(supplier ? { supplier: String(supplier).trim() } : {}),
-          ...(notes ? { notes: String(notes).trim() } : {}),
-          ...(trimmedSku && !existingTarget.sku ? { sku: trimmedSku } : {}),
-          ...(trimmedQualityGrade && !existingTarget.qualityGrade ? { qualityGrade: trimmedQualityGrade } : {}),
-        },
-      });
-
-      return NextResponse.json(
-        {
-          success: true,
-          message: qtyNum > 0
-            ? `Part "${existingTarget.partName}" already exists. Stock updated from ${prevQty} to ${newQty} units.`
-            : `Part "${existingTarget.partName}" details updated successfully.`,
-          part: updatedPart,
-          isExistingMerged: true,
-        },
-        { status: 200, headers: corsHeaders }
-      );
-    }
 
     let computedStatus = 'IN_STOCK';
     if (qtyNum <= 0) {
@@ -288,6 +185,10 @@ export async function POST(req: NextRequest) {
       computedStatus = 'LOW_STOCK';
     }
 
+    const finalSku = sku
+      ? String(sku).trim().toUpperCase()
+      : `WP-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+
     const initialLog = {
       id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       date: new Date().toISOString(),
@@ -295,19 +196,19 @@ export async function POST(req: NextRequest) {
       quantity: qtyNum,
       previousQuantity: 0,
       newQuantity: qtyNum,
-      reason: 'Initial part inventory setup',
-      performedBy: 'Admin',
+      reason: 'New part intake batch added',
+      performedBy: location || supplier || 'Admin',
     };
 
     const newPart = await (prisma as any).sparePart.create({
       data: {
         partName: String(partName).trim(),
-        sku: sku ? String(sku).trim().toUpperCase() : undefined,
+        sku: finalSku,
         category: String(category).trim(),
         brand: brand ? String(brand).trim() : undefined,
         compatibleModels: Array.isArray(compatibleModels)
           ? compatibleModels.map((m: any) => String(m).trim()).filter(Boolean)
-          : String(compatibleModels)
+          : String(compatibleModels || '')
               .split(',')
               .map((m: string) => m.trim())
               .filter(Boolean),
@@ -332,7 +233,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: 'Spare part created successfully in inventory',
+        message: 'New spare part batch added to inventory successfully',
         part: newPart,
       },
       { status: 201, headers: corsHeaders }
