@@ -179,46 +179,105 @@ export async function POST(req: NextRequest) {
       );
     }
 
-        // Prevent duplicate spare parts in inventory
     const trimmedPartName = String(partName).trim();
     const trimmedCategory = String(category).trim();
     const trimmedSku = sku ? String(sku).trim().toUpperCase() : undefined;
     const trimmedBrand = brand ? String(brand).trim() : undefined;
     const trimmedQualityGrade = qualityGrade ? String(qualityGrade).trim() : undefined;
 
+    // Check if matching part already exists (by SKU or partName + category)
+    let existingTarget: any = null;
     if (trimmedSku) {
-      const existingPartBySku = await (prisma as any).sparePart.findFirst({
+      existingTarget = await (prisma as any).sparePart.findFirst({
         where: {
           sku: { equals: trimmedSku, mode: 'insensitive' },
         },
       });
-      if (existingPartBySku) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `A spare part with SKU "${trimmedSku}" already exists in inventory.`,
-          },
-          { status: 409, headers: corsHeaders }
-        );
-      }
     }
 
-    const duplicatePart = await (prisma as any).sparePart.findFirst({
-      where: {
-        partName: { equals: trimmedPartName, mode: 'insensitive' },
-        category: { equals: trimmedCategory, mode: 'insensitive' },
-        ...(trimmedBrand ? { brand: { equals: trimmedBrand, mode: 'insensitive' } } : {}),
-        ...(trimmedQualityGrade ? { qualityGrade: { equals: trimmedQualityGrade, mode: 'insensitive' } } : {}),
-      },
-    });
+    if (!existingTarget) {
+      existingTarget = await (prisma as any).sparePart.findFirst({
+        where: {
+          partName: { equals: trimmedPartName, mode: 'insensitive' },
+          category: { equals: trimmedCategory, mode: 'insensitive' },
+          ...(trimmedBrand ? { brand: { equals: trimmedBrand, mode: 'insensitive' } } : {}),
+          ...(trimmedQualityGrade ? { qualityGrade: { equals: trimmedQualityGrade, mode: 'insensitive' } } : {}),
+        },
+      });
+    }
 
-    if (duplicatePart) {
+    const qtyNum = parseInt(String(quantity), 10) || 0;
+    const minNum = parseInt(String(minStockLevel), 10) || 5;
+
+    // If part already exists, seamlessly merge stock and update details without throwing an error
+    if (existingTarget) {
+      const prevQty = existingTarget.quantity || 0;
+      const newQty = prevQty + qtyNum;
+
+      let computedStatus = 'IN_STOCK';
+      if (newQty <= 0) {
+        computedStatus = 'OUT_OF_STOCK';
+      } else if (newQty <= (minNum || existingTarget.minStockLevel || 5)) {
+        computedStatus = 'LOW_STOCK';
+      }
+
+      const existingLogs = Array.isArray(existingTarget.stockLogs) ? existingTarget.stockLogs : [];
+      const restockLog = {
+        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        date: new Date().toISOString(),
+        type: 'STOCK_IN_ADD',
+        quantity: qtyNum,
+        previousQuantity: prevQty,
+        newQuantity: newQty,
+        reason: qtyNum > 0
+          ? `Stock restocked / added via inventory submission (+${qtyNum} units)`
+          : 'Part details updated in inventory',
+        performedBy: 'Admin / Inventory Manager',
+      };
+
+      const incomingModels = Array.isArray(compatibleModels)
+        ? compatibleModels.map((m: any) => String(m).trim()).filter(Boolean)
+        : String(compatibleModels || '')
+            .split(',')
+            .map((m: string) => m.trim())
+            .filter(Boolean);
+      const currentModels = Array.isArray(existingTarget.compatibleModels) ? existingTarget.compatibleModels : [];
+      const mergedModels = Array.from(new Set([...currentModels, ...incomingModels]));
+
+      const incomingImages = Array.isArray(images) ? images : images ? [images] : [];
+      const currentImages = Array.isArray(existingTarget.images) ? existingTarget.images : [];
+      const mergedImages = Array.from(new Set([...currentImages, ...incomingImages]));
+
+      const updatedPart = await (prisma as any).sparePart.update({
+        where: { id: existingTarget.id },
+        data: {
+          quantity: newQty,
+          status: computedStatus,
+          minStockLevel: minNum || existingTarget.minStockLevel || 5,
+          stockLogs: [restockLog, ...existingLogs],
+          compatibleModels: mergedModels,
+          images: mergedImages,
+          ...(costPrice ? { costPrice: parseFloat(String(costPrice)) || existingTarget.costPrice } : {}),
+          ...(sellingPrice ? { sellingPrice: parseFloat(String(sellingPrice)) || existingTarget.sellingPrice } : {}),
+          ...(mrp ? { mrp: parseFloat(String(mrp)) || existingTarget.mrp } : {}),
+          ...(location ? { location: String(location).trim() } : {}),
+          ...(supplier ? { supplier: String(supplier).trim() } : {}),
+          ...(notes ? { notes: String(notes).trim() } : {}),
+          ...(trimmedSku && !existingTarget.sku ? { sku: trimmedSku } : {}),
+          ...(trimmedQualityGrade && !existingTarget.qualityGrade ? { qualityGrade: trimmedQualityGrade } : {}),
+        },
+      });
+
       return NextResponse.json(
         {
-          success: false,
-          error: `A spare part with this name, category, and brand already exists (SKU: ${duplicatePart.sku || duplicatePart.id}).`,
+          success: true,
+          message: qtyNum > 0
+            ? `Part "${existingTarget.partName}" already exists. Stock updated from ${prevQty} to ${newQty} units.`
+            : `Part "${existingTarget.partName}" details updated successfully.`,
+          part: updatedPart,
+          isExistingMerged: true,
         },
-        { status: 409, headers: corsHeaders }
+        { status: 200, headers: corsHeaders }
       );
     }
 

@@ -83,6 +83,9 @@ export async function GET(
       ...(quote.image ? [quote.image] : []),
       ...(quote.deviceImage ? [quote.deviceImage] : []),
       ...Object.values(photos8to10),
+      ...(Array.isArray(photos8to10.internalPhotos)
+        ? photos8to10.internalPhotos.map((p: any) => (typeof p === 'string' ? p : p?.url || p?.uri))
+        : []),
       ...Object.values(photos6Sides),
       ...Object.values(accessoryPhotos),
       ...(Array.isArray(refurbData.images) ? refurbData.images : (refurbData.images ? [refurbData.images] : [])),
