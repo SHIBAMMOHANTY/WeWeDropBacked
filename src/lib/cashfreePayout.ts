@@ -5,12 +5,14 @@ export interface CashfreePayoutConfig {
   clientSecret: string;
   baseUrl: string;
   apiVersion: string;
+  publicKey?: string;
 }
 
 export function getCashfreePayoutConfig(): CashfreePayoutConfig {
   const clientId = process.env.CASHFREE_PAYOUT_CLIENT_ID || process.env.CASHFREE_CLIENT_ID || process.env.CASHFREE_APP_ID;
   const clientSecret = process.env.CASHFREE_PAYOUT_CLIENT_SECRET || process.env.CASHFREE_CLIENT_SECRET || process.env.CASHFREE_SECRET_KEY;
   const env = (process.env.CASHFREE_PAYOUT_ENV || process.env.CASHFREE_ENV || 'SANDBOX').toUpperCase();
+  const rawPublicKey = process.env.CASHFREE_PAYOUT_PUBLIC_KEY || process.env.CASHFREE_PUBLIC_KEY;
 
   if (!clientId || !clientSecret) {
     throw new Error('Cashfree Payout Client ID or Secret is missing in environment variables.');
@@ -20,12 +22,39 @@ export function getCashfreePayoutConfig(): CashfreePayoutConfig {
     ? 'https://api.cashfree.com/payout'
     : 'https://sandbox.cashfree.com/payout';
 
+  const publicKey = rawPublicKey ? rawPublicKey.replace(/\\n/g, '\n').trim() : undefined;
+
   return {
     clientId,
     clientSecret,
     baseUrl,
     apiVersion: '2024-01-01',
+    publicKey,
   };
+}
+
+/**
+ * Generate RSA OAEP SHA-1 encrypted signature for Cashfree 2FA (Dynamic IP / Serverless)
+ */
+export function generateCashfreeSignature(clientId: string, publicKeyPem: string): string {
+  try {
+    const epochTimestamp = Math.floor(Date.now() / 1000);
+    const dataToEncrypt = `${clientId}.${epochTimestamp}`;
+
+    const encrypted = crypto.publicEncrypt(
+      {
+        key: publicKeyPem,
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha1',
+      },
+      Buffer.from(dataToEncrypt, 'utf8')
+    );
+
+    return encrypted.toString('base64');
+  } catch (err) {
+    console.error('[Cashfree Signature Generation Error]:', err);
+    throw new Error('Failed to generate Cashfree RSA signature: ' + (err as Error).message);
+  }
 }
 
 export interface InitiatePayoutParams {
@@ -66,6 +95,11 @@ async function cashfreeFetch(endpoint: string, options: RequestInit = {}): Promi
     'x-api-version': config.apiVersion,
     ...(options.headers as Record<string, string>),
   };
+
+  if (config.publicKey) {
+    const signature = generateCashfreeSignature(config.clientId, config.publicKey);
+    headers['X-Cf-Signature'] = signature;
+  }
 
   const response = await fetch(url, {
     ...options,
