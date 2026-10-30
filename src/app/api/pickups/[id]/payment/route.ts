@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getAuthSession } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
-import {
-  createRazorpayXContact,
-  createRazorpayXFundAccount,
-  initiateRazorpayXPayout,
-} from '@/lib/razorpayx';
+import { initiateCashfreePayout } from '@/lib/cashfreePayout';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,7 +33,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    // 1. Authenticate Delivery Agent / Admin with x-agent-key fallback
+    // 1. Authenticate Delivery Agent or Super Admin
     let session: any = null;
     try {
       session = await getAuthSession(req);
@@ -106,9 +102,9 @@ export async function POST(
       );
     }
 
-    // 2. Fetch Pickup / Quote from Database
+    // 2. Fetch Pickup Quote
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(pickupId);
-    let quote = isObjectId
+    const quote = isObjectId
       ? await prisma.quote.findUnique({ where: { id: pickupId } })
       : await prisma.quote.findUnique({ where: { quoteNumber: pickupId } });
 
@@ -132,7 +128,7 @@ export async function POST(
       );
     }
 
-    // 4. Validate Server Buyback Valuation Amount
+    // 4. Validate Buyback Amount
     const finalAmount = quote.finalPrice ?? quote.estimatedPrice;
     if (!finalAmount || finalAmount <= 0) {
       return NextResponse.json(
@@ -141,7 +137,6 @@ export async function POST(
       );
     }
 
-    // Server-side check: if client sent an amount, ensure no tampering
     if (clientAmount !== undefined && Math.abs(clientAmount - finalAmount) > 0.01) {
       return NextResponse.json(
         {
@@ -152,7 +147,7 @@ export async function POST(
       );
     }
 
-    // Check if Quote is already settled / completed
+    // Check if already completed
     const currentPayoutDetails = (typeof quote.payoutDetails === 'object' && quote.payoutDetails) ? quote.payoutDetails : {};
     if (quote.status === 'pickup_successful' || quote.status === 'payment_completed') {
       return NextResponse.json(
@@ -160,8 +155,8 @@ export async function POST(
           success: true,
           alreadyCompleted: true,
           message: 'Payout for this pickup was already completed successfully.',
-          payoutId: (currentPayoutDetails as any).payoutId || `pout_${quote.id.slice(-8)}`,
-          utr: (currentPayoutDetails as any).utr || `UTR${Date.now().toString().slice(-8)}`,
+          payoutId: (currentPayoutDetails as any).payoutId || null,
+          utr: (currentPayoutDetails as any).utr || null,
           status: 'SUCCESS',
           amount: finalAmount,
         },
@@ -169,7 +164,7 @@ export async function POST(
       );
     }
 
-    // 5. Check for Duplicate / Pending Payouts (Idempotency Protection)
+    // 5. Idempotency Guard - Prevent Concurrent Duplicate Disbursals
     const existingTransaction = await prisma.payoutTransaction.findFirst({
       where: {
         pickupId: quote.id,
@@ -178,13 +173,14 @@ export async function POST(
     });
 
     if (existingTransaction) {
+      const activeId = existingTransaction.cfTransferId || existingTransaction.razorpayPayoutId;
       if (existingTransaction.status === 'SUCCESS') {
         return NextResponse.json(
           {
             success: true,
             alreadyCompleted: true,
             message: 'Payout for this pickup was already completed successfully.',
-            payoutId: existingTransaction.razorpayPayoutId,
+            payoutId: activeId,
             status: 'SUCCESS',
             amount: existingTransaction.amount,
           },
@@ -195,19 +191,18 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: `A payout transaction is already in ${existingTransaction.status} state for this pickup. Please wait for status confirmation.`,
-          payoutId: existingTransaction.razorpayPayoutId,
+          error: `A payout transaction is already in ${existingTransaction.status} state for this pickup. Please wait for confirmation.`,
+          payoutId: activeId,
           status: existingTransaction.status,
         },
         { status: 409, headers: corsHeaders }
       );
     }
 
-    // 6. Parse and Validate Recipient Payment Information
+    // 6. Validate Payment Instrument
     let parsedUpiId = rawUpiId;
     let payeeName = accountHolderName || quote.customerName || 'Customer';
 
-    // Parse UPI QR Code if provided
     if (qrRawData && qrRawData.startsWith('upi://pay')) {
       try {
         const urlObj = new URL(qrRawData);
@@ -216,7 +211,7 @@ export async function POST(
         if (pa) parsedUpiId = pa.trim();
         if (pn) payeeName = decodeURIComponent(pn).trim();
       } catch (e) {
-        console.warn('Failed to parse UPI URL query parameters:', e);
+        console.warn('Failed to parse UPI URL:', e);
       }
     }
 
@@ -251,137 +246,75 @@ export async function POST(
       }
     }
 
-    const amountInPaise = Math.round(finalAmount * 100);
-    const idempotencyKey = `payout_${quote.id}_${Date.now()}`;
+    const transferId = `payout_${quote.id.slice(-10)}_${Date.now()}`;
+    const idempotencyKey = transferId;
     const recipientRef = paymentMethod === 'UPI' ? parsedUpiId!.trim() : accountNumber!.trim();
-    const isTestMode = (process.env.RAZORPAYX_KEY_ID || process.env.RAZORPAY_KEY_ID || '').startsWith('rzp_test_');
 
-    // 7. Step A: Create RazorpayX Contact
-    let contactId = `cont_test_${Date.now()}`;
+    // 7. Execute Real Cashfree Payout
+    let payoutResponse;
     try {
-      const contactResponse = await createRazorpayXContact({
-        name: payeeName,
-        contact: quote.contactNumber || '9999999999',
-        referenceId: quote.id,
-        notes: { pickupId: quote.id, quoteNumber: quote.quoteNumber || '' },
+      payoutResponse = await initiateCashfreePayout({
+        transferId,
+        amount: finalAmount,
+        paymentMethod,
+        recipientName: payeeName,
+        recipientPhone: quote.contactNumber || undefined,
+        upiId: paymentMethod === 'UPI' ? parsedUpiId : undefined,
+        accountNumber: paymentMethod === 'BANK_TRANSFER' ? accountNumber : undefined,
+        ifsc: paymentMethod === 'BANK_TRANSFER' ? ifsc : undefined,
+        remarks: `Buyback Quote #${quote.quoteNumber || quote.id}`,
       });
-      if (contactResponse?.id) contactId = contactResponse.id;
-    } catch (contactErr: any) {
-      if (!isTestMode) throw contactErr;
-      console.warn('[RazorpayX Test Mode] Contact creation fallback:', contactErr?.message);
-    }
+    } catch (cfErr: unknown) {
+      const errMessage = cfErr instanceof Error ? cfErr.message : 'Cashfree Payout API Failure';
+      const statusCode = (cfErr as any)?.statusCode || 502;
+      const responseBody = (cfErr as any)?.responseBody;
+      console.error('[Cashfree Payout Failure]:', errMessage, responseBody);
 
-    // 8. Step B: Create Fund Account
-    let fundAccountId = `fa_test_${Date.now()}`;
-    try {
-      let fundAccountResponse;
-      if (paymentMethod === 'UPI') {
-        fundAccountResponse = await createRazorpayXFundAccount({
-          contactId,
-          accountType: 'vpa',
-          vpaAddress: parsedUpiId!.trim(),
-        });
-      } else {
-        fundAccountResponse = await createRazorpayXFundAccount({
-          contactId,
-          accountType: 'bank_account',
-          name: payeeName,
-          ifsc: ifsc!.trim().toUpperCase(),
-          accountNumber: accountNumber!.trim(),
-        });
-      }
-      if (fundAccountResponse?.id) fundAccountId = fundAccountResponse.id;
-    } catch (fundErr: any) {
-      if (!isTestMode) throw fundErr;
-      console.warn('[RazorpayX Test Mode] Fund account creation fallback:', fundErr?.message);
-    }
-
-    // 9. Step C: Initiate RazorpayX Payout
-    let payoutResponse: any;
-    try {
-      payoutResponse = await initiateRazorpayXPayout({
-        fundAccountId,
-        amountInPaise,
-        currency: 'INR',
-        mode: paymentMethod === 'UPI' ? 'UPI' : 'IMPS',
-        purpose: 'payout',
-        referenceId: quote.quoteNumber || quote.id,
-        narration: 'Mobile Buyback Payout',
-        idempotencyKey,
-        notes: {
+      // Persist failed attempt audit log
+      await prisma.payoutTransaction.create({
+        data: {
           pickupId: quote.id,
+          quoteId: quote.id,
+          customerId: quote.userId,
           agentId: session.id,
-          customerName: quote.customerName || '',
+          amount: finalAmount,
+          currency: 'INR',
+          paymentMethod,
+          recipientReference: recipientRef,
+          recipientName: payeeName,
+          bankIfsc: ifsc ? ifsc.trim().toUpperCase() : null,
+          cfTransferId: transferId,
+          status: 'FAILED',
+          failureReason: errMessage,
+          idempotencyKey,
+          metadata: {
+            error: responseBody || errMessage,
+            qrRawData: qrRawData || null,
+          },
         },
       });
-    } catch (rzpErr: unknown) {
-      const errMessage = rzpErr instanceof Error ? rzpErr.message : 'RazorpayX Payout API Failure';
-      console.error('[RazorpayX Payout Creation Error]', rzpErr);
 
-      const isAccountNotActivated = 
-        errMessage.includes('The requested URL was not found on the server') ||
-        errMessage.includes('not found') ||
-        errMessage.includes('405') ||
-        errMessage.includes('404') ||
-        errMessage.includes('account_number') ||
-        errMessage.includes('activated') ||
-        errMessage.includes('Unauthorized') ||
-        errMessage.includes('insufficient_balance');
-
-      if (isTestMode || isAccountNotActivated || body.allowFallback !== false) {
-        console.warn(`[RazorpayX Payout Sandbox / Fallback Settlement] Completing payout record (${errMessage})`);
-        payoutResponse = {
-          id: `pout_sim_${Date.now()}`,
-          status: 'SUCCESS',
-          utr: `UTR${Date.now().toString().slice(-8)}`,
-          mode: paymentMethod === 'UPI' ? 'UPI' : 'IMPS',
-          amount: amountInPaise,
-        };
-      } else {
-        // Record Failed Transaction Audit Log
-        await prisma.payoutTransaction.create({
-          data: {
-            pickupId: quote.id,
-            quoteId: quote.id,
-            customerId: quote.userId,
-            agentId: session.id,
-            amount: finalAmount,
-            amountInPaise,
-            currency: 'INR',
-            paymentMethod,
-            recipientReference: recipientRef,
-            recipientName: payeeName,
-            bankIfsc: ifsc ? ifsc.trim().toUpperCase() : null,
-            contactId,
-            fundAccountId,
-            status: 'FAILED',
-            failureReason: errMessage,
-            idempotencyKey,
-            metadata: { qrRawData: qrRawData || null },
-          },
-        });
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: errMessage,
-          },
-          { status: 502, headers: corsHeaders }
-        );
-      }
+      return NextResponse.json(
+        {
+          success: false,
+          error: errMessage,
+          transferId,
+        },
+        { status: statusCode >= 400 && statusCode < 600 ? statusCode : 502, headers: corsHeaders }
+      );
     }
 
-    const rzpPayoutId = payoutResponse.id;
-    const rzpStatus = (payoutResponse.status || 'PENDING').toUpperCase();
+    const cfTransferId = payoutResponse.transfer_id || transferId;
+    const cfStatus = (payoutResponse.status || 'PENDING').toUpperCase();
 
-    // Map RazorpayX status to internal status
+    // 8. Map Real Gateway Status
     let mappedStatus = 'PROCESSING';
-    if (['PROCESSED', 'SUCCESS'].includes(rzpStatus)) mappedStatus = 'SUCCESS';
-    if (['REVERSED', 'CANCELLED'].includes(rzpStatus)) mappedStatus = 'REVERSED';
-    if (['FAILED', 'REJECTED'].includes(rzpStatus)) mappedStatus = 'FAILED';
-    if (['QUEUED', 'PENDING'].includes(rzpStatus)) mappedStatus = 'PENDING';
+    if (cfStatus === 'SUCCESS') mappedStatus = 'SUCCESS';
+    else if (cfStatus === 'REVERSED') mappedStatus = 'REVERSED';
+    else if (['FAILED', 'REJECTED', 'MANUALLY_REJECTED'].includes(cfStatus)) mappedStatus = 'FAILED';
+    else if (['PENDING', 'RECEIVED', 'QUEUED', 'APPROVAL_PENDING'].includes(cfStatus)) mappedStatus = 'PENDING';
 
-    // 10. Save Payout Transaction in DB
+    // 9. Persist Real Transaction in Database
     const transaction = await prisma.payoutTransaction.create({
       data: {
         pickupId: quote.id,
@@ -389,39 +322,45 @@ export async function POST(
         customerId: quote.userId,
         agentId: session.id,
         amount: finalAmount,
-        amountInPaise,
         currency: 'INR',
         paymentMethod,
         recipientReference: recipientRef,
         recipientName: payeeName,
         bankIfsc: ifsc ? ifsc.trim().toUpperCase() : null,
-        contactId,
-        fundAccountId,
-        razorpayPayoutId: rzpPayoutId,
+        cfTransferId: cfTransferId,
+        cfReferenceId: payoutResponse.cf_transfer_id || null,
         status: mappedStatus,
-        utr: payoutResponse.utr || null,
-        failureReason: payoutResponse.status_details?.reason || null,
+        utr: payoutResponse.transfer_utr || null,
+        failureReason: payoutResponse.status_description || null,
         idempotencyKey,
         metadata: {
-          mode: payoutResponse.mode,
-          rawStatus: rzpStatus,
+          transferMode: payoutResponse.transfer_mode || paymentMethod,
+          rawStatus: cfStatus,
+          statusCode: payoutResponse.status_code || null,
           qrRawData: qrRawData || null,
         },
       },
     });
 
-    // 11. Update Quote Record
+    // 10. Update Quote State
     const quoteUpdateData: Record<string, any> = {
       payoutMethod: paymentMethod,
       upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
       bankAccount: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
       bankIfsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
       bankAccountHolder: payeeName,
+      payoutDetails: {
+        payoutId: cfTransferId,
+        cfReferenceId: payoutResponse.cf_transfer_id || null,
+        utr: payoutResponse.transfer_utr || null,
+        status: mappedStatus,
+        amount: finalAmount,
+      },
     };
 
     if (mappedStatus === 'SUCCESS') {
       quoteUpdateData.status = 'pickup_successful';
-      quoteUpdateData.paymentStatus = 1; // VERIFIED/PAID
+      quoteUpdateData.paymentStatus = 1;
     } else if (mappedStatus === 'PROCESSING' || mappedStatus === 'PENDING') {
       quoteUpdateData.status = 'payment_processing';
     }
@@ -435,11 +374,13 @@ export async function POST(
       {
         success: true,
         message: 'Payout initiated successfully',
-        payoutId: rzpPayoutId,
+        payoutId: cfTransferId,
+        cfTransferId,
+        cfReferenceId: payoutResponse.cf_transfer_id || null,
         transactionId: transaction.id,
         status: mappedStatus,
         amount: finalAmount,
-        utr: payoutResponse.utr || null,
+        utr: payoutResponse.transfer_utr || null,
         recipientName: payeeName,
         recipientReference: recipientRef,
       },
@@ -447,7 +388,7 @@ export async function POST(
     );
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Internal server error during payout';
-    console.error('[Initiate Payout Route Error]:', err);
+    console.error('[Initiate Cashfree Payout Route Error]:', err);
     return NextResponse.json(
       { success: false, error: errorMessage },
       { status: 500, headers: corsHeaders }

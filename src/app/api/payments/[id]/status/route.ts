@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthSession } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
-import { getRazorpayXPayout } from '@/lib/razorpayx';
+import { getCashfreePayoutStatus } from '@/lib/cashfreePayout';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,7 +29,7 @@ export async function GET(
       );
     }
 
-    const paymentId = params.id;
+    const paymentId = params.id?.trim();
     if (!paymentId) {
       return NextResponse.json(
         { success: false, error: 'Payment or Payout ID is required' },
@@ -37,13 +37,14 @@ export async function GET(
       );
     }
 
-    // 1. Find transaction by ID or Razorpay Payout ID or pickupId
+    // 1. Find transaction by ID, Cashfree Transfer ID, Pickup ID, or Quote ID
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(paymentId);
     let transaction = isObjectId
       ? await prisma.payoutTransaction.findUnique({ where: { id: paymentId } })
       : await prisma.payoutTransaction.findFirst({
           where: {
             OR: [
+              { cfTransferId: paymentId },
               { razorpayPayoutId: paymentId },
               { pickupId: paymentId },
               { quoteId: paymentId },
@@ -59,7 +60,9 @@ export async function GET(
       );
     }
 
-    // 2. If status is already terminal SUCCESS or REVERSED, return cached status
+    const activePayoutId = transaction.cfTransferId || transaction.razorpayPayoutId;
+
+    // 2. If already terminal SUCCESS with UTR, return directly
     if (transaction.status === 'SUCCESS' && transaction.utr) {
       return NextResponse.json(
         {
@@ -67,7 +70,7 @@ export async function GET(
           status: 'SUCCESS',
           utr: transaction.utr,
           amount: transaction.amount,
-          payoutId: transaction.razorpayPayoutId,
+          payoutId: activePayoutId,
           quoteCompleted: true,
           updatedAt: transaction.updatedAt,
         },
@@ -75,26 +78,25 @@ export async function GET(
       );
     }
 
-    // 3. Otherwise fetch latest status from RazorpayX API
-    let livePayoutData = null;
+    // 3. Poll live status from Cashfree Payouts API
     let newStatus = transaction.status;
     let utr = transaction.utr;
     let failureReason = transaction.failureReason;
 
-    if (transaction.razorpayPayoutId) {
+    if (transaction.cfTransferId) {
       try {
-        livePayoutData = await getRazorpayXPayout(transaction.razorpayPayoutId);
-        const rzpStatus = (livePayoutData.status || '').toUpperCase();
+        const cfData = await getCashfreePayoutStatus(transaction.cfTransferId);
+        const cfStatus = (cfData.status || '').toUpperCase();
 
-        if (['PROCESSED', 'SUCCESS'].includes(rzpStatus)) newStatus = 'SUCCESS';
-        else if (['REVERSED', 'CANCELLED'].includes(rzpStatus)) newStatus = 'REVERSED';
-        else if (['FAILED', 'REJECTED'].includes(rzpStatus)) newStatus = 'FAILED';
-        else if (['QUEUED', 'PENDING', 'PROCESSING'].includes(rzpStatus)) newStatus = 'PROCESSING';
+        if (cfStatus === 'SUCCESS') newStatus = 'SUCCESS';
+        else if (cfStatus === 'REVERSED') newStatus = 'REVERSED';
+        else if (['FAILED', 'REJECTED', 'MANUALLY_REJECTED'].includes(cfStatus)) newStatus = 'FAILED';
+        else if (['PENDING', 'RECEIVED', 'QUEUED', 'APPROVAL_PENDING'].includes(cfStatus)) newStatus = 'PROCESSING';
 
-        if (livePayoutData.utr) utr = livePayoutData.utr;
-        if (livePayoutData.status_details?.reason) failureReason = livePayoutData.status_details.reason;
+        if (cfData.transfer_utr) utr = cfData.transfer_utr;
+        if (cfData.status_description) failureReason = cfData.status_description;
       } catch (err) {
-        console.warn('[RazorpayX Poll Live Status Warning]', err);
+        console.warn('[Cashfree Live Status Poll Warning]:', err);
       }
     }
 
@@ -109,12 +111,18 @@ export async function GET(
         },
       });
 
-      // Synchronize Quote status if completed
       if (newStatus === 'SUCCESS') {
         await prisma.quote.update({
           where: { id: transaction.pickupId },
           data: {
             status: 'pickup_successful',
+            paymentStatus: 1,
+            payoutDetails: {
+              payoutId: activePayoutId,
+              utr: utr || null,
+              status: 'SUCCESS',
+              amount: transaction.amount,
+            },
           },
         });
       }
@@ -126,17 +134,18 @@ export async function GET(
         status: transaction.status,
         utr: transaction.utr,
         amount: transaction.amount,
-        payoutId: transaction.razorpayPayoutId,
+        payoutId: activePayoutId,
         quoteCompleted: transaction.status === 'SUCCESS',
         failureReason: transaction.failureReason,
         updatedAt: transaction.updatedAt,
       },
       { headers: corsHeaders }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Failed to fetch payment status';
     console.error('Fetch Payment Status Error:', err);
     return NextResponse.json(
-      { success: false, error: err.message || 'Failed to fetch payment status' },
+      { success: false, error: errorMsg },
       { status: 500, headers: corsHeaders }
     );
   }

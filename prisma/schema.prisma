@@ -434,7 +434,9 @@ model PayoutTransaction {
   customerId         String?  // Customer User ID
   agentId            String   // Delivery Agent ID who initiated payout
   amount             Float    // Amount in Rupees (e.g. 8000.00)
-  amountInPaise      Int      // Amount in Paise (e.g. 800000)
+  amountInPaise      Int?     // Kept for backward compatibility
+  cfTransferId       String?  @unique // Cashfree Transfer ID
+  cfReferenceId      String?  // Cashfree Reference ID
   currency           String   @default("INR")
   paymentMethod      String   @default("UPI") // UPI | BANK_TRANSFER
   recipientReference String   // UPI VPA (e.g. user@upi) or Bank Account Number

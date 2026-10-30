@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getRazorpayXConfig } from '@/lib/razorpayx';
+import { getCashfreePayoutConfig } from '@/lib/cashfreePayout';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,6 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
-// Record process boot time
 const serverStartTime = Date.now() - Math.floor(process.uptime() * 1000);
 
 function formatUptime(seconds: number): string {
@@ -36,12 +35,11 @@ function formatUptime(seconds: number): string {
 export async function GET() {
   const startTime = Date.now();
 
-  // 1. Calculate Uptime Stats
   const uptimeSeconds = Math.floor(process.uptime());
   const bootTimestamp = new Date(serverStartTime).toISOString();
   const formattedUptime = formatUptime(uptimeSeconds);
 
-  // 2. Measure Database Ping & Latency
+  // 1. Measure Database Ping & Latency
   let dbStatus = 'DOWN';
   let dbLatencyMs = -1;
   let dbMessage = '';
@@ -52,34 +50,34 @@ export async function GET() {
     dbLatencyMs = Date.now() - dbStart;
     dbStatus = 'OPERATIONAL';
     dbMessage = 'MongoDB connected via Prisma';
-  } catch (err: any) {
+  } catch (err: unknown) {
     dbStatus = 'DOWN';
-    dbMessage = err?.message || 'Database ping failed';
+    dbMessage = err instanceof Error ? err.message : 'Database ping failed';
   }
 
-  // 3. Check RazorpayX Config Status
-  let rzpStatus = 'NOT_CONFIGURED';
+  // 2. Check Cashfree Payout Config Status
+  let cashfreeStatus = 'NOT_CONFIGURED';
   try {
-    const config = getRazorpayXConfig();
-    if (config.keyId && config.keySecret) {
-      rzpStatus = 'OPERATIONAL';
+    const config = getCashfreePayoutConfig();
+    if (config.clientId && config.clientSecret) {
+      cashfreeStatus = 'OPERATIONAL';
     }
-  } catch (e: any) {
-    rzpStatus = 'DEGRADED';
+  } catch (_) {
+    cashfreeStatus = 'DEGRADED';
   }
 
-  // 4. Memory Metrics
+  // 3. Memory Metrics
   const mem = process.memoryUsage();
   const heapUsedMb = (mem.heapUsed / 1024 / 1024).toFixed(2);
   const heapTotalMb = (mem.heapTotal / 1024 / 1024).toFixed(2);
   const rssMb = (mem.rss / 1024 / 1024).toFixed(2);
   const heapPercent = Math.round((mem.heapUsed / mem.heapTotal) * 100);
 
-  // 5. System Status Calculation
+  // 4. System Status Calculation
   let overallStatus = 'OPERATIONAL';
   if (dbStatus === 'DOWN') {
     overallStatus = 'OUTAGE';
-  } else if (dbStatus === 'DEGRADED' || rzpStatus === 'DEGRADED') {
+  } else if (dbStatus === 'DEGRADED' || cashfreeStatus === 'DEGRADED') {
     overallStatus = 'DEGRADED';
   }
 
@@ -122,10 +120,10 @@ export async function GET() {
           details: dbMessage,
         },
         {
-          name: 'RazorpayX Payout Gateway',
-          status: rzpStatus,
+          name: 'Cashfree Payout Gateway',
+          status: cashfreeStatus,
           type: 'PAYMENT',
-          details: rzpStatus === 'OPERATIONAL' ? 'Credentials configured & ready' : 'API credentials missing or invalid',
+          details: cashfreeStatus === 'OPERATIONAL' ? 'Credentials configured & ready' : 'API credentials missing or invalid',
         },
         {
           name: 'Authentication Service',
