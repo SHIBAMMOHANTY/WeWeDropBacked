@@ -1,8 +1,8 @@
+import { getAuthSession } from '@/lib/api';
+import { initiateCashfreePayout } from '@/lib/cashfreePayout';
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getAuthSession } from '@/lib/api';
-import { prisma } from '@/lib/prisma';
-import { initiateCashfreePayout } from '@/lib/cashfreePayout';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -294,10 +294,16 @@ export async function POST(
         },
       });
 
+      const detailedError = errMessage.includes('IP not whitelisted')
+        ? 'Cashfree API Error: IP not whitelisted. Please whitelist your IP in Cashfree Merchant Dashboard (Payouts > Developers > IP Whitelist).'
+        : `Cashfree Payout API Error: ${errMessage}`;
+
       return NextResponse.json(
         {
           success: false,
-          error: errMessage,
+          error: detailedError,
+          rawError: errMessage,
+          responseBody,
           transferId,
         },
         { status: statusCode >= 400 && statusCode < 600 ? statusCode : 502, headers: corsHeaders }
@@ -343,6 +349,7 @@ export async function POST(
     });
 
     // 10. Update Quote State
+    const paidAtTimestamp = new Date().toISOString();
     const quoteUpdateData: Record<string, any> = {
       payoutMethod: paymentMethod,
       upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
@@ -355,11 +362,13 @@ export async function POST(
         utr: payoutResponse.transfer_utr || null,
         status: mappedStatus,
         amount: finalAmount,
+        paidAt: paidAtTimestamp,
+        paymentGateway: 'CASHFREE',
       },
     };
 
     if (mappedStatus === 'SUCCESS') {
-      quoteUpdateData.status = 'pickup_successful';
+      quoteUpdateData.status = 'payment_completed';
       quoteUpdateData.paymentStatus = 1;
     } else if (mappedStatus === 'PROCESSING' || mappedStatus === 'PENDING') {
       quoteUpdateData.status = 'payment_processing';
@@ -373,7 +382,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-        message: 'Payout initiated successfully',
+        message: 'Payout initiated successfully via Cashfree',
         payoutId: cfTransferId,
         cfTransferId,
         cfReferenceId: payoutResponse.cf_transfer_id || null,
@@ -383,8 +392,10 @@ export async function POST(
         utr: payoutResponse.transfer_utr || null,
         recipientName: payeeName,
         recipientReference: recipientRef,
+        paidAt: paidAtTimestamp,
+        paymentGateway: 'CASHFREE',
       },
-      { headers: corsHeaders }
+      { status: 200, headers: corsHeaders }
     );
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Internal server error during payout';

@@ -289,6 +289,7 @@ export async function PUT(
     const currentPayout = (typeof quote.payoutDetails === 'object' && quote.payoutDetails) ? quote.payoutDetails : {};
     const incomingPayout = (typeof payoutDetails === 'object' && payoutDetails) ? payoutDetails : {};
 
+    const resolvedPaidAt = body.paidAt || incomingPayout.paidAt || (currentPayout as any).paidAt || (updateData.status === 'payment_completed' ? new Date().toISOString() : null);
     updateData.payoutDetails = {
       ...currentPayout,
       ...incomingPayout,
@@ -297,6 +298,8 @@ export async function PUT(
       idNumber: body.idNumber || incomingPayout.idNumber,
       idFront: body.idFront || incomingPayout.idFront,
       idBack: body.idBack || incomingPayout.idBack,
+      paidAt: resolvedPaidAt,
+      paymentGateway: body.paymentGateway || incomingPayout.paymentGateway || (currentPayout as any).paymentGateway || 'CASHFREE',
     };
 
     if (Array.isArray(body.proofImages) || Array.isArray(body.images)) {
