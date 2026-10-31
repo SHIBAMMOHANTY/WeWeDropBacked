@@ -1,9 +1,25 @@
 import * as crypto from 'crypto';
 
-function isValidPemKey(key?: string): boolean {
-  if (!key || typeof key !== 'string') return false;
-  const clean = key.replace(/\\n/g, '\n').trim();
-  return clean.includes('-----BEGIN PUBLIC KEY-----') && clean.includes('-----END PUBLIC KEY-----');
+/**
+ * Clean & auto-format any RSA Public Key string into exact RFC 7468 PEM format with 64-char lines
+ */
+function formatPublicKeyToPem(key?: string): string | null {
+  if (!key || typeof key !== 'string') return null;
+  // Remove headers, footers, literal \n, whitespace, newlines
+  const base64Only = key
+    .replace(/-----BEGIN PUBLIC KEY-----/g, '')
+    .replace(/-----END PUBLIC KEY-----/g, '')
+    .replace(/\\n/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+
+  if (base64Only.length < 50) return null;
+
+  // Split into strict 64-character lines required by OpenSSL
+  const chunks = base64Only.match(/.{1,64}/g);
+  if (!chunks || chunks.length === 0) return null;
+
+  return `-----BEGIN PUBLIC KEY-----\n${chunks.join('\n')}\n-----END PUBLIC KEY-----`;
 }
 
 
@@ -30,7 +46,7 @@ export function getCashfreePayoutConfig(): CashfreePayoutConfig {
     ? 'https://api.cashfree.com/payout'
     : 'https://sandbox.cashfree.com/payout';
 
-  const publicKey = rawPublicKey ? rawPublicKey.replace(/\\n/g, '\n').trim() : undefined;
+  const publicKey = rawPublicKey ? formatPublicKeyToPem(rawPublicKey) || undefined : undefined;
 
   return {
     clientId,
@@ -46,13 +62,14 @@ export function getCashfreePayoutConfig(): CashfreePayoutConfig {
  */
 export function generateCashfreeSignature(clientId: string, publicKeyPem: string): string | null {
   try {
-    if (!isValidPemKey(publicKeyPem)) return null;
+    const formattedPem = formatPublicKeyToPem(publicKeyPem);
+    if (!formattedPem) return null;
     const epochTimestamp = Math.floor(Date.now() / 1000);
     const dataToEncrypt = clientId + '.' + epochTimestamp;
 
     const encrypted = crypto.publicEncrypt(
       {
-        key: publicKeyPem.replace(/\\n/g, '\n').trim(),
+        key: formattedPem,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha1',
       },
@@ -105,7 +122,7 @@ async function cashfreeFetch(endpoint: string, options: RequestInit = {}): Promi
     ...(options.headers as Record<string, string>),
   };
 
-  if (config.publicKey && isValidPemKey(config.publicKey)) {
+  if (config.publicKey) {
     try {
       const signature = generateCashfreeSignature(config.clientId, config.publicKey);
       if (signature) {
