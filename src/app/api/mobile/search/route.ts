@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CacheService } from '@/lib/mobile/cache';
 import { prisma } from '@/lib/prisma';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, x-agent-key, x-user-id',
+};
 import { getCashifyPrice } from '@/lib/cashify-scraper';
 
 // Brand-specific image map for known brands
@@ -131,6 +137,10 @@ function calculateRelevance(item: { brand: string; model: string }, keywords: st
   return score;
 }
 
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 

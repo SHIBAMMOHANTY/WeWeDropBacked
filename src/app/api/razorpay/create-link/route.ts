@@ -1,4 +1,6 @@
 import Razorpay from "razorpay";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 import { NextResponse } from "next/server";
 
 const razorpay = new Razorpay({

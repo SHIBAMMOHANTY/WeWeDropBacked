@@ -1,4 +1,15 @@
 import { NextResponse } from 'next/server';
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+export const runtime = 'nodejs';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, x-agent-key, x-user-id',
+};
 import { createDatabaseBackup, BackupType } from '@/lib/backup';
 
 export const dynamic = 'force-dynamic';

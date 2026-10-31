@@ -1,5 +1,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, x-agent-key, x-user-id',
+};
 import Razorpay from "razorpay";
 
 function setCorsHeaders(response: NextResponse) {
