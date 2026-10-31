@@ -1,5 +1,5 @@
 import { getAuthSession } from '@/lib/api';
-import { initiateCashfreePayout } from '@/lib/cashfreePayout';
+import { initiateCashfreePayout, getCashfreePayoutStatus } from '@/lib/cashfreePayout';
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -311,16 +311,42 @@ export async function POST(
     }
 
     const cfTransferId = payoutResponse.transfer_id || transferId;
-    const cfStatus = (payoutResponse.status || 'PENDING').toUpperCase();
+    let finalCfResponse = payoutResponse;
+    let finalCfStatus = (payoutResponse.status || 'PENDING').toUpperCase();
 
-    // 8. Map Real Gateway Status
-    let mappedStatus = 'PROCESSING';
-    if (cfStatus === 'SUCCESS') mappedStatus = 'SUCCESS';
-    else if (cfStatus === 'REVERSED') mappedStatus = 'REVERSED';
-    else if (['FAILED', 'REJECTED', 'MANUALLY_REJECTED'].includes(cfStatus)) mappedStatus = 'FAILED';
-    else if (['PENDING', 'RECEIVED', 'QUEUED', 'APPROVAL_PENDING'].includes(cfStatus)) mappedStatus = 'PENDING';
+    // 8. If initial status is PENDING/RECEIVED/PROCESSING, wait 1.8s and poll Cashfree for final terminal status
+    if (['PENDING', 'RECEIVED', 'QUEUED', 'PROCESSING'].includes(finalCfStatus)) {
+      try {
+        await new Promise((r) => setTimeout(r, 1800));
+        const statusPoll = await getCashfreePayoutStatus(cfTransferId);
+        if (statusPoll && statusPoll.status) {
+          finalCfResponse = statusPoll;
+          finalCfStatus = statusPoll.status.toUpperCase();
+          console.log('[Cashfree Polled Final Status]:', finalCfStatus, statusPoll);
+        }
+      } catch (pollErr) {
+        console.warn('[Cashfree Status Poll Warning]:', pollErr);
+      }
+    }
 
-    // 9. Persist Real Transaction in Database
+    // 9. Map Real Gateway Status
+    let mappedStatus = 'PENDING';
+    if (finalCfStatus === 'SUCCESS') mappedStatus = 'SUCCESS';
+    else if (finalCfStatus === 'REVERSED') mappedStatus = 'REVERSED';
+    else if (['FAILED', 'REJECTED', 'MANUALLY_REJECTED'].includes(finalCfStatus)) mappedStatus = 'FAILED';
+    else if (['PENDING', 'RECEIVED', 'QUEUED', 'APPROVAL_PENDING', 'PROCESSING'].includes(finalCfStatus)) mappedStatus = 'PENDING';
+
+    const statusDesc =
+      finalCfResponse.status_description ||
+      finalCfResponse.message ||
+      (mappedStatus === 'FAILED' ? 'Cashfree payout was rejected or failed' : 'Payout initiated');
+
+    const paidAccountStr =
+      paymentMethod === 'UPI'
+        ? `UPI: ${recipientRef}`
+        : `A/C: ${recipientRef} (IFSC: ${ifsc || ''})`;
+
+    // 10. Persist Real Transaction in Database
     const transaction = await prisma.payoutTransaction.create({
       data: {
         pickupId: quote.id,
@@ -334,78 +360,144 @@ export async function POST(
         recipientName: payeeName,
         bankIfsc: ifsc ? ifsc.trim().toUpperCase() : null,
         cfTransferId: cfTransferId,
-        cfReferenceId: payoutResponse.cf_transfer_id || null,
+        cfReferenceId: finalCfResponse.cf_transfer_id || null,
         status: mappedStatus,
-        utr: payoutResponse.transfer_utr || null,
-        failureReason: payoutResponse.status_description || null,
+        utr: finalCfResponse.transfer_utr || null,
+        failureReason: mappedStatus === 'FAILED' ? statusDesc : null,
         idempotencyKey,
         metadata: {
-          transferMode: payoutResponse.transfer_mode || paymentMethod,
-          rawStatus: cfStatus,
-          statusCode: payoutResponse.status_code || null,
+          transferMode: finalCfResponse.transfer_mode || paymentMethod,
+          rawStatus: finalCfStatus,
+          statusCode: finalCfResponse.status_code || null,
+          statusDescription: statusDesc,
           qrRawData: qrRawData || null,
         },
       },
     });
 
-    // 10. Update Quote State
+    // 11. If Cashfree REJECTED or FAILED: STRICTLY FAIL! Never mark payment_completed!
+    if (mappedStatus === 'FAILED') {
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: {
+          status: 'payment_pending',
+          payoutDetails: {
+            payoutId: cfTransferId,
+            cfTransferId,
+            cfReferenceId: finalCfResponse.cf_transfer_id || null,
+            status: 'FAILED',
+            rawStatus: finalCfStatus,
+            amount: finalAmount,
+            failureReason: statusDesc,
+            failedAt: new Date().toISOString(),
+            paymentGateway: 'CASHFREE',
+            beneficiaryName: payeeName,
+            accountHolderName: payeeName,
+            paidToAccount: paidAccountStr,
+            details: paidAccountStr,
+            paymentMethod: paymentMethod,
+            upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
+            accountNumber: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
+            ifsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
+          },
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Cashfree Payout ${finalCfStatus}: ${statusDesc}`,
+          status: 'FAILED',
+          rawStatus: finalCfStatus,
+          statusDescription: statusDesc,
+          transferId: cfTransferId,
+        },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // 12. If Still PENDING after polling: Do NOT mark payment_completed!
+    if (mappedStatus !== 'SUCCESS') {
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: {
+          status: 'payment_processing',
+          payoutDetails: {
+            payoutId: cfTransferId,
+            cfTransferId,
+            cfReferenceId: finalCfResponse.cf_transfer_id || null,
+            status: 'PENDING',
+            rawStatus: finalCfStatus,
+            amount: finalAmount,
+            paymentGateway: 'CASHFREE',
+            beneficiaryName: payeeName,
+            accountHolderName: payeeName,
+            paidToAccount: paidAccountStr,
+            details: paidAccountStr,
+            paymentMethod: paymentMethod,
+          },
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Cashfree Payout is ${finalCfStatus}. Confirmation pending from bank.`,
+          status: 'PENDING',
+          rawStatus: finalCfStatus,
+          transferId: cfTransferId,
+        },
+        { status: 202, headers: corsHeaders }
+      );
+    }
+
+    // 13. ONLY when mappedStatus === 'SUCCESS': Update to payment_completed!
     const paidAtTimestamp = new Date().toISOString();
     const effectiveUtr =
-      payoutResponse.transfer_utr ||
-      payoutResponse.cf_transfer_id ||
+      finalCfResponse.transfer_utr ||
+      finalCfResponse.cf_transfer_id ||
       cfTransferId;
-    const paidAccountStr =
-      paymentMethod === 'UPI'
-        ? `UPI: ${recipientRef}`
-        : `A/C: ${recipientRef} (IFSC: ${ifsc || ''})`;
-
-    const quoteUpdateData: Record<string, any> = {
-      payoutMethod: paymentMethod,
-      upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
-      bankAccount: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
-      bankIfsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
-      bankAccountHolder: payeeName,
-      payoutDetails: {
-        payoutId: cfTransferId,
-        cfTransferId,
-        cfReferenceId: payoutResponse.cf_transfer_id || null,
-        utr: effectiveUtr,
-        status: mappedStatus,
-        amount: finalAmount,
-        paidAt: paidAtTimestamp,
-        paymentGateway: 'CASHFREE',
-        beneficiaryName: payeeName,
-        accountHolderName: payeeName,
-        paidToAccount: paidAccountStr,
-        details: paidAccountStr,
-        paymentMethod: paymentMethod,
-        upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
-        accountNumber: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
-        ifsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
-      },
-    };
-
-    if (mappedStatus === 'SUCCESS') {
-      quoteUpdateData.status = 'payment_completed';
-      quoteUpdateData.paymentStatus = 1;
-    } else if (mappedStatus === 'PROCESSING' || mappedStatus === 'PENDING') {
-      quoteUpdateData.status = 'payment_processing';
-    }
 
     await prisma.quote.update({
       where: { id: quote.id },
-      data: quoteUpdateData,
+      data: {
+        status: 'payment_completed',
+        paymentStatus: 1,
+        payoutMethod: paymentMethod,
+        upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
+        bankAccount: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
+        bankIfsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
+        bankAccountHolder: payeeName,
+        payoutDetails: {
+          payoutId: cfTransferId,
+          cfTransferId,
+          cfReferenceId: finalCfResponse.cf_transfer_id || null,
+          utr: effectiveUtr,
+          status: 'SUCCESS',
+          amount: finalAmount,
+          paidAt: paidAtTimestamp,
+          paymentGateway: 'CASHFREE',
+          beneficiaryName: payeeName,
+          accountHolderName: payeeName,
+          paidToAccount: paidAccountStr,
+          details: paidAccountStr,
+          paymentMethod: paymentMethod,
+          upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
+          accountNumber: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
+          ifsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
+        },
+      },
     });
 
     return NextResponse.json(
       {
         success: true,
-        message: 'Payout initiated successfully via Cashfree',
+        message: 'Payout settled successfully via Cashfree',
         payoutId: cfTransferId,
         cfTransferId,
-        cfReferenceId: payoutResponse.cf_transfer_id || null,
+        cfReferenceId: finalCfResponse.cf_transfer_id || null,
         transactionId: transaction.id,
-        status: mappedStatus,
+        status: 'SUCCESS',
         amount: finalAmount,
         utr: effectiveUtr,
         recipientName: payeeName,
