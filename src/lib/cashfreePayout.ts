@@ -174,6 +174,12 @@ export async function initiateCashfreePayout(params: InitiatePayoutParams): Prom
     instrumentDetails.bank_ifsc = params.ifsc.trim().toUpperCase();
   }
 
+  // Clean transfer_remarks: Cashfree strictly permits alphanumeric and spaces only, max 70 chars. No special characters like '#'.
+  const sanitizedRemarks = (params.remarks || 'Mobile Buyback Payout')
+    .replace(/[^a-zA-Z0-9 ]/g, '')
+    .trim()
+    .slice(0, 50) || 'Mobile Buyback Payout';
+
   const payload = {
     transfer_id: params.transferId,
     transfer_amount: Number(params.amount.toFixed(2)),
@@ -186,7 +192,7 @@ export async function initiateCashfreePayout(params: InitiatePayoutParams): Prom
         beneficiary_phone: phone,
       },
     },
-    transfer_remarks: params.remarks || 'Mobile Buyback Payout',
+    transfer_remarks: sanitizedRemarks,
   };
 
   return cashfreeFetch('/transfers', {

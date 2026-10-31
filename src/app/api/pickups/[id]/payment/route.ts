@@ -262,7 +262,7 @@ export async function POST(
         upiId: paymentMethod === 'UPI' ? parsedUpiId : undefined,
         accountNumber: paymentMethod === 'BANK_TRANSFER' ? accountNumber : undefined,
         ifsc: paymentMethod === 'BANK_TRANSFER' ? ifsc : undefined,
-        remarks: `Buyback Quote #${quote.quoteNumber || quote.id}`,
+        remarks: `Buyback Quote ${quote.quoteNumber || quote.id}`,
       });
     } catch (cfErr: unknown) {
       const errMessage = cfErr instanceof Error ? cfErr.message : 'Cashfree Payout API Failure';
