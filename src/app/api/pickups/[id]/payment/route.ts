@@ -165,13 +165,14 @@ export async function POST(
     }
 
     // 5. Idempotency Guard - Prevent Concurrent Duplicate Disbursals
-    // Allow retrying if the existing PENDING tx is stale (> 5 minutes old, no webhook received)
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    // Allow retrying if the existing PENDING tx is stale (> 2 minutes old, no webhook received)
+    // Only block on PENDING/QUEUED — FAILED/REJECTED are always retryable
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
     const existingTransaction = await prisma.payoutTransaction.findFirst({
       where: {
         pickupId: quote.id,
-        status: { in: ['PENDING', 'QUEUED', 'PROCESSING', 'SUCCESS'] },
-        createdAt: { gte: fiveMinutesAgo }, // Only block if tx was created within last 5 mins
+        status: { in: ['PENDING', 'QUEUED', 'SUCCESS'] },
+        createdAt: { gte: twoMinutesAgo }, // Only block if tx was created within last 2 mins
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -192,14 +193,16 @@ export async function POST(
         );
       }
 
+      // Still genuinely PENDING within the 2-min window — return 202 so mobile treats it as PENDING, not error
       return NextResponse.json(
         {
-          success: false,
-          error: `A payout transaction is already in ${existingTransaction.status} state for this pickup. Please wait for confirmation.`,
+          success: true,
+          status: 'PENDING',
+          message: `A payout transaction is already in ${existingTransaction.status} state for this pickup. Please wait for confirmation.`,
           payoutId: activeId,
-          status: existingTransaction.status,
+          transferId: activeId,
         },
-        { status: 409, headers: corsHeaders }
+        { status: 202, headers: corsHeaders }
       );
     }
 
@@ -443,13 +446,16 @@ export async function POST(
         },
       });
 
+      // Return success:true + status:'PENDING' + HTTP 202 so the mobile app
+      // knows the transfer was accepted by Cashfree and routes to the pending modal
       return NextResponse.json(
         {
-          success: false,
-          error: `Cashfree Payout is ${finalCfStatus}. Confirmation pending from bank.`,
+          success: true,
           status: 'PENDING',
-          rawStatus: finalCfStatus,
+          message: 'Payout initiated successfully via Cashfree. Awaiting bank settlement confirmation.',
           transferId: cfTransferId,
+          payoutId: cfTransferId,
+          rawStatus: finalCfStatus,
         },
         { status: 202, headers: corsHeaders }
       );
