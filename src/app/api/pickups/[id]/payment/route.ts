@@ -458,64 +458,64 @@ export async function POST(
       finalCfResponse.cf_transfer_id ||
       cfTransferId;
 
-    await prisma.quote.update({
-      where: { id: quote.id },
-      data: {
-        status: 'payment_completed',
-        paymentStatus: 1,
-        payoutMethod: paymentMethod,
-        upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
-        bankAccount: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
-        bankIfsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
-        bankAccountHolder: payeeName,
-        payoutDetails: {
-          payoutId: cfTransferId,
-          cfTransferId,
-          cfReferenceId: finalCfResponse.cf_transfer_id || null,
-          utr: effectiveUtr,
-          status: 'SUCCESS',
-          amount: finalAmount,
-          paidAt: paidAtTimestamp,
-          paymentGateway: 'CASHFREE',
-          beneficiaryName: payeeName,
-          accountHolderName: payeeName,
-          paidToAccount: paidAccountStr,
-          details: paidAccountStr,
-          paymentMethod: paymentMethod,
-          upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
-          accountNumber: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
-          ifsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
-        },
-      },
-    });
+        await prisma.quote.update({
+          where: { id: quote.id },
+          data: {
+            status: 'payment_completed',
+            paymentStatus: 1,
+            payoutMethod: paymentMethod,
+            upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
+            bankAccount: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
+            bankIfsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
+            bankAccountHolder: payeeName,
+            payoutDetails: {
+              payoutId: cfTransferId,
+              cfTransferId,
+              cfReferenceId: finalCfResponse.cf_transfer_id || null,
+              utr: effectiveUtr,
+              status: 'SUCCESS',
+              amount: finalAmount,
+              paidAt: paidAtTimestamp,
+              paymentGateway: 'CASHFREE',
+              beneficiaryName: payeeName,
+              accountHolderName: payeeName,
+              paidToAccount: paidAccountStr,
+              details: paidAccountStr,
+              paymentMethod: paymentMethod,
+              upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
+              accountNumber: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
+              ifsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
+            },
+          },
+  });
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Payout settled successfully via Cashfree',
-        payoutId: cfTransferId,
-        cfTransferId,
-        cfReferenceId: finalCfResponse.cf_transfer_id || null,
-        transactionId: transaction.id,
-        status: 'SUCCESS',
-        amount: finalAmount,
-        utr: effectiveUtr,
-        recipientName: payeeName,
-        beneficiaryName: payeeName,
-        paidToAccount: paidAccountStr,
-        details: paidAccountStr,
-        recipientReference: recipientRef,
-        paidAt: paidAtTimestamp,
-        paymentGateway: 'CASHFREE',
-      },
-      { status: 200, headers: corsHeaders }
-    );
-  } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : 'Internal server error during payout';
-    console.error('[Initiate Cashfree Payout Route Error]:', err);
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500, headers: corsHeaders }
-    );
-  }
+  return NextResponse.json(
+    {
+      success: true,
+      message: 'Payout settled successfully via Cashfree',
+      payoutId: cfTransferId,
+      cfTransferId,
+      cfReferenceId: finalCfResponse.cf_transfer_id || null,
+      transactionId: transaction.id,
+      status: 'SUCCESS',
+      amount: finalAmount,
+      utr: effectiveUtr,
+      recipientName: payeeName,
+      beneficiaryName: payeeName,
+      paidToAccount: paidAccountStr,
+      details: paidAccountStr,
+      recipientReference: recipientRef,
+      paidAt: paidAtTimestamp,
+      paymentGateway: 'CASHFREE',
+    },
+    { status: 200, headers: corsHeaders }
+  );
+} catch (err: unknown) {
+  const errorMessage = err instanceof Error ? err.message : 'Internal server error during payout';
+  console.error('[Initiate Cashfree Payout Route Error]:', err);
+  return NextResponse.json(
+    { success: false, error: errorMessage },
+    { status: 500, headers: corsHeaders }
+  );
+}
 }
