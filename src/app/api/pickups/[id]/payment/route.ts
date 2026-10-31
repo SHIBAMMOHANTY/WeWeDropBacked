@@ -350,6 +350,15 @@ export async function POST(
 
     // 10. Update Quote State
     const paidAtTimestamp = new Date().toISOString();
+    const effectiveUtr =
+      payoutResponse.transfer_utr ||
+      payoutResponse.cf_transfer_id ||
+      cfTransferId;
+    const paidAccountStr =
+      paymentMethod === 'UPI'
+        ? `UPI: ${recipientRef}`
+        : `A/C: ${recipientRef} (IFSC: ${ifsc || ''})`;
+
     const quoteUpdateData: Record<string, any> = {
       payoutMethod: paymentMethod,
       upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
@@ -358,12 +367,21 @@ export async function POST(
       bankAccountHolder: payeeName,
       payoutDetails: {
         payoutId: cfTransferId,
+        cfTransferId,
         cfReferenceId: payoutResponse.cf_transfer_id || null,
-        utr: payoutResponse.transfer_utr || null,
+        utr: effectiveUtr,
         status: mappedStatus,
         amount: finalAmount,
         paidAt: paidAtTimestamp,
         paymentGateway: 'CASHFREE',
+        beneficiaryName: payeeName,
+        accountHolderName: payeeName,
+        paidToAccount: paidAccountStr,
+        details: paidAccountStr,
+        paymentMethod: paymentMethod,
+        upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
+        accountNumber: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
+        ifsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
       },
     };
 
@@ -389,8 +407,11 @@ export async function POST(
         transactionId: transaction.id,
         status: mappedStatus,
         amount: finalAmount,
-        utr: payoutResponse.transfer_utr || null,
+        utr: effectiveUtr,
         recipientName: payeeName,
+        beneficiaryName: payeeName,
+        paidToAccount: paidAccountStr,
+        details: paidAccountStr,
         recipientReference: recipientRef,
         paidAt: paidAtTimestamp,
         paymentGateway: 'CASHFREE',
