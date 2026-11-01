@@ -208,37 +208,18 @@ export async function POST(
 
     // 5b. Cash Payment Mode (In-Hand Cash by Delivery Agent / Pilot)
     if (paymentMethod === 'CASH') {
-      const cashUtr = `CASH_${Date.now().toString().slice(-8)}`;
-      const cashId = `cash_${quote.id.slice(-8)}_${Date.now()}`;
       const paidTimestamp = new Date().toISOString();
-      const payeeName = (accountHolderName || quote.customerName || 'Customer').trim();
+      const payeeName = (
+        accountHolderName ||
+        quote.customerName ||
+        quote.dealerName ||
+        quote.ownerName ||
+        ''
+      ).trim();
+      const recipientRef = payeeName || quote.contactNumber || quote.quoteNumber || quote.id;
 
-      await prisma.quote.update({
-        where: { id: quote.id },
-        data: {
-          status: 'payment_completed',
-          paymentStatus: 1,
-          payoutMethod: 'CASH',
-          paymentMethod: 'CASH',
-          bankAccountHolder: payeeName,
-          payoutDetails: {
-            payoutId: cashId,
-            cfTransferId: cashId,
-            utr: cashUtr,
-            status: 'SUCCESS',
-            amount: finalAmount,
-            paidAt: paidTimestamp,
-            paymentGateway: 'CASH',
-            beneficiaryName: payeeName,
-            accountHolderName: payeeName,
-            paidToAccount: 'Cash in Hand',
-            details: 'Cash in Hand (Paid by Pilot)',
-            paymentMethod: 'CASH',
-          },
-        },
-      });
-
-      await prisma.payoutTransaction.create({
+      // 1. Create real database PayoutTransaction record
+      const transaction = await prisma.payoutTransaction.create({
         data: {
           pickupId: quote.id,
           quoteId: quote.id,
@@ -247,16 +228,40 @@ export async function POST(
           amount: finalAmount,
           currency: 'INR',
           paymentMethod: 'CASH',
-          recipientReference: 'CASH_IN_HAND',
-          recipientName: payeeName,
-          cfTransferId: cashId,
+          recipientReference: recipientRef,
+          recipientName: payeeName || null,
+          cfTransferId: null,
+          cfReferenceId: null,
           status: 'SUCCESS',
-          utr: cashUtr,
-          idempotencyKey: cashId,
+          utr: null,
+          idempotencyKey: `cash_${quote.id}_${Date.now()}`,
           metadata: {
-            mode: 'CASH',
-            confirmedByAgent: session.id,
-            timestamp: paidTimestamp,
+            paymentMethod: 'CASH',
+            confirmedByAgentId: session.id,
+            paidAt: paidTimestamp,
+          },
+        },
+      });
+
+      // 2. Mark quote as payment_completed with real transaction reference
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: {
+          status: 'payment_completed',
+          paymentStatus: 1,
+          payoutMethod: 'CASH',
+          paymentMethod: 'CASH',
+          bankAccountHolder: payeeName || null,
+          payoutDetails: {
+            payoutId: transaction.id,
+            transactionId: transaction.id,
+            status: 'SUCCESS',
+            amount: finalAmount,
+            paidAt: paidTimestamp,
+            paymentMethod: 'CASH',
+            beneficiaryName: payeeName || null,
+            accountHolderName: payeeName || null,
+            confirmedByAgentId: session.id,
           },
         },
       });
@@ -265,17 +270,14 @@ export async function POST(
         {
           success: true,
           message: 'Cash payment confirmed successfully',
-          payoutId: cashId,
-          cfTransferId: cashId,
-          transferId: cashId,
+          payoutId: transaction.id,
+          transactionId: transaction.id,
           status: 'SUCCESS',
           amount: finalAmount,
-          utr: cashUtr,
+          utr: null,
           paymentMethod: 'CASH',
-          beneficiaryName: payeeName,
-          paidToAccount: 'Cash in Hand',
+          beneficiaryName: payeeName || null,
           paidAt: paidTimestamp,
-          paymentGateway: 'CASH',
         },
         { status: 200, headers: corsHeaders }
       );
@@ -283,7 +285,13 @@ export async function POST(
 
     // 6. Validate Payment Instrument
     let parsedUpiId = rawUpiId;
-    let payeeName = accountHolderName || quote.customerName || 'Customer';
+    let payeeName = (
+      accountHolderName ||
+      quote.customerName ||
+      quote.dealerName ||
+      quote.ownerName ||
+      ''
+    ).trim();
 
     if (qrRawData && qrRawData.startsWith('upi://pay')) {
       try {
