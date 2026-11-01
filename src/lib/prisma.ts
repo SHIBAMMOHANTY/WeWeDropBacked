@@ -6,13 +6,12 @@ const globalForPrisma = globalThis as unknown as { prisma: any };
 export const prisma: any =
   globalForPrisma.prisma ??
   new PrismaClient({
-    errorFormat: 'pretty',
-    log: [
-      {
-        emit: 'stdout',
-        level: 'query',
-      },
-    ],
+    errorFormat: 'minimal',
+    log:
+      process.env.NODE_ENV === 'production'
+        ? ['error']
+        : [{ emit: 'stdout', level: 'warn' }, { emit: 'stdout', level: 'error' }],
   });
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+// Always cache Prisma instance in globalThis across serverless warm invocations
+globalForPrisma.prisma = prisma;

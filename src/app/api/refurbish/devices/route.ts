@@ -78,7 +78,8 @@ export async function GET(req: NextRequest) {
 
     const allQuotes = await (prisma as any).quote.findMany({
       where,
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
+      take: 150,
     });
 
     // Lookup pickup/delivery agent names

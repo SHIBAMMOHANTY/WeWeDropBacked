@@ -38,7 +38,15 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ banners, total: banners.length }, { headers: corsHeaders });
+    return NextResponse.json(
+      { banners, total: banners.length },
+      {
+        headers: {
+          ...corsHeaders,
+          "Cache-Control": "public, s-maxage=120, stale-while-revalidate=600",
+        },
+      }
+    );
   } catch (error) {
     console.error("Failed to fetch banners:", error);
     return NextResponse.json({ error: "Failed to fetch banners" }, { status: 500, headers: corsHeaders });
