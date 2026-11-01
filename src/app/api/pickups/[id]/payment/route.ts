@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const paymentSchema = z.object({
-  paymentMethod: z.enum(['UPI', 'BANK_TRANSFER', 'CASH']).default('UPI'),
+  paymentMethod: z.enum(['UPI', 'BANK_TRANSFER', 'CASH', 'PHONE', 'QR_CODE']).default('UPI'),
   upiId: z.string().trim().optional(),
   accountNumber: z.string().trim().optional(),
   ifsc: z.string().trim().toUpperCase().optional(),
@@ -16,6 +16,8 @@ const paymentSchema = z.object({
   customerAccepted: z.boolean().default(true),
   qrRawData: z.string().trim().optional(),
   amount: z.number().positive().optional(),
+  phoneNumber: z.string().trim().optional(),
+  phoneUpiHandle: z.string().trim().optional(),
 });
 
 function getCorsHeaders(req?: NextRequest): Record<string, string> {
@@ -258,7 +260,6 @@ export async function POST(
         where: { id: quote.id },
         data: {
           status: 'payment_completed',
-          paymentStatus: 1,
           payoutMethod: 'CASH',
           paymentMethod: 'CASH',
           bankAccountHolder: payeeName || null,
@@ -315,11 +316,26 @@ export async function POST(
       }
     }
 
-    if (paymentMethod === 'UPI') {
+    if (paymentMethod === 'PHONE' && !parsedUpiId && parseResult.data.phoneNumber) {
+      const cleanPhone = parseResult.data.phoneNumber.replace(/\D/g, '').slice(-10);
+      const handle = (parseResult.data.phoneUpiHandle || '@upi').trim();
+      parsedUpiId = `${cleanPhone}${handle.startsWith('@') ? handle : `@${handle}`}`;
+    }
+
+    const isUpiLike = ['UPI', 'QR_CODE', 'PHONE'].includes(paymentMethod);
+
+    if (isUpiLike) {
       const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
       if (!parsedUpiId || !upiRegex.test(parsedUpiId.trim())) {
         return NextResponse.json(
-          { success: false, error: 'Invalid or missing UPI ID (VPA) format (e.g. user@bank)' },
+          {
+            success: false,
+            error: paymentMethod === 'PHONE'
+              ? 'Invalid mobile number or UPI handle for Phone UPI'
+              : paymentMethod === 'QR_CODE'
+              ? 'Invalid or unscanned UPI QR code data'
+              : 'Invalid or missing UPI ID (VPA) format (e.g. user@bank)',
+          },
           { status: 400, headers: corsHeaders }
         );
       }
@@ -348,7 +364,7 @@ export async function POST(
 
     const transferId = `payout_${quote.id.slice(-10)}_${Date.now()}`;
     const idempotencyKey = transferId;
-    const recipientRef = paymentMethod === 'UPI' ? parsedUpiId!.trim() : accountNumber!.trim();
+    const recipientRef = isUpiLike ? parsedUpiId!.trim() : accountNumber!.trim();
 
     // 7. Execute Real Cashfree Payout
     let payoutResponse;
@@ -356,10 +372,10 @@ export async function POST(
       payoutResponse = await initiateCashfreePayout({
         transferId,
         amount: finalAmount,
-        paymentMethod,
+        paymentMethod: isUpiLike ? 'UPI' : 'BANK_TRANSFER',
         recipientName: payeeName,
         recipientPhone: quote.contactNumber || undefined,
-        upiId: paymentMethod === 'UPI' ? parsedUpiId : undefined,
+        upiId: isUpiLike ? parsedUpiId : undefined,
         accountNumber: paymentMethod === 'BANK_TRANSFER' ? accountNumber : undefined,
         ifsc: paymentMethod === 'BANK_TRANSFER' ? ifsc : undefined,
         remarks: `Buyback Quote ${quote.quoteNumber || quote.id}`,
@@ -442,7 +458,11 @@ export async function POST(
       (mappedStatus === 'FAILED' ? 'Cashfree payout was rejected or failed' : 'Payout initiated');
 
     const paidAccountStr =
-      paymentMethod === 'UPI'
+      paymentMethod === 'PHONE'
+        ? `Phone UPI: ${recipientRef}`
+        : paymentMethod === 'QR_CODE'
+        ? `QR Code: ${recipientRef}`
+        : paymentMethod === 'UPI'
         ? `UPI: ${recipientRef}`
         : `A/C: ${recipientRef} (IFSC: ${ifsc || ''})`;
 
@@ -565,9 +585,8 @@ export async function POST(
       where: { id: quote.id },
       data: {
         status: 'payment_completed',
-        paymentStatus: 1,
         payoutMethod: paymentMethod,
-        upiId: paymentMethod === 'UPI' ? recipientRef : undefined,
+        upiId: isUpiLike ? recipientRef : undefined,
         bankAccount: paymentMethod === 'BANK_TRANSFER' ? recipientRef : undefined,
         bankIfsc: ifsc ? ifsc.trim().toUpperCase() : undefined,
         bankAccountHolder: payeeName,
