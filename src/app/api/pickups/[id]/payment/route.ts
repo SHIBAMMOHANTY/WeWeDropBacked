@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const paymentSchema = z.object({
-  paymentMethod: z.enum(['UPI', 'BANK_TRANSFER']).default('UPI'),
+  paymentMethod: z.enum(['UPI', 'BANK_TRANSFER', 'CASH']).default('UPI'),
   upiId: z.string().trim().optional(),
   accountNumber: z.string().trim().optional(),
   ifsc: z.string().trim().toUpperCase().optional(),
@@ -203,6 +203,81 @@ export async function POST(
           transferId: activeId,
         },
         { status: 202, headers: corsHeaders }
+      );
+    }
+
+    // 5b. Cash Payment Mode (In-Hand Cash by Delivery Agent / Pilot)
+    if (paymentMethod === 'CASH') {
+      const cashUtr = `CASH_${Date.now().toString().slice(-8)}`;
+      const cashId = `cash_${quote.id.slice(-8)}_${Date.now()}`;
+      const paidTimestamp = new Date().toISOString();
+      const payeeName = (accountHolderName || quote.customerName || 'Customer').trim();
+
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: {
+          status: 'payment_completed',
+          paymentStatus: 1,
+          payoutMethod: 'CASH',
+          paymentMethod: 'CASH',
+          bankAccountHolder: payeeName,
+          payoutDetails: {
+            payoutId: cashId,
+            cfTransferId: cashId,
+            utr: cashUtr,
+            status: 'SUCCESS',
+            amount: finalAmount,
+            paidAt: paidTimestamp,
+            paymentGateway: 'CASH',
+            beneficiaryName: payeeName,
+            accountHolderName: payeeName,
+            paidToAccount: 'Cash in Hand',
+            details: 'Cash in Hand (Paid by Pilot)',
+            paymentMethod: 'CASH',
+          },
+        },
+      });
+
+      await prisma.payoutTransaction.create({
+        data: {
+          pickupId: quote.id,
+          quoteId: quote.id,
+          customerId: quote.userId,
+          agentId: session.id,
+          amount: finalAmount,
+          currency: 'INR',
+          paymentMethod: 'CASH',
+          recipientReference: 'CASH_IN_HAND',
+          recipientName: payeeName,
+          cfTransferId: cashId,
+          status: 'SUCCESS',
+          utr: cashUtr,
+          idempotencyKey: cashId,
+          metadata: {
+            mode: 'CASH',
+            confirmedByAgent: session.id,
+            timestamp: paidTimestamp,
+          },
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Cash payment confirmed successfully',
+          payoutId: cashId,
+          cfTransferId: cashId,
+          transferId: cashId,
+          status: 'SUCCESS',
+          amount: finalAmount,
+          utr: cashUtr,
+          paymentMethod: 'CASH',
+          beneficiaryName: payeeName,
+          paidToAccount: 'Cash in Hand',
+          paidAt: paidTimestamp,
+          paymentGateway: 'CASH',
+        },
+        { status: 200, headers: corsHeaders }
       );
     }
 
