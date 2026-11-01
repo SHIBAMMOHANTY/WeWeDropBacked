@@ -101,7 +101,6 @@ export async function POST(req: NextRequest) {
           where: { id: quote.id },
           data: {
             status: 'pickup_successful',
-            paymentStatus: 1,
             payoutDetails: {
               payoutId: transaction.cfTransferId,
               cfReferenceId: cfTransferId ? String(cfTransferId) : transaction.cfReferenceId,

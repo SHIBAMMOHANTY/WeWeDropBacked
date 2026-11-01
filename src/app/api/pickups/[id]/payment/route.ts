@@ -1,6 +1,7 @@
 import { getAuthSession } from '@/lib/api';
 import { initiateCashfreePayout, getCashfreePayoutStatus } from '@/lib/cashfreePayout';
 import { prisma } from '@/lib/prisma';
+import { sendInvoiceWhatsApp } from '@/lib/invoice';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -276,6 +277,18 @@ export async function POST(
           },
         },
       });
+
+      // 3. Dispatch WhatsApp Invoice asynchronously in background
+      try {
+        sendInvoiceWhatsApp({
+          ...quote,
+          finalPrice: finalAmount,
+          payoutMethod: 'CASH',
+          paymentMethod: 'CASH',
+        }).catch((err) => console.error('[MSG91] Background invoice dispatch error (CASH):', err));
+      } catch (err) {
+        console.error('[MSG91] Background invoice dispatch init error (CASH):', err);
+      }
 
       return NextResponse.json(
         {
@@ -610,6 +623,18 @@ export async function POST(
         },
       },
     });
+
+    // 14. Dispatch WhatsApp Invoice asynchronously in background
+    try {
+      sendInvoiceWhatsApp({
+        ...quote,
+        finalPrice: finalAmount,
+        payoutMethod: paymentMethod,
+        paymentMethod: paymentMethod,
+      }).catch((err) => console.error('[MSG91] Background invoice dispatch error (Cashfree):', err));
+    } catch (err) {
+      console.error('[MSG91] Background invoice dispatch init error (Cashfree):', err);
+    }
 
     return NextResponse.json(
       {

@@ -116,7 +116,6 @@ export async function GET(
           where: { id: transaction.pickupId },
           data: {
             status: 'pickup_successful',
-            paymentStatus: 1,
             payoutDetails: {
               payoutId: activePayoutId,
               utr: utr || null,
