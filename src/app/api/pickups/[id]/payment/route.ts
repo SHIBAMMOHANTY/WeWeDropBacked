@@ -18,20 +18,30 @@ const paymentSchema = z.object({
   amount: z.number().positive().optional(),
 });
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, x-agent-key',
-};
+function getCorsHeaders(req?: NextRequest): Record<string, string> {
+  const origin = req?.headers.get('origin');
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, x-agent-key, x-user-id, X-Requested-With',
+  };
+  if (origin) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
+  } else {
+    headers['Access-Control-Allow-Origin'] = '*';
+  }
+  return headers;
+}
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: getCorsHeaders(req) });
 }
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const corsHeaders = getCorsHeaders(req);
   try {
     // 1. Authenticate Delivery Agent or Super Admin
     let session: any = null;
