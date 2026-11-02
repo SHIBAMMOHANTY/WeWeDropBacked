@@ -198,7 +198,7 @@ export async function PATCH(req: NextRequest) {
     if (numericPaymentStatus !== undefined) updateData.paymentStatus = numericPaymentStatus;
     if (remark) updateData.remark = remark;
     if (issueType) updateData.issueType = issueType;
-    if (finalAgentId && !beforeOrder.deliveryAgentId) {
+    if (finalAgentId) {
       updateData.deliveryAgentId = finalAgentId;
     }
 
