@@ -60,9 +60,9 @@ export async function POST(req: NextRequest) {
     const agentName = username || name || `Staff-${cleanPhone.slice(-4)}`;
     const effectiveAvatar = avatar || profileImage || '';
 
-    const normalizedRole = ['REFURBISH_TEAM', 'SELLING_TEAM', 'DELIVERY_AGENT', 'BUSINESS', 'USER', 'ADMIN'].includes(String(role).toUpperCase())
+    const normalizedRole = ['FINANCE_TEAM', 'REFURBISH_TEAM', 'SELLING_TEAM', 'DELIVERY_AGENT', 'BUSINESS', 'USER', 'ADMIN'].includes(String(role).toUpperCase())
       ? (String(role).toUpperCase() as any)
-      : 'DELIVERY_AGENT';
+      : (String(role).toUpperCase().includes('FINANCE') ? 'FINANCE_TEAM' : 'DELIVERY_AGENT');
 
     // Check mandatory fields for DELIVERY_AGENT
     if (normalizedRole === 'DELIVERY_AGENT') {
