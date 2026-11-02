@@ -92,33 +92,50 @@ export async function GET(req: NextRequest) {
 // PATCH /api/orders/status?orderId=ORDER_ID
 export async function PATCH(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const orderId = searchParams.get("orderId");
-
-  if (!orderId) {
-    return NextResponse.json({ error: "Missing orderId" }, { status: 400, headers: corsHeaders });
-  }
+  let orderId = searchParams.get("orderId");
 
   try {
     const body = await req.json();
-    const { status, paymentStatus } = body;
+    if (!orderId && (body.orderId || body.id)) {
+      orderId = body.orderId || body.id;
+    }
+
+    if (!orderId) {
+      return NextResponse.json({ error: "Missing orderId" }, { status: 400, headers: corsHeaders });
+    }
+
+    const {
+      status,
+      paymentStatus,
+      serviceType,
+      serviceCenterName,
+      remark,
+      issueType,
+      updatedByAgentId,
+      updatedByAgentName,
+      deliveryAgentId
+    } = body;
 
     let numericStatus: number | undefined = undefined;
-    if (status !== undefined && status !== null) {
-      const statusMap: Record<string, number> = {
-        "PENDING": 0,
-        "PICKUP_REQUESTED": 1,
-        "REJECTED": -1,
-        "PICKUP_SUCCESSFUL": 2,
-        "READY_FOR_PICKUP": 2,
-        "REPAIRING": 3,
-        "OUT_FOR_DELIVERY": 4,
-        "DELIVERED": 5
-      };
+    const statusMap: Record<string, number> = {
+      "PENDING": 0,
+      "PICKUP_REQUESTED": 1,
+      "REJECTED": -1,
+      "PICKUP_SUCCESSFUL": 2,
+      "READY_FOR_PICKUP": 2,
+      "IN_SERVICE_CENTER": 2,
+      "IN_HOUSE": 2,
+      "IN_HOUSE_SERVICE": 2,
+      "REPAIRING": 3,
+      "OUT_FOR_DELIVERY": 4,
+      "DELIVERED": 5
+    };
 
+    if (status !== undefined && status !== null) {
       if (typeof status === 'string') {
         numericStatus = statusMap[status];
         if (numericStatus === undefined) {
-          return NextResponse.json({ error: "Invalid status" }, { status: 400, headers: corsHeaders });
+          numericStatus = 2; // fallback to active processing
         }
       } else if (typeof status === 'number') {
         numericStatus = status;
@@ -137,9 +154,53 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Order not found" }, { status: 404, headers: corsHeaders });
     }
 
-    const updateData: any = {};
+    // Prepare updated refurbishData
+    const prevRefurbish = (beforeOrder.refurbishData as any) || {};
+    const prevHistory = Array.isArray(prevRefurbish.statusHistory) ? prevRefurbish.statusHistory : [];
+
+    const finalServiceType = serviceType || prevRefurbish.serviceType || "IN_HOUSE";
+    const finalAgentId = updatedByAgentId || deliveryAgentId || prevRefurbish.updatedByAgentId || beforeOrder.deliveryAgentId;
+    const finalAgentName = updatedByAgentName || prevRefurbish.updatedByAgentName || "Agent";
+
+    const statusLabel = typeof status === "string" ? status : (
+      numericStatus === 1 ? "PICKUP_REQUESTED" :
+      numericStatus === 2 ? (finalServiceType === "IN_SERVICE_CENTER" ? "IN_SERVICE_CENTER" : "IN_HOUSE_SERVICE") :
+      numericStatus === 3 ? "REPAIRING" :
+      numericStatus === 4 ? "OUT_FOR_DELIVERY" :
+      numericStatus === 5 ? "DELIVERED" :
+      numericStatus === -1 ? "REJECTED" : "STATUS_UPDATED"
+    );
+
+    const historyEntry = {
+      status: statusLabel,
+      serviceType: finalServiceType,
+      updatedBy: finalAgentName,
+      agentId: finalAgentId,
+      timestamp: new Date().toISOString(),
+      remark: remark || `Status changed to ${statusLabel}`,
+    };
+
+    const newRefurbishData = {
+      ...prevRefurbish,
+      serviceType: finalServiceType,
+      serviceCenterName: serviceCenterName !== undefined ? serviceCenterName : (prevRefurbish.serviceCenterName || ""),
+      updatedByAgentId: finalAgentId,
+      updatedByAgentName: finalAgentName,
+      updatedAt: new Date().toISOString(),
+      statusHistory: [historyEntry, ...prevHistory],
+    };
+
+    const updateData: any = {
+      refurbishData: newRefurbishData,
+    };
+
     if (numericStatus !== undefined) updateData.orderStatus = numericStatus;
     if (numericPaymentStatus !== undefined) updateData.paymentStatus = numericPaymentStatus;
+    if (remark) updateData.remark = remark;
+    if (issueType) updateData.issueType = issueType;
+    if (finalAgentId && !beforeOrder.deliveryAgentId) {
+      updateData.deliveryAgentId = finalAgentId;
+    }
 
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
@@ -158,6 +219,7 @@ export async function PATCH(req: NextRequest) {
 
     const orderWithStatus = {
       ...updatedOrder,
+      serviceType: finalServiceType,
       status: statusMapReverse[updatedOrder.orderStatus] || 'UNKNOWN',
       paymentStatus: updatedOrder.paymentStatus,
       paymentStatusLabel: mapPaymentStatus(updatedOrder.paymentStatus),

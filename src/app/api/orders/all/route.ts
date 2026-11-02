@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     if (yearFilter) {
       const targetYear = parseInt(yearFilter, 10);
       if (!Number.isNaN(targetYear)) {
-        filteredOrders = orders.filter(order => {
+        filteredOrders = orders.filter((order: any) => {
           if (!order.serviceDate) return false;
           const date = new Date(order.serviceDate);
           return date.getUTCFullYear() === targetYear;
@@ -49,13 +49,13 @@ export async function GET(req: NextRequest) {
 
     // Safely load businesses and users for manual map lookup
     const [businesses, users] = await Promise.all([
-      prisma.business.findMany().catch(() => []),
-      prisma.user.findMany().catch(() => []),
+      prisma.business.findMany().catch(() => [] as any[]),
+      prisma.user.findMany().catch(() => [] as any[]),
     ]);
 
-    const businessMap = new Map(businesses.map(b => [String(b.id), b]));
-    const userMap = new Map(users.map(u => [String(u.id), u]));
-    const businessByNameMap = new Map(businesses.map(b => [b.dealerName.toLowerCase().trim(), b]));
+    const businessMap = new Map<string, any>(businesses.map((b: any) => [String(b.id), b]));
+    const userMap = new Map<string, any>(users.map((u: any) => [String(u.id), u]));
+    const businessByNameMap = new Map<string, any>(businesses.map((b: any) => [b.dealerName?.toLowerCase()?.trim?.() || '', b]));
 
     const statusMap: { [key: number]: string } = {
       0: 'PENDING',
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
       5: 'DELIVERED'
     };
 
-    const ordersWithStatus = filteredOrders.map(order => {
+    const ordersWithStatus = filteredOrders.map((order: any) => {
       let business = order.businessId ? businessMap.get(String(order.businessId)) : null;
       if (!business && order.businessId && typeof order.businessId === 'string') {
         business = businessByNameMap.get(order.businessId.toLowerCase().trim());
@@ -77,6 +77,7 @@ export async function GET(req: NextRequest) {
       const deliveryAgent = order.deliveryAgentId ? userMap.get(String(order.deliveryAgentId)) : null;
 
       const stCode = Number(order.orderStatus !== undefined ? order.orderStatus : 1);
+      const rf = (order.refurbishData as any) || {};
 
       return {
         id: order.id,
@@ -91,6 +92,12 @@ export async function GET(req: NextRequest) {
         billImage: order.billImage,
         utrScreenshot: order.utrScreenshot,
         invoicePdf: order.invoicePdf,
+        refurbishData: order.refurbishData,
+        serviceType: rf.serviceType || (stCode === 2 ? 'IN_SERVICE_CENTER' : 'IN_HOUSE'),
+        serviceCenterName: rf.serviceCenterName || '',
+        updatedByAgentId: rf.updatedByAgentId || order.deliveryAgentId || null,
+        updatedByAgentName: rf.updatedByAgentName || deliveryAgent?.username || deliveryAgent?.phone || null,
+        statusHistory: rf.statusHistory || [],
         serviceDate: order.serviceDate ? new Date(order.serviceDate).toISOString().slice(0,10) : null,
         deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : null,
         serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0,10) : null,

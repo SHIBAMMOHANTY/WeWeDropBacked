@@ -1,4 +1,4 @@
-﻿export const runtime = "nodejs";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -57,10 +57,18 @@ export async function GET(req: NextRequest) {
       4: "DELIVERED",
     };
 
-    const formattedOrders = orders.map(o => ({
-      ...o,
-      statusLabel: statusMap[o.orderStatus] || "UNKNOWN",
-    }));
+    const formattedOrders = orders.map((o: any) => {
+      const rf = (o.refurbishData as any) || {};
+      return {
+        ...o,
+        serviceType: rf.serviceType || (o.orderStatus === 2 ? "IN_SERVICE_CENTER" : "IN_HOUSE"),
+        serviceCenterName: rf.serviceCenterName || "",
+        updatedByAgentId: rf.updatedByAgentId || o.deliveryAgentId,
+        updatedByAgentName: rf.updatedByAgentName || "Agent",
+        statusHistory: rf.statusHistory || [],
+        statusLabel: statusMap[o.orderStatus] || "UNKNOWN",
+      };
+    });
 
     return NextResponse.json(
       {

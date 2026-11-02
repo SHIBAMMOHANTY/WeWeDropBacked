@@ -23,8 +23,8 @@ function formatDateOnly(value: Date | string | null | undefined) {
 }
 
 type MembershipType = "BASIC" | "PREMIUM" | "ELITE";
-// Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP, 3 = REPAIRING, 4 = DELIVERED
-type OrderStatus = 0 | 1 | -1 | 2 | 3 | 4;
+// Order status: 0 = PENDING, 1 = PICKUP_REQUESTED, -1 = REJECTED, 2 = READY_FOR_PICKUP / IN_SERVICE_CENTER / IN_HOUSE, 3 = REPAIRING, 4 = OUT_FOR_DELIVERY, 5 = DELIVERED
+type OrderStatus = 0 | 1 | -1 | 2 | 3 | 4 | 5;
 
 export async function POST(req: Request) {
   try {
@@ -40,15 +40,21 @@ export async function POST(req: Request) {
     const data = await req.json();
 
     // Extract fields with flexible field fallback mapping
-    const userId = data.userId || data.user_id;
+    let userId = data.userId || data.user_id;
     const businessId = data.businessId || data.business_id;
     const brandName = (data.brandName || data.brand || "")?.toString().trim();
     const productName = (data.productName || data.product || "")?.toString().trim();
     const imeiNumber = (data.imeiNumber || data.imei || "")?.toString().trim();
-    const paymentId = data.paymentId || data.payment_id || data.orderId;
+    let paymentId = data.paymentId || data.payment_id || data.orderId;
     const customerName = (data.customerName || data.name || "")?.toString().trim();
     const contactNumber = (data.contactNumber || data.phone || "")?.toString().trim();
     const billImage = data.billImage ?? data.billUrl ?? "";
+    const serviceType = data.serviceType === "IN_SERVICE_CENTER" ? "IN_SERVICE_CENTER" : "IN_HOUSE";
+    const serviceCenterName = (data.serviceCenterName || "").toString().trim();
+    const agentId = data.deliveryAgentId || data.agentId || data.updatedByAgentId || null;
+    const agentName = (data.agentName || data.updatedByAgentName || "Agent").toString().trim();
+    const remark = (data.remark || "").toString().trim();
+    const issueType = (data.issueType || data.condition || data.description || "").toString().trim();
 
     const rawAmount = data.amount !== undefined ? data.amount : (data.totalAmount !== undefined ? data.totalAmount : data.orderPrice);
     const amount = typeof rawAmount === "number" ? rawAmount : parseFloat(rawAmount || 0);
@@ -63,6 +69,29 @@ export async function POST(req: Request) {
       membershipType = "BASIC";
     }
 
+    // Auto-resolve or create user by contactNumber if userId not provided
+    if (!userId && contactNumber) {
+      let existingUser = await prisma.user.findFirst({ where: { phone: contactNumber } });
+      if (!existingUser) {
+        existingUser = await prisma.user.create({
+          data: {
+            phone: contactNumber,
+            username: customerName || `Customer-${contactNumber.slice(-4)}`,
+            role: "USER",
+            address: data.pickupAddress || data.fullAddress || data.address || "",
+            pincode: data.pincode ? String(data.pincode) : "",
+            state: data.state ? String(data.state) : "",
+          }
+        });
+      }
+      userId = existingUser.id;
+    }
+
+    // Auto-generate paymentId for intake orders if omitted
+    if (!paymentId) {
+      paymentId = `SVC-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
     // Basic validation
     if (
       !userId ||
@@ -75,7 +104,7 @@ export async function POST(req: Request) {
       !paymentId
     ) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Missing required fields (brand, product, IMEI, contact, amount)" },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -105,6 +134,27 @@ export async function POST(req: Request) {
       );
     }
 
+    // Formulate rich refurbish metadata
+    const initialRefurbishData = data.refurbishData || {
+      serviceType: serviceType,
+      serviceCenterName: serviceCenterName,
+      createdByAgentId: agentId,
+      createdByAgentName: agentName,
+      updatedByAgentId: agentId,
+      updatedByAgentName: agentName,
+      updatedAt: new Date().toISOString(),
+      statusHistory: [
+        {
+          status: data.orderStatus === 2 ? (serviceType === "IN_SERVICE_CENTER" ? "IN_SERVICE_CENTER" : "IN_HOUSE_SERVICE") : "PICKUP_REQUESTED",
+          serviceType: serviceType,
+          updatedBy: agentName,
+          agentId: agentId,
+          timestamp: new Date().toISOString(),
+          remark: remark || `Service intake recorded (${serviceType === "IN_SERVICE_CENTER" ? "In Service Center" : "In-House Service"})`,
+        }
+      ]
+    };
+
     // Check for duplicate IMEI
     const existingOrder = await prisma.order.findFirst({ where: { imeiNumber: imeiNumber } });
     if (existingOrder) {
@@ -113,15 +163,44 @@ export async function POST(req: Request) {
       let expireDate: Date | null = null;
       let expired = false;
       if (membershipType === "BASIC") {
-        newStatus = 1 as OrderStatus;
+        newStatus = (data.orderStatus !== undefined ? Number(data.orderStatus) : 1) as OrderStatus;
       } else if (membershipType === "ELITE") {
         expireDate = existingOrder.expireDate ? new Date(existingOrder.expireDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
         expired = expireDate < new Date();
       }
+
+      const existingRefurbish = (existingOrder.refurbishData as any) || {};
+      const mergedHistory = [
+        {
+          status: newStatus === 2 ? (serviceType === "IN_SERVICE_CENTER" ? "IN_SERVICE_CENTER" : "IN_HOUSE_SERVICE") : "STATUS_UPDATED",
+          serviceType: serviceType,
+          updatedBy: agentName,
+          agentId: agentId,
+          timestamp: new Date().toISOString(),
+          remark: remark || "Order updated via intake submission",
+        },
+        ...(Array.isArray(existingRefurbish.statusHistory) ? existingRefurbish.statusHistory : [])
+      ];
+
+      const mergedRefurbish = {
+        ...existingRefurbish,
+        serviceType: serviceType,
+        serviceCenterName: serviceCenterName || existingRefurbish.serviceCenterName || "",
+        updatedByAgentId: agentId || existingRefurbish.updatedByAgentId,
+        updatedByAgentName: agentName || existingRefurbish.updatedByAgentName,
+        updatedAt: new Date().toISOString(),
+        statusHistory: mergedHistory,
+      };
+
       const updateData: any = {
         orderStatus: newStatus,
+        refurbishData: mergedRefurbish,
+        ...(agentId ? { deliveryAgentId: agentId } : {}),
+        ...(issueType ? { issueType } : {}),
+        ...(remark ? { remark } : {}),
         ...(membershipType === "ELITE" ? { expireDate } : {}),
       };
+
       if (data.deliveryDate !== undefined) updateData.deliveryDate = data.deliveryDate ? new Date(data.deliveryDate) : null;
       if (data.serviceCenterDate !== undefined) updateData.serviceCenterDate = data.serviceCenterDate ? new Date(data.serviceCenterDate) : null;
       if (data.pickupAddress !== undefined) {
@@ -129,6 +208,7 @@ export async function POST(req: Request) {
       } else if (data.fullAddress || data.address) {
         updateData.fullAddress = data.fullAddress || data.address;
       }
+
       const updated = await prisma.order.update({
         where: { id: existingOrder.id },
         data: updateData,
@@ -138,16 +218,19 @@ export async function POST(req: Request) {
         0: 'PENDING',
         1: 'PICKUP_REQUESTED',
         '-1': 'REJECTED',
-        2: 'READY_FOR_PICKUP',
+        2: 'PICKUP_SUCCESSFUL',
         3: 'REPAIRING',
-        4: 'DELIVERED'
+        4: 'OUT_FOR_DELIVERY',
+        5: 'DELIVERED'
       };
 
       const response = {
         ...updated,
+        serviceType: serviceType,
         status: statusMap[updated.orderStatus] || 'UNKNOWN',
         ...(membershipType === "ELITE" ? { expireDate, expired } : {}),
       };
+
       return NextResponse.json(response, { status: 200, headers: corsHeaders });
     }
 
@@ -163,6 +246,7 @@ export async function POST(req: Request) {
       data: {
         userId: userId,
         businessId: businessId ?? null,
+        deliveryAgentId: agentId,
         membershipType: membershipType,
         brandName: brandName,
         productName: productName,
@@ -170,6 +254,7 @@ export async function POST(req: Request) {
         billImage: billImage,
         utrScreenshot: data.utrScreenshot ?? null,
         invoicePdf: data.invoicePdf ?? null,
+        refurbishData: initialRefurbishData,
         serviceDate: data.serviceDate ? new Date(data.serviceDate) : (data.billDate ? new Date(data.billDate) : new Date()),
         billingDate: data.billingDate ? new Date(data.billingDate) : (data.billDate ? new Date(data.billDate) : null),
         deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
@@ -185,6 +270,8 @@ export async function POST(req: Request) {
         preferredDate: data.preferredDate ? new Date(data.preferredDate) : null,
         receiverName: data.receiverName ?? null,
         mobileNumber: data.mobileNumber ?? null,
+        issueType: issueType || null,
+        remark: remark || null,
         ...(membershipType === "ELITE" ? { expireDate } : {}),
       },
     });
@@ -193,13 +280,15 @@ export async function POST(req: Request) {
       0: 'PENDING',
       1: 'PICKUP_REQUESTED',
       '-1': 'REJECTED',
-      2: 'READY_FOR_PICKUP',
+      2: 'PICKUP_SUCCESSFUL',
       3: 'REPAIRING',
-      4: 'DELIVERED'
+      4: 'OUT_FOR_DELIVERY',
+      5: 'DELIVERED'
     };
 
     const orderWithStatus = {
       ...order,
+      serviceType: serviceType,
       deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : null,
       serviceCenterDate: order.serviceCenterDate ? new Date(order.serviceCenterDate).toISOString().slice(0,10) : null,
       serviceDate: order.serviceDate ? new Date(order.serviceDate).toISOString().slice(0,10) : null,
@@ -222,4 +311,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
