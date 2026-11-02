@@ -1,4 +1,4 @@
-﻿export const runtime = "nodejs";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const allowedStaffRoles = ["DELIVERY_AGENT", "REFURBISH_TEAM", "SELLING_TEAM", "SUPER_ADMIN", "ADMIN", "USER"];
+    const allowedStaffRoles = ["FINANCE_TEAM", "DELIVERY_AGENT", "REFURBISH_TEAM", "SELLING_TEAM", "SUPER_ADMIN", "ADMIN", "USER"];
     if (!allowedStaffRoles.includes(agent.role)) {
       return NextResponse.json(
         { success: false, error: `Unauthorized role (${agent.role}).` },

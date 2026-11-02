@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
     }
 
     const allowedStaffRoles = [
+      "FINANCE_TEAM",
       "DELIVERY_AGENT",
       "REFURBISH_TEAM",
       "SELLING_TEAM",
