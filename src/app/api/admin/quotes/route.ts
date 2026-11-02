@@ -27,8 +27,12 @@ export async function GET(req: Request) {
     const limit = requestedLimit ? Math.min(1000, Math.max(1, requestedLimit)) : 200;
     const skip = (page - 1) * limit;
     const status = url.searchParams.get('status');
+    const agentId = url.searchParams.get('agentId');
 
     const query: any = {};
+    if (agentId && agentId !== 'all') {
+      query.agentId = agentId;
+    }
     if (status && status !== 'all') {
       const validStatuses = [
         'pending',
