@@ -48,14 +48,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const mode = (paymentMethod || "UPI").toString().toUpperCase() === "BANK_TRANSFER"
-      ? "BANK_TRANSFER"
-      : "UPI";
+    const rawMethod = (paymentMethod || "UPI").toString().toUpperCase();
+    const mode = rawMethod === "CASH" ? "CASH" : rawMethod === "BANK_TRANSFER" ? "BANK_TRANSFER" : "UPI";
 
     const cleanPhone = (phone || "").toString().replace(/\D/g, "").slice(-10) || "9999999999";
-    const cleanRemarks = (remarks || "Vendor Payment").toString().slice(0, 70);
+    const cleanRemarks = (remarks || (mode === "CASH" ? "Physical Cash Handover" : "Vendor Payment")).toString().slice(0, 70);
 
-    if (mode === "UPI") {
+    if (mode === "CASH") {
+      // Physical Cash Handover does not require UPI or Bank account
+    } else if (mode === "UPI") {
       const cleanUpi = (upiId || "").toString().trim();
       if (!cleanUpi || !cleanUpi.includes("@")) {
         return NextResponse.json(
@@ -83,36 +84,42 @@ export async function POST(req: NextRequest) {
     // Generate unique transfer & payout IDs
     const epoch = Date.now();
     const randSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
-    const transferId = `FIN_${epoch}_${randSuffix}`;
-    const payoutId = `PAYOUT_${epoch}_${randSuffix}`;
+    const transferId = mode === "CASH" ? `CASH_${epoch}_${randSuffix}` : `FIN_${epoch}_${randSuffix}`;
+    const payoutId = mode === "CASH" ? `CASH_PAY_${epoch}_${randSuffix}` : `PAYOUT_${epoch}_${randSuffix}`;
 
-    // Initiate real Cashfree Payout
+    // Initiate real Cashfree Payout (or instant mark for CASH)
     let cfResponse: any = null;
-    let payoutStatus = "PENDING";
+    let payoutStatus = mode === "CASH" ? "SUCCESS" : "PENDING";
     let failureReason: string | null = null;
-    let bankUtr: string | null = null;
+    let bankUtr: string | null = mode === "CASH" ? "PHYSICAL_CASH" : null;
     let cfRefId: string | null = null;
 
-    try {
-      cfResponse = await initiateCashfreePayout({
-        transferId: transferId,
-        amount: numAmount,
-        paymentMethod: mode,
-        recipientName: cleanVendorName,
-        recipientPhone: cleanPhone,
-        upiId: mode === "UPI" ? upiId?.trim() : undefined,
-        accountNumber: mode === "BANK_TRANSFER" ? accountNumber?.trim() : undefined,
-        ifsc: mode === "BANK_TRANSFER" ? ifsc?.trim()?.toUpperCase() : undefined,
-        remarks: cleanRemarks,
-      });
+    if (mode !== "CASH") {
+      try {
+        cfResponse = await initiateCashfreePayout({
+          transferId: transferId,
+          amount: numAmount,
+          paymentMethod: mode,
+          recipientName: cleanVendorName,
+          recipientPhone: cleanPhone,
+          upiId: mode === "UPI" ? upiId?.trim() : undefined,
+          accountNumber: mode === "BANK_TRANSFER" ? accountNumber?.trim() : undefined,
+          ifsc: mode === "BANK_TRANSFER" ? ifsc?.trim()?.toUpperCase() : undefined,
+          remarks: cleanRemarks,
+        });
 
-      payoutStatus = cfResponse.status || "RECEIVED";
-      bankUtr = cfResponse.transfer_utr || null;
-      cfRefId = cfResponse.cf_transfer_id ? String(cfResponse.cf_transfer_id) : null;
-    } catch (cfErr: any) {
-      console.error("[Cashfree Finance Payout Error]:", cfErr);
-      payoutStatus = "FAILED";
-      failureReason = cfErr?.message || "Cashfree Payout API call failed";
+        payoutStatus = cfResponse.status || "RECEIVED";
+        bankUtr = cfResponse.transfer_utr || null;
+        cfRefId = cfResponse.cf_transfer_id ? String(cfResponse.cf_transfer_id) : null;
+      } catch (cfErr: any) {
+        console.error("[Cashfree Finance Payout Error]:", cfErr);
+        payoutStatus = "FAILED";
+        failureReason = cfErr?.message || "Cashfree Payout API call failed";
+        if (cfErr?.responseBody) {
+          failureReason = cfErr.responseBody.message || cfErr.responseBody.error?.description || failureReason;
+        }
+      }
+    }
       if (cfErr?.responseBody) {
         failureReason = cfErr.responseBody.message || cfErr.responseBody.error?.description || failureReason;
       }
