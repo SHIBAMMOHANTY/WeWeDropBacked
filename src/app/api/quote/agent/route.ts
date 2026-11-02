@@ -65,6 +65,11 @@ export async function GET(req: NextRequest) {
         isPhoneDead: true,
         paymentMethod: true,
         payoutDetails: true,
+        breakdown: true,
+        conditionAnswers: true,
+        ownerName: true,
+        dealerName: true,
+        shopName: true,
         upiId: true,
         bankAccount: true,
         bankIfsc: true,
@@ -76,11 +81,25 @@ export async function GET(req: NextRequest) {
       take: 100,
     });
 
+    const enrichedQuotes = quotes.map((q: any) => {
+      const breakdownDevices = Array.isArray((q.breakdown as any)?.devices) ? (q.breakdown as any).devices : [];
+      const conditionDevices = Array.isArray((q.conditionAnswers as any)?.devices) ? (q.conditionAnswers as any).devices : [];
+      const devices = breakdownDevices.length > 0 ? breakdownDevices : conditionDevices;
+
+      return {
+        ...q,
+        devices: devices.length > 0 ? devices : undefined,
+        deviceCount: devices.length > 0 ? devices.length : 1,
+        shopName: q.shopName || (q.breakdown as any)?.shopName || (q.conditionAnswers as any)?.shopName || undefined,
+        dealerName: q.dealerName || (q.breakdown as any)?.dealerName || (q.conditionAnswers as any)?.dealerName || undefined,
+      };
+    });
+
     return NextResponse.json(
       {
         success: true,
-        quotes,
-        total: quotes.length,
+        quotes: enrichedQuotes,
+        total: enrichedQuotes.length,
       },
       { headers: corsHeaders }
     );

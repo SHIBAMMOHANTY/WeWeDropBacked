@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { jsonResponse, getAuthSession, buildPagination } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
 import { PricingService } from '@/services/pricing.service';
-import { sendMobileSaleConfirmationWhatsApp } from '@/lib/invoice';
+import { sendInvoiceWhatsApp, sendMobileSaleConfirmationWhatsApp } from '@/lib/invoice';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -228,12 +228,17 @@ export async function POST(req: Request) {
       const timestampStr = Date.now().toString().slice(-6);
       const batchRef = `BATCH-${timestampStr}`;
 
-      const createdQuotes: any[] = [];
+      const isDealer =
+        body.customerType === 'dealer' ||
+        (Boolean(body.shopName) && body.shopName.trim() !== 'N/A' && body.shopName.trim().length > 0);
+      const prefix = isDealer ? 'DLR' : 'CUST';
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const batchQuoteNumber = `${prefix}-${timestampStr}-${randomSuffix}`;
 
-      for (let i = 0; i < devicesList.length; i++) {
-        const d = devicesList[i];
-
-        const devModel = d.model || 'Unknown Handset';
+      // Build enriched itemized devices list
+      const allBatchImages: string[] = [];
+      const formattedDevices = devicesList.map((d: any, idx: number) => {
+        const devModel = (d.model || d.phoneModel || 'Unknown Handset').trim();
         const rawBrand = (d.brand && String(d.brand).toLowerCase() !== 'other') ? d.brand : '';
         const devBrand = rawBrand || inferBrandFromModel(devModel);
         const devStorage = d.storage || '128 GB';
@@ -244,185 +249,238 @@ export async function POST(req: Request) {
           : parseFloat(d.buyingPrice || 0) || Math.round(finalAmount / devicesList.length);
 
         const devCustomer = d.customer || {};
-        const devCustomerName = devCustomer.name || d.customerName || customerName;
-        const devContactNumber = devCustomer.phone || d.customerPhone || contactNumber;
-        const devCustomerAddress = devCustomer.address || d.customerAddress || customerAddress;
+        const devCustomerName = (devCustomer.name || d.customerName || d.deviceCustomerName || customerName || 'Valued Customer').trim();
+        const devContactNumber = (devCustomer.phone || d.customerPhone || d.deviceCustomerMobile || contactNumber || '').trim();
+        const devCustomerAddress = (devCustomer.address || d.customerAddress || d.deviceCustomerAddress || customerAddress || '').trim();
 
-        // Check if per-device customer has a specific ID or phone
-        let devUserId = devCustomer.userId || devCustomer.customerId || devCustomer.id || devCustomer._id || resolvedUserId;
-        const devClean10 = devContactNumber ? String(devContactNumber).replace(/\D/g, '').slice(-10) : '';
-        if (devClean10 && devClean10.length === 10 && devClean10 !== clean10) {
-          const devMatchedUser = await prisma.user.findFirst({
-            where: {
-              OR: [
-                { phone: { in: [devClean10, `+91${devClean10}`, `91${devClean10}`] } },
-                { phone: { endsWith: devClean10 } },
-              ],
-            },
-            select: { id: true },
-          });
-          if (devMatchedUser?.id) {
-            devUserId = devMatchedUser.id;
-          }
-        }
+        const devImei = (d.isPhoneDead || d.isDead) ? 'N/A' : (d.imei || d.imeiNumber || 'N/A').trim();
+        const itemOrderId = `${batchQuoteNumber}/${idx + 1}`;
 
-        // Collect device specific images (EXCLUDING KYC ID cards)
+        // Collect device specific images
         const devImages: string[] = [];
         const devIdFront = d.idProofFront || devCustomer.idFront || body.idProofFront;
         const devIdBack = d.idProofBack || devCustomer.idBack || body.idProofBack;
 
         if (d.photos6Sides) {
           Object.values(d.photos6Sides).forEach((val) => {
-            if (typeof val === 'string' && val.trim()) devImages.push(val.trim());
+            if (typeof val === 'string' && val.trim()) {
+              devImages.push(val.trim());
+              allBatchImages.push(val.trim());
+            }
           });
         }
         if (Array.isArray(d.photos)) {
           d.photos.forEach((p: any) => {
-            if (typeof p === 'string' && p.trim()) devImages.push(p.trim());
-          });
-        }
-        if (d.ceirScreenshot) devImages.push(d.ceirScreenshot);
-        const devAcc = d.accessories || {};
-        if (d.billPhoto || devAcc.billPhoto) devImages.push(d.billPhoto || devAcc.billPhoto);
-        if (d.boxPhoto || devAcc.boxPhoto) devImages.push(d.boxPhoto || devAcc.boxPhoto);
-        if (d.chargerPhoto || devAcc.chargerPhoto) devImages.push(d.chargerPhoto || devAcc.chargerPhoto);
-
-        // If no device specific images, fallback to body images (filtered to exclude ID proofs)
-        if (devImages.length === 0 && Array.isArray(body.images)) {
-          body.images.forEach((img: any) => {
-            if (typeof img === 'string' && img !== devIdFront && img !== devIdBack) {
-              devImages.push(img);
+            if (typeof p === 'string' && p.trim()) {
+              devImages.push(p.trim());
+              allBatchImages.push(p.trim());
             }
           });
         }
-
-        const uniqueDevImages = Array.from(new Set(devImages.filter(Boolean)));
-
-        const isDealer =
-          body.customerType === 'dealer' ||
-          (Boolean(body.shopName) && body.shopName.trim() !== 'N/A' && body.shopName.trim().length > 0);
-        const prefix = isDealer ? 'DLR' : 'CUST';
-
-        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-        const devQuoteNumber = devicesList.length > 1
-          ? `${prefix}-${timestampStr}-${randomSuffix}-${i + 1}`
-          : `${prefix}-${timestampStr}-${randomSuffix}`;
-
-        const isDeadPhone = Boolean(d.isPhoneDead || d.isDead || body.isPhoneDead || body.isDead);
-
-        const devDescription = isDealer
-          ? (shopName !== 'N/A'
-              ? `Shop: ${shopName} | Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`
-              : `Dealer Intake [${i + 1}/${devicesList.length}: ${devBrand} ${devModel}]${agentSnippet}`)
-          : `Customer Sell Intake [${devBrand} ${devModel}]${agentSnippet}`;
-
-        const rawStatus = String(body.status || body.quoteStatus || '').toLowerCase();
-        const isCustomerMarked = Boolean(
-          rawStatus === 'paid' ||
-          rawStatus === 'payment_completed' ||
-          body.paymentStatus === 'PAID' ||
-          body.payoutStatus === 'COMPLETED' ||
-          ((body.customerId || devCustomer.customerId || devCustomer.userId || devUserId) && (body.customerType === 'customer' || !isDealer))
-        );
-
-        let quoteStatus = 'PICKUP_SUCCESSFUL';
-        if (isCustomerMarked || rawStatus === 'paid' || rawStatus === 'payment_completed') {
-          quoteStatus = 'payment_completed';
-        } else if (body.status) {
-          quoteStatus = String(body.status).toUpperCase() === 'PICKUP_SUCCESSFUL' ? 'PICKUP_SUCCESSFUL' : String(body.status).toLowerCase();
+        if (d.ceirScreenshot) {
+          devImages.push(d.ceirScreenshot);
+          allBatchImages.push(d.ceirScreenshot);
+        }
+        const devAcc = d.accessories || {};
+        if (d.billPhoto || devAcc.billPhoto) {
+          const bp = d.billPhoto || devAcc.billPhoto;
+          devImages.push(bp);
+          allBatchImages.push(bp);
+        }
+        if (d.boxPhoto || devAcc.boxPhoto) {
+          const bx = d.boxPhoto || devAcc.boxPhoto;
+          devImages.push(bx);
+          allBatchImages.push(bx);
+        }
+        if (d.chargerPhoto || devAcc.chargerPhoto) {
+          const cp = d.chargerPhoto || devAcc.chargerPhoto;
+          devImages.push(cp);
+          allBatchImages.push(cp);
         }
 
-        const quote = await prisma.quote.create({
-          data: {
-            quoteNumber: devQuoteNumber,
-            userId: devUserId || resolvedUserId || undefined,
-            agentId: isObjectId ? String(assignedAgentId) : undefined,
-            brand: devBrand,
-            model: devModel,
-            storage: devStorage,
-            ram: devRam,
-            condition: isDealer ? 'dealer_inspected' : 'customer_inspected',
-            estimatedPrice: devPrice,
-            finalPrice: devPrice,
-            status: quoteStatus,
-            payoutDetails: (quoteStatus === 'payment_completed' || rawStatus === 'paid')
-              ? (body.payoutDetails || {
-                  status: 'PAID',
-                  date: new Date().toISOString(),
-                  amount: devPrice,
-                  paymentMethod: body.paymentMode || body.paymentMethod || 'CASH',
-                })
-              : (body.payoutDetails || null),
-            isDead: isDeadPhone,
-            isPhoneDead: isDeadPhone,
-            diagnosisCompleted: isDeadPhone ? true : false,
-            images: uniqueDevImages,
-            customerName: devCustomerName,
-            ownerName: (body.ownerName?.trim() || (isDealer ? (body.dealerName?.trim() || shopName) : (devCustomerName || customerName)) || '').trim(),
-            dealerName: isDealer ? (body.dealerName?.trim() || shopName || 'Registered Dealer') : null,
-            shopName: isDealer ? shopName : null,
-            customerAddress: devCustomerAddress,
-            customerPincode: body.customerPincode || '',
-            contactNumber: devContactNumber,
-            imeiNumber: isDeadPhone ? undefined : (d.imei || d.imeiNumber || undefined),
-            imei: isDeadPhone ? undefined : (d.imei || d.imeiNumber || undefined),
-            paymentMode: body.paymentMode || body.payoutMethod || 'CASH',
-            paymentMethod: body.paymentMethod || body.paymentMode || 'CASH',
-            description: devDescription,
-            breakdown: {
-              customerType: isDealer ? 'dealer' : 'customer',
-              shopName: isDealer ? shopName : 'N/A',
-              ownerName: (body.ownerName?.trim() || (isDealer ? (body.dealerName?.trim() || shopName) : (devCustomerName || customerName)) || '').trim(),
-              dealerName: isDealer ? (body.dealerName?.trim() || shopName || 'Registered Dealer') : null,
-              dealerPhone: isDealer ? (body.dealerPhone || contactNumber) : null,
-              customerName: devCustomerName || customerName,
-              customerPhone: devContactNumber || contactNumber,
-              customerAddress: devCustomerAddress || customerAddress,
-              agentName: assignedAgentName || null,
-              agentId: assignedAgentId || null,
-              batchReference: batchRef,
-              deviceIndex: i + 1,
-              totalDevicesInBatch: devicesList.length,
-              totalBatchAmount: finalAmount,
-              deviceData: d,
-              devices: [d],
-            } as any,
-            conditionAnswers: {
-              customerType: isDealer ? 'dealer' : 'customer',
-              shopName: isDealer ? shopName : 'N/A',
-              ownerName: (body.ownerName?.trim() || (isDealer ? (body.dealerName?.trim() || shopName) : (devCustomerName || customerName)) || '').trim(),
-              dealerName: isDealer ? (body.dealerName?.trim() || shopName || 'Registered Dealer') : null,
-              dealerPhone: isDealer ? (body.dealerPhone || contactNumber) : null,
-              customerName: devCustomerName || customerName,
-              customerPhone: devContactNumber || contactNumber,
-              customerAddress: devCustomerAddress || customerAddress,
-              agentName: assignedAgentName || null,
-              agentId: assignedAgentId || null,
-              idProofType: d.idProofType || devCustomer.idType || body.idProofType || 'Aadhaar Card',
-              idProofNumber: d.idProofNumber || devCustomer.idNumber || body.idProofNumber || 'N/A',
-              idProofFront: devIdFront || null,
-              idProofBack: devIdBack || null,
-              deviceData: d,
-              devices: [d],
-            } as any,
+        return {
+          ...d,
+          id: itemOrderId,
+          orderId: itemOrderId,
+          itemNumber: idx + 1,
+          brand: devBrand,
+          model: devModel,
+          storage: devStorage,
+          ram: devRam,
+          imei: devImei,
+          imeiNumber: devImei,
+          buyingPrice: devPrice,
+          calculatedBuyingPrice: devPrice,
+          price: devPrice,
+          condition: d.condition || (isDealer ? 'dealer_inspected' : 'customer_inspected'),
+          isPhoneDead: Boolean(d.isPhoneDead || d.isDead),
+          isDead: Boolean(d.isPhoneDead || d.isDead),
+          images: Array.from(new Set(devImages.filter(Boolean))),
+          customer: {
+            ...devCustomer,
+            name: devCustomerName,
+            phone: devContactNumber,
+            address: devCustomerAddress,
+            idType: devCustomer.idType || d.idProofType || 'Aadhaar Card',
+            idNumber: devCustomer.idNumber || d.idProofNumber || 'N/A',
+            idFront: devIdFront || null,
+            idBack: devIdBack || null,
           },
-        });
+          customerName: devCustomerName,
+          customerPhone: devContactNumber,
+          customerAddress: devCustomerAddress,
+        };
+      });
 
-        createdQuotes.push(quote);
+      // Filter batch images to exclude KYC ID cards
+      if (allBatchImages.length === 0 && Array.isArray(body.images)) {
+        body.images.forEach((img: any) => {
+          if (typeof img === 'string' && img !== body.idProofFront && img !== body.idProofBack) {
+            allBatchImages.push(img);
+          }
+        });
+      }
+      const uniqueBatchImages = Array.from(new Set(allBatchImages.filter(Boolean)));
+
+      // Primary brand and model summary
+      const uniqueBrands = Array.from(new Set(formattedDevices.map((d: any) => d.brand).filter(Boolean)));
+      const primaryBrand = uniqueBrands.length === 1 ? uniqueBrands[0] : (uniqueBrands.length > 1 ? 'Multi-Brand' : 'Device');
+      const modelSummary = formattedDevices.length === 1
+        ? formattedDevices[0].model
+        : `${formattedDevices.length} Devices (${formattedDevices.map((d: any) => `${d.brand ? d.brand + ' ' : ''}${d.model}`).slice(0, 3).join(', ')}${formattedDevices.length > 3 ? '...' : ''})`;
+
+      const primaryStorage = formattedDevices.length === 1
+        ? formattedDevices[0].storage
+        : `${formattedDevices.length} Devices (${formattedDevices.map((d: any) => d.storage).filter(Boolean).slice(0, 3).join(', ')})`;
+
+      const primaryRam = formattedDevices.length === 1 ? formattedDevices[0].ram : '';
+      const primaryImei = formattedDevices.length === 1 ? formattedDevices[0].imei : formattedDevices.map((d: any) => d.imei).filter((im: string) => im && im !== 'N/A').join(', ') || 'Batch Multi-IMEI';
+
+      const devDescription = isDealer
+        ? (shopName !== 'N/A'
+            ? `Shop: ${shopName} | Batch Intake [${formattedDevices.length} Devices: ₹${Number(finalAmount).toLocaleString('en-IN')}]${agentSnippet}`
+            : `Dealer Intake [${formattedDevices.length} Devices: ₹${Number(finalAmount).toLocaleString('en-IN')}]${agentSnippet}`)
+        : `Customer Sell Intake [${formattedDevices.length} Devices: ₹${Number(finalAmount).toLocaleString('en-IN')}]${agentSnippet}`;
+
+      const rawStatus = String(body.status || body.quoteStatus || '').toLowerCase();
+      const isCustomerMarked = Boolean(
+        rawStatus === 'paid' ||
+        rawStatus === 'payment_completed' ||
+        body.paymentStatus === 'PAID' ||
+        body.payoutStatus === 'COMPLETED' ||
+        ((body.customerId || body.userId || resolvedUserId) && (body.customerType === 'customer' || !isDealer))
+      );
+
+      let quoteStatus = 'PICKUP_SUCCESSFUL';
+      if (isCustomerMarked || rawStatus === 'paid' || rawStatus === 'payment_completed') {
+        quoteStatus = 'payment_completed';
+      } else if (body.status) {
+        quoteStatus = String(body.status).toUpperCase() === 'PICKUP_SUCCESSFUL' ? 'PICKUP_SUCCESSFUL' : String(body.status).toLowerCase();
       }
 
-      const primaryQuote = createdQuotes[0];
+      // CREATE EXACTLY ONE QUOTE RECORD FOR THE ENTIRE ORDER BATCH
+      const quote = await prisma.quote.create({
+        data: {
+          quoteNumber: batchQuoteNumber,
+          userId: resolvedUserId || undefined,
+          agentId: isObjectId ? String(assignedAgentId) : undefined,
+          brand: primaryBrand,
+          model: modelSummary,
+          storage: primaryStorage,
+          ram: primaryRam,
+          condition: isDealer ? 'dealer_inspected' : 'customer_inspected',
+          estimatedPrice: finalAmount,
+          finalPrice: finalAmount,
+          status: quoteStatus,
+          payoutDetails: (quoteStatus === 'payment_completed' || rawStatus === 'paid')
+            ? (body.payoutDetails || {
+                status: 'PAID',
+                date: new Date().toISOString(),
+                amount: finalAmount,
+                paymentMethod: body.paymentMode || body.paymentMethod || 'CASH',
+              })
+            : (body.payoutDetails || null),
+          isDead: formattedDevices.every((d: any) => d.isPhoneDead),
+          isPhoneDead: formattedDevices.every((d: any) => d.isPhoneDead),
+          diagnosisCompleted: true,
+          images: uniqueBatchImages,
+          customerName: customerName || formattedDevices[0]?.customerName || 'Valued Customer',
+          ownerName: (body.ownerName?.trim() || (isDealer ? (body.dealerName?.trim() || shopName) : customerName) || '').trim(),
+          dealerName: isDealer ? (body.dealerName?.trim() || shopName || 'Registered Dealer') : null,
+          shopName: isDealer ? shopName : null,
+          customerAddress: customerAddress || formattedDevices[0]?.customerAddress || '',
+          customerPincode: body.customerPincode || '',
+          contactNumber: contactNumber || body.customerPhone || formattedDevices[0]?.customerPhone || '',
+          imeiNumber: primaryImei,
+          imei: primaryImei,
+          paymentMode: body.paymentMode || body.payoutMethod || 'CASH',
+          paymentMethod: body.paymentMethod || body.paymentMode || 'CASH',
+          description: devDescription,
+          breakdown: {
+            customerType: isDealer ? 'dealer' : 'customer',
+            shopName: isDealer ? shopName : 'N/A',
+            ownerName: (body.ownerName?.trim() || (isDealer ? (body.dealerName?.trim() || shopName) : customerName) || '').trim(),
+            dealerName: isDealer ? (body.dealerName?.trim() || shopName || 'Registered Dealer') : null,
+            dealerPhone: isDealer ? (body.dealerPhone || contactNumber) : null,
+            customerName: customerName || formattedDevices[0]?.customerName || 'Customer',
+            customerPhone: contactNumber || formattedDevices[0]?.customerPhone || '',
+            customerAddress: customerAddress || formattedDevices[0]?.customerAddress || '',
+            agentName: assignedAgentName || null,
+            agentId: assignedAgentId || null,
+            batchReference: batchRef,
+            totalDevicesInBatch: formattedDevices.length,
+            totalBatchAmount: finalAmount,
+            devices: formattedDevices,
+          } as any,
+          conditionAnswers: {
+            customerType: isDealer ? 'dealer' : 'customer',
+            shopName: isDealer ? shopName : 'N/A',
+            ownerName: (body.ownerName?.trim() || (isDealer ? (body.dealerName?.trim() || shopName) : customerName) || '').trim(),
+            dealerName: isDealer ? (body.dealerName?.trim() || shopName || 'Registered Dealer') : null,
+            dealerPhone: isDealer ? (body.dealerPhone || contactNumber) : null,
+            customerName: customerName || formattedDevices[0]?.customerName || 'Customer',
+            customerPhone: contactNumber || formattedDevices[0]?.customerPhone || '',
+            customerAddress: customerAddress || formattedDevices[0]?.customerAddress || '',
+            agentName: assignedAgentName || null,
+            agentId: assignedAgentId || null,
+            idProofType: body.idProofType || 'Aadhaar Card',
+            idProofNumber: body.idProofNumber || 'N/A',
+            idProofFront: body.idProofFront || null,
+            idProofBack: body.idProofBack || null,
+            devices: formattedDevices,
+          } as any,
+        },
+      });
 
-      // Automatic WhatsApp Customer Confirmation Dispatch (Background / Async)
+      // 1. WhatsApp Dispatch: Combined Batch Receipt PDF to Dealer / Partner
       try {
-        for (let i = 0; i < createdQuotes.length; i++) {
-          const q = createdQuotes[i];
-          const d = devicesList[i] || {};
-          const devCust = d.customer || {};
-          const targetCustPhone = devCust.phone || d.customerPhone || body.customerPhone || q.contactNumber;
-          const targetCustName = devCust.name || d.customerName || body.ownerName || body.customerName || q.customerName || 'Valued Customer';
-          const targetModel = `${q.brand || ''} ${q.model || ''}`.trim() || 'Handset';
-          const targetImei = q.imei || q.imeiNumber || 'N/A';
+        const targetDealerPhone = body.dealerPhone || (isDealer ? (contactNumber || body.customerPhone) : null);
+        if (targetDealerPhone) {
+          sendInvoiceWhatsApp({
+            ...quote,
+            contactNumber: targetDealerPhone,
+            phone: targetDealerPhone,
+            devices: formattedDevices,
+            finalPrice: finalAmount,
+            totalAmount: finalAmount,
+            forceDispatch: true,
+          }).then((res: any) => {
+            console.log(`✅ [Backend Auto-Dispatch] Dealer Invoice sent to ${targetDealerPhone}:`, res?.whatsappDispatched || res?.success);
+          }).catch((err: any) => {
+            console.warn(`⚠️ [Backend Auto-Dispatch] Dealer Invoice error:`, err?.message);
+          });
+        }
+      } catch (dealerErr) {
+        console.warn('⚠️ [Backend Auto-Dispatch] Dealer Invoice exception:', dealerErr);
+      }
+
+      // 2. WhatsApp Dispatch: Individual Sale Confirmation to Each Customer
+      try {
+        formattedDevices.forEach((dev: any, devIdx: number) => {
+          const targetCustPhone = dev.customerPhone || dev.customer?.phone || contactNumber;
+          const targetCustName = dev.customerName || dev.customer?.name || 'Valued Customer';
+          const targetModel = `${dev.brand ? dev.brand + ' ' : ''}${dev.model}`.trim() || 'Handset';
+          const targetImei = dev.imei && dev.imei !== 'N/A' ? dev.imei : 'Verified Checks Passed';
 
           if (targetCustPhone) {
             sendMobileSaleConfirmationWhatsApp({
@@ -430,25 +488,26 @@ export async function POST(req: Request) {
               customerName: targetCustName,
               deviceModel: targetModel,
               imei: targetImei,
-            }).then((res) => {
-              console.log(`✅ [Backend Auto-Dispatch] mobile_sale_confirmation sent to customer ${targetCustPhone}:`, res.success);
-            }).catch((err) => {
-              console.warn('⚠️ [Backend Auto-Dispatch] mobile_sale_confirmation error:', err?.message);
+            }).then((res: any) => {
+              console.log(`✅ [Backend Auto-Dispatch] sale_confirmation sent to Device #${devIdx + 1} customer (${targetCustPhone}):`, res.success);
+            }).catch((err: any) => {
+              console.warn(`⚠️ [Backend Auto-Dispatch] sale_confirmation error for Device #${devIdx + 1}:`, err?.message);
             });
           }
-        }
-      } catch (autoErr) {
-        console.warn('⚠️ [Backend Auto-Dispatch] Error in dispatch loop:', autoErr);
+        });
+      } catch (custErr) {
+        console.warn('⚠️ [Backend Auto-Dispatch] Customer dispatch loop exception:', custErr);
       }
 
       return jsonResponse({
         success: true,
-        message: `Dealer intake: ${createdQuotes.length} individual device quote(s) created successfully`,
-        quoteId: primaryQuote.id,
-        quoteNumber: primaryQuote.quoteNumber,
-        quote: primaryQuote,
-        quotes: createdQuotes,
-        totalCreated: createdQuotes.length,
+        message: `Intake order created successfully with ${formattedDevices.length} device(s)`,
+        quoteId: quote.id,
+        quoteNumber: quote.quoteNumber,
+        quote: quote,
+        quotes: [quote],
+        totalCreated: 1,
+        totalDevices: formattedDevices.length,
       }, 201);
     }
 

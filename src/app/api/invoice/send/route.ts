@@ -6,23 +6,19 @@ export const dynamic = 'force-dynamic';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, x-agent-key, x-user-id',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, x-agent-key, x-user-id, *',
 };
 import { sendInvoiceWhatsApp, sendMobileSaleConfirmationWhatsApp } from '@/lib/invoice';
 
 function jsonResponse(data: any, status = 200) {
   return NextResponse.json(data, {
     status,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
+    headers: corsHeaders,
   });
 }
 
 export async function OPTIONS() {
-  return jsonResponse({}, 200);
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
 /**
