@@ -2,6 +2,7 @@ function generateFormattedStaffId(role: string, id: string, existingStaffId?: st
   if (existingStaffId) return existingStaffId;
   const roleUpper = (role || '').toUpperCase();
   const suffix = id ? id.slice(-4).toUpperCase() : Math.floor(1000 + Math.random() * 9000).toString();
+  if (roleUpper.includes('FINANCE')) return `WP-FIN-${suffix}`;
   if (roleUpper.includes('REFURBISH')) return `WP-RFB-${suffix}`;
   if (roleUpper.includes('SELLING')) return `WP-SLT-${suffix}`;
   if (roleUpper.includes('DELIVERY') || roleUpper.includes('AGENT')) return `WP-DLV-${suffix}`;
@@ -40,6 +41,8 @@ export async function GET(req: NextRequest) {
       where.role = 'BUSINESS';
     } else if (rawRole === 'USER' || rawRole === 'CUSTOMER') {
       where.role = 'USER';
+    } else if (rawRole === 'FINANCE_TEAM' || rawRole === 'FINANCE') {
+      where.role = 'FINANCE_TEAM';
     } else if (rawRole === 'REFURBISH_TEAM' || rawRole === 'REFURBISH') {
       where.role = 'REFURBISH_TEAM';
     } else if (rawRole === 'SELLING_TEAM' || rawRole === 'SELLING') {
@@ -47,7 +50,7 @@ export async function GET(req: NextRequest) {
     } else if (rawRole === 'DELIVERY_AGENT' || rawRole === 'AGENT') {
       where.role = 'DELIVERY_AGENT';
     } else if (rawRole === 'STAFF' || rawRole === 'TEAM' || rawRole === 'AGENTS') {
-      where.role = { in: ['DELIVERY_AGENT', 'REFURBISH_TEAM', 'SELLING_TEAM'] };
+      where.role = { in: ['DELIVERY_AGENT', 'REFURBISH_TEAM', 'SELLING_TEAM', 'FINANCE_TEAM'] };
     } else if (rawRole === 'SUPER_ADMIN' || rawRole === 'ADMIN') {
       where.role = 'SUPER_ADMIN';
     } else if (rawRole && rawRole !== 'ALL') {
@@ -56,28 +59,27 @@ export async function GET(req: NextRequest) {
 
     const users = await prisma.user.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
-      include: { orders: true },
+      orderBy: { createdAt: 'desc' }
     });
+
     console.log(`Fetched users count (filtered role: ${rawRole || 'ALL'}): ${users.length}`);
 
-    const formattedUsers = users.map(({ password, avatar, ...user }) => ({
-      ...user,
-      staffId: generateFormattedStaffId(user.role, user.id, (user as any).staffId),
-      customId: generateFormattedStaffId(user.role, user.id, (user as any).staffId),
-      avatar: avatar ?? "",
-    }));
+    const safeUsers = users.map(user => {
+      const { password, avatar, ...rest } = user as any;
+      return {
+        ...rest,
+        role: user.role,
+        staffId: generateFormattedStaffId(user.role, user.id, (user as any).staffId),
+        customId: generateFormattedStaffId(user.role, user.id, (user as any).staffId),
+        avatar: avatar || ""
+      };
+    });
 
-    return NextResponse.json({
-      success: true,
-      filter: rawRole || 'ALL',
-      total: users.length,
-      users: formattedUsers,
-    }, { headers: corsHeaders });
-  } catch (error) {
-    console.error('GET /api/users/all error:', error);
+    return NextResponse.json(safeUsers, { headers: corsHeaders });
+  } catch (error: any) {
+    console.error('Fetch users error:', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Internal server error', details: error?.message },
       { status: 500, headers: corsHeaders }
     );
   }

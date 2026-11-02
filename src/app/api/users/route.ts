@@ -34,10 +34,12 @@ export async function GET(req: NextRequest) {
       where.role = 'REFURBISH_TEAM';
     } else if (rawRole === 'SELLING_TEAM' || rawRole === 'SELLING') {
       where.role = 'SELLING_TEAM';
+    } else if (rawRole === 'FINANCE_TEAM' || rawRole === 'FINANCE') {
+      where.role = 'FINANCE_TEAM';
     } else if (rawRole === 'DELIVERY_AGENT' || rawRole === 'AGENT') {
       where.role = 'DELIVERY_AGENT';
     } else if (rawRole === 'STAFF' || rawRole === 'TEAM' || rawRole === 'AGENTS') {
-      where.role = { in: ['DELIVERY_AGENT', 'REFURBISH_TEAM', 'SELLING_TEAM'] };
+      where.role = { in: ['DELIVERY_AGENT', 'REFURBISH_TEAM', 'SELLING_TEAM', 'FINANCE_TEAM'] };
     } else if (rawRole === 'SUPER_ADMIN' || rawRole === 'ADMIN') {
       where.role = 'SUPER_ADMIN';
     } else if (rawRole && rawRole !== 'ALL') {
@@ -124,7 +126,7 @@ export async function POST(req: NextRequest) {
       hashedPassword = await bcrypt.hash(String(password).trim(), 10);
     }
 
-    const targetRole = ['SUPER_ADMIN', 'USER', 'BUSINESS', 'DELIVERY_AGENT', 'REFURBISH_TEAM', 'SELLING_TEAM'].includes(String(role).toUpperCase())
+    const targetRole = ['SUPER_ADMIN', 'USER', 'BUSINESS', 'DELIVERY_AGENT', 'REFURBISH_TEAM', 'SELLING_TEAM', 'FINANCE_TEAM'].includes(String(role).toUpperCase())
       ? (String(role).toUpperCase() as any)
       : 'USER';
 
