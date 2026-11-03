@@ -120,10 +120,6 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-      if (cfErr?.responseBody) {
-        failureReason = cfErr.responseBody.message || cfErr.responseBody.error?.description || failureReason;
-      }
-    }
 
     // Record transaction in database
     const record = await prisma.financePayout.create({
