@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
     let monthDisbursed = 0;
     let upiAmount = 0;
     let bankAmount = 0;
+    let cashAmount = 0;
     let successCount = 0;
     let failedCount = 0;
     let pendingCount = 0;
@@ -50,7 +51,8 @@ export async function GET(req: NextRequest) {
         if (pDate >= startOfToday) todayDisbursed += p.amount;
         if (pDate >= startOfMonth) monthDisbursed += p.amount;
 
-        if (p.paymentMethod === "UPI") upiAmount += p.amount;
+        if (p.paymentMethod === "CASH") cashAmount += p.amount;
+        else if (p.paymentMethod === "UPI") upiAmount += p.amount;
         else bankAmount += p.amount;
 
         successCount++;
@@ -86,6 +88,7 @@ export async function GET(req: NextRequest) {
           successRate,
           upiAmount,
           bankAmount,
+          cashAmount,
           chartData,
         },
       },
