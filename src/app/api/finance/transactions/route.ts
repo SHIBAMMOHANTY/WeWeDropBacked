@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search")?.trim() || "";
     const status = searchParams.get("status")?.trim() || "";
     const paymentMethod = searchParams.get("paymentMethod")?.trim() || "";
+    const initiatedById = searchParams.get("initiatedById")?.trim() || searchParams.get("agentId")?.trim() || "";
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const page = parseInt(searchParams.get("page") || "1", 10);
@@ -27,6 +28,10 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
 
     const where: any = {};
+
+    if (initiatedById) {
+      where.initiatedById = initiatedById;
+    }
 
     if (status && status !== "ALL") {
       where.status = status;

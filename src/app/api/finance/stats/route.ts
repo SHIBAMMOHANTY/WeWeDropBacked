@@ -16,7 +16,16 @@ export async function OPTIONS() {
 
 export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const initiatedById = searchParams.get("initiatedById")?.trim() || searchParams.get("agentId")?.trim() || "";
+
+    const where: any = {};
+    if (initiatedById) {
+      where.initiatedById = initiatedById;
+    }
+
     const allPayouts = await prisma.financePayout.findMany({
+      where,
       orderBy: { createdAt: "desc" },
     });
 
